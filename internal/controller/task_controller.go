@@ -83,8 +83,8 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 		config = nil
 	}
 
-	// Get Job template
-	jobTemplate, err := r.getJobTemplate(ctx, task.Namespace, config)
+	// Get agent template
+	agentTemplate, err := r.getAgentTemplate(ctx, task.Namespace, config)
 	if err != nil {
 		log.Error(err, "unable to get Job template")
 		return ctrl.Result{}, err
@@ -106,7 +106,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 	}
 
 	// Create Job from template
-	job, err := r.buildJobFromTemplate(ctx, task, jobName, jobTemplate)
+	job, err := r.buildJobFromTemplate(ctx, task, jobName, agentTemplate)
 	if err != nil {
 		log.Error(err, "unable to build Job from template", "job", jobName)
 		return ctrl.Result{}, err
@@ -195,8 +195,8 @@ func (r *TaskReconciler) getWorkspaceConfig(ctx context.Context, namespace strin
 	return config, nil
 }
 
-// getJobTemplate retrieves the Job template from ConfigMap
-func (r *TaskReconciler) getJobTemplate(ctx context.Context, namespace string, config *kubetaskv1alpha1.WorkspaceConfig) (string, error) {
+// getAgentTemplate retrieves the agent Job template from ConfigMap
+func (r *TaskReconciler) getAgentTemplate(ctx context.Context, namespace string, config *kubetaskv1alpha1.WorkspaceConfig) (string, error) {
 	log := log.FromContext(ctx)
 
 	var configMapName string
