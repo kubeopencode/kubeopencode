@@ -4,6 +4,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -463,6 +464,65 @@ type WorkspaceConfigSpec struct {
 	//   - Cloud credentials (file: ~/.config/gcloud/credentials.json)
 	// +optional
 	Credentials []Credential `json:"credentials,omitempty"`
+
+	// PodLabels defines additional labels to add to the agent pod.
+	// These labels are applied to the Job's pod template and enable integration with:
+	//   - NetworkPolicy podSelector for network isolation
+	//   - Service selector for service discovery
+	//   - PodMonitor/ServiceMonitor for Prometheus monitoring
+	//   - Any other label-based pod selection
+	//
+	// Example: To make pods match a NetworkPolicy with podSelector:
+	//   podLabels:
+	//     network-policy: agent-restricted
+	// +optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
+
+	// Scheduling defines pod scheduling configuration for agent pods.
+	// This includes node selection, tolerations, and affinity rules.
+	// +optional
+	Scheduling *PodScheduling `json:"scheduling,omitempty"`
+}
+
+// PodScheduling defines scheduling configuration for agent pods.
+// All fields are applied directly to the Job's pod template.
+type PodScheduling struct {
+	// NodeSelector specifies a selector for scheduling pods to specific nodes.
+	// The pod will only be scheduled to nodes that have all the specified labels.
+	//
+	// Example:
+	//   nodeSelector:
+	//     kubernetes.io/os: linux
+	//     node-type: gpu
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations allows pods to be scheduled on nodes with matching taints.
+	//
+	// Example:
+	//   tolerations:
+	//     - key: "dedicated"
+	//       operator: "Equal"
+	//       value: "ai-workload"
+	//       effect: "NoSchedule"
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Affinity specifies affinity and anti-affinity rules for pods.
+	// This enables advanced scheduling based on node attributes, pod co-location,
+	// or pod anti-affinity for high availability.
+	//
+	// Example:
+	//   affinity:
+	//     nodeAffinity:
+	//       requiredDuringSchedulingIgnoredDuringExecution:
+	//         nodeSelectorTerms:
+	//           - matchExpressions:
+	//               - key: topology.kubernetes.io/zone
+	//                 operator: In
+	//                 values: ["us-west-2a", "us-west-2b"]
+	// +optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 }
 
 // Credential represents a secret that should be available to the agent.

@@ -233,6 +233,8 @@ type workspaceConfig struct {
 	toolsImage      string
 	defaultContexts []kubetaskv1alpha1.Context
 	credentials     []kubetaskv1alpha1.Credential
+	podLabels       map[string]string
+	scheduling      *kubetaskv1alpha1.PodScheduling
 }
 
 // getWorkspaceConfig retrieves the workspace configuration from WorkspaceConfig
@@ -270,6 +272,8 @@ func (r *TaskReconciler) getWorkspaceConfig(ctx context.Context, task *kubetaskv
 		toolsImage:      config.Spec.ToolsImage,
 		defaultContexts: config.Spec.DefaultContexts,
 		credentials:     config.Spec.Credentials,
+		podLabels:       config.Spec.PodLabels,
+		scheduling:      config.Spec.Scheduling,
 	}
 }
 
@@ -575,6 +579,46 @@ func (r *TaskReconciler) buildJob(task *kubetaskv1alpha1.Task, jobName string, w
 		}
 	}
 
+	// Build pod labels - start with base labels
+	podLabels := map[string]string{
+		"app":              "kubetask",
+		"kubetask.io/task": task.Name,
+	}
+
+	// Add custom pod labels from WorkspaceConfig
+	for k, v := range wsConfig.podLabels {
+		podLabels[k] = v
+	}
+
+	// Build PodSpec with scheduling configuration
+	podSpec := corev1.PodSpec{
+		ServiceAccountName: "kubetask-agent",
+		InitContainers:     initContainers,
+		Containers: []corev1.Container{
+			{
+				Name:         "agent",
+				Image:        wsConfig.agentImage,
+				Env:          envVars,
+				VolumeMounts: volumeMounts,
+			},
+		},
+		Volumes:       volumes,
+		RestartPolicy: corev1.RestartPolicyNever,
+	}
+
+	// Apply scheduling configuration if specified
+	if wsConfig.scheduling != nil {
+		if wsConfig.scheduling.NodeSelector != nil {
+			podSpec.NodeSelector = wsConfig.scheduling.NodeSelector
+		}
+		if wsConfig.scheduling.Tolerations != nil {
+			podSpec.Tolerations = wsConfig.scheduling.Tolerations
+		}
+		if wsConfig.scheduling.Affinity != nil {
+			podSpec.Affinity = wsConfig.scheduling.Affinity
+		}
+	}
+
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
@@ -595,20 +639,10 @@ func (r *TaskReconciler) buildJob(task *kubetaskv1alpha1.Task, jobName string, w
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					ServiceAccountName: "kubetask-agent",
-					InitContainers:     initContainers,
-					Containers: []corev1.Container{
-						{
-							Name:         "agent",
-							Image:        wsConfig.agentImage,
-							Env:          envVars,
-							VolumeMounts: volumeMounts,
-						},
-					},
-					Volumes:       volumes,
-					RestartPolicy: corev1.RestartPolicyNever,
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: podLabels,
 				},
+				Spec: podSpec,
 			},
 		},
 	}
