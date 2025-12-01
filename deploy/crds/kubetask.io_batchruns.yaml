@@ -77,6 +77,12 @@ spec:
                         file:
                           description: File context (required when Type == "File")
                           properties:
+                            mountPath:
+                              description: |-
+                                MountPath specifies where to mount this file in the agent pod.
+                                If not specified, the file content will be aggregated into /workspace/task.md
+                                along with other contexts that don't have a mountPath specified.
+                              type: string
                             name:
                               description: File name (e.g., "task.md", "config.json")
                               type: string
@@ -163,6 +169,12 @@ spec:
                           file:
                             description: File context (required when Type == "File")
                             properties:
+                              mountPath:
+                                description: |-
+                                  MountPath specifies where to mount this file in the agent pod.
+                                  If not specified, the file content will be aggregated into /workspace/task.md
+                                  along with other contexts that don't have a mountPath specified.
+                                type: string
                               name:
                                 description: File name (e.g., "task.md", "config.json")
                                 type: string
@@ -349,6 +361,12 @@ spec:
                           file:
                             description: File context (required when Type == "File")
                             properties:
+                              mountPath:
+                                description: |-
+                                  MountPath specifies where to mount this file in the agent pod.
+                                  If not specified, the file content will be aggregated into /workspace/task.md
+                                  along with other contexts that don't have a mountPath specified.
+                                type: string
                               name:
                                 description: File name (e.g., "task.md", "config.json")
                                 type: string

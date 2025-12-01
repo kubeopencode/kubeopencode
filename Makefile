@@ -270,13 +270,13 @@ e2e: e2e-setup e2e-test ## Run full e2e test workflow
 ##@ Agent
 
 agent-build: ## Build agent image
-	$(MAKE) -C agent build
+	$(MAKE) -C workspace/agents build
 
 agent-push: ## Push agent image
-	$(MAKE) -C agent push
+	$(MAKE) -C workspace/agents push
 
 agent-buildx: ## Multi-arch build and push agent image
-	$(MAKE) -C agent buildx
+	$(MAKE) -C workspace/agents buildx
 
 ##@ Help
 

@@ -95,6 +95,12 @@ type FileContext struct {
 	// File content source (exactly one must be specified)
 	// +required
 	Source FileSource `json:"source"`
+
+	// MountPath specifies where to mount this file in the agent pod.
+	// If not specified, the file content will be aggregated into /workspace/task.md
+	// along with other contexts that don't have a mountPath specified.
+	// +optional
+	MountPath *string `json:"mountPath,omitempty"`
 }
 
 // FileSource represents a source for file content
@@ -363,6 +369,20 @@ type WorkspaceConfigSpec struct {
 	// If not specified, defaults to "quay.io/zhaoxue/kubetask-agent:latest".
 	// +optional
 	AgentImage string `json:"agentImage,omitempty"`
+
+	// DefaultContexts defines the base-level contexts that are included in all tasks
+	// using this WorkspaceConfig. These contexts are applied at the lowest priority,
+	// meaning Batch commonContext and variableContexts take precedence.
+	//
+	// Context priority (lowest to highest):
+	//   1. WorkspaceConfig.defaultContexts (base layer)
+	//   2. Batch.commonContext (shared across all tasks in the batch)
+	//   3. Batch.variableContexts[i] (task-specific contexts)
+	//
+	// Use this for organization-wide defaults like coding standards, security policies,
+	// or common tool configurations that should apply to all tasks.
+	// +optional
+	DefaultContexts []Context `json:"defaultContexts,omitempty"`
 }
 
 // SecretKeySelector selects a key of a Secret.

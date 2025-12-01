@@ -52,6 +52,90 @@ spec:
                   The controller generates Jobs with this image.
                   If not specified, defaults to "quay.io/zhaoxue/kubetask-agent:latest".
                 type: string
+              defaultContexts:
+                description: |-
+                  DefaultContexts defines the base-level contexts that are included in all tasks
+                  using this WorkspaceConfig. These contexts are applied at the lowest priority,
+                  meaning Batch commonContext and variableContexts take precedence.
+
+                  Context priority (lowest to highest):
+                    1. WorkspaceConfig.defaultContexts (base layer)
+                    2. Batch.commonContext (shared across all tasks in the batch)
+                    3. Batch.variableContexts[i] (task-specific contexts)
+
+                  Use this for organization-wide defaults like coding standards, security policies,
+                  or common tool configurations that should apply to all tasks.
+                items:
+                  description: |-
+                    Context represents different types of task inputs
+                    This is a polymorphic type that can represent File, API, Database, etc.
+                  properties:
+                    file:
+                      description: File context (required when Type == "File")
+                      properties:
+                        mountPath:
+                          description: |-
+                            MountPath specifies where to mount this file in the agent pod.
+                            If not specified, the file content will be aggregated into /workspace/task.md
+                            along with other contexts that don't have a mountPath specified.
+                          type: string
+                        name:
+                          description: File name (e.g., "task.md", "config.json")
+                          type: string
+                        source:
+                          description: File content source (exactly one must be specified)
+                          properties:
+                            configMapKeyRef:
+                              description: Reference to a key in a ConfigMap
+                              properties:
+                                key:
+                                  description: Key of the ConfigMap to select from
+                                  type: string
+                                name:
+                                  description: Name of the ConfigMap
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap must
+                                    be defined
+                                  type: boolean
+                              required:
+                              - key
+                              - name
+                              type: object
+                            inline:
+                              description: Inline content
+                              type: string
+                            secretKeyRef:
+                              description: Reference to a key in a Secret
+                              properties:
+                                key:
+                                  description: Key of the secret to select from
+                                  type: string
+                                name:
+                                  description: Name of the secret
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret must be
+                                    defined
+                                  type: boolean
+                              required:
+                              - key
+                              - name
+                              type: object
+                          type: object
+                      required:
+                      - name
+                      - source
+                      type: object
+                    type:
+                      description: 'Type of context: File, API, Database, etc.'
+                      enum:
+                      - File
+                      type: string
+                  required:
+                  - type
+                  type: object
+                type: array
             type: object
         type: object
     served: true
