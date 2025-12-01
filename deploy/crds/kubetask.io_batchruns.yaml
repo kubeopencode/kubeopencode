@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   name: batchruns.kubetask.io
 spec:
   group: kubetask.io
@@ -57,20 +57,6 @@ spec:
           spec:
             description: Spec defines the desired state of BatchRun
             properties:
-              agentTemplateRef:
-                description: |-
-                  Agent template reference (optional override)
-                  If not specified, uses WorkspaceConfig default or convention-based discovery
-                properties:
-                  key:
-                    description: |-
-                      Key within the ConfigMap that contains the Job template YAML
-                      If not specified, defaults to "agent-template.yaml"
-                    type: string
-                  name:
-                    description: Name of the ConfigMap containing the agent template
-                    type: string
-                type: object
               batchRef:
                 description: Reference to an existing Batch
                 type: string
@@ -112,6 +98,9 @@ spec:
                                       description: Specify whether the ConfigMap must
                                         be defined
                                       type: boolean
+                                  required:
+                                  - key
+                                  - name
                                   type: object
                                 inline:
                                   description: Inline content
@@ -129,8 +118,14 @@ spec:
                                       description: Specify whether the Secret must
                                         be defined
                                       type: boolean
+                                  required:
+                                  - key
+                                  - name
                                   type: object
                               type: object
+                          required:
+                          - name
+                          - source
                           type: object
                         repository:
                           description: Repository context (required when Type == "Repository")
@@ -144,6 +139,10 @@ spec:
                             repo:
                               description: Repository name
                               type: string
+                          required:
+                          - branch
+                          - org
+                          - repo
                           type: object
                         type:
                           description: 'Type of context: File, Repository, API, Database,
@@ -152,6 +151,8 @@ spec:
                           - File
                           - Repository
                           type: string
+                      required:
+                      - type
                       type: object
                     type: array
                   variableContexts:
@@ -160,7 +161,6 @@ spec:
                       Each item is a list of contexts for one task
                       Task[i] = commonContext (constant) + variableContexts[i] (variable)
                       Total tasks = len(variableContexts)
-
 
                       Example:
                         commonContext: [task.md, guide.md]  // constant - same for all tasks
@@ -203,6 +203,9 @@ spec:
                                         description: Specify whether the ConfigMap
                                           must be defined
                                         type: boolean
+                                    required:
+                                    - key
+                                    - name
                                     type: object
                                   inline:
                                     description: Inline content
@@ -220,8 +223,14 @@ spec:
                                         description: Specify whether the Secret must
                                           be defined
                                         type: boolean
+                                    required:
+                                    - key
+                                    - name
                                     type: object
                                 type: object
+                            required:
+                            - name
+                            - source
                             type: object
                           repository:
                             description: Repository context (required when Type ==
@@ -236,6 +245,10 @@ spec:
                               repo:
                                 description: Repository name
                                 type: string
+                            required:
+                            - branch
+                            - org
+                            - repo
                             type: object
                           type:
                             description: 'Type of context: File, Repository, API,
@@ -244,9 +257,19 @@ spec:
                             - File
                             - Repository
                             type: string
+                        required:
+                        - type
                         type: object
                       type: array
                     type: array
+                  workspaceConfigRef:
+                    description: |-
+                      WorkspaceConfigRef references a WorkspaceConfig for this Batch.
+                      If not specified, uses the "default" WorkspaceConfig in the same namespace.
+                    type: string
+                required:
+                - commonContext
+                - variableContexts
                 type: object
             type: object
           status:
@@ -259,16 +282,8 @@ spec:
               conditions:
                 description: Kubernetes standard conditions
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -309,12 +324,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -399,6 +409,9 @@ spec:
                                         description: Specify whether the ConfigMap
                                           must be defined
                                         type: boolean
+                                    required:
+                                    - key
+                                    - name
                                     type: object
                                   inline:
                                     description: Inline content
@@ -416,8 +429,14 @@ spec:
                                         description: Specify whether the Secret must
                                           be defined
                                         type: boolean
+                                    required:
+                                    - key
+                                    - name
                                     type: object
                                 type: object
+                            required:
+                            - name
+                            - source
                             type: object
                           repository:
                             description: Repository context (required when Type ==
@@ -432,6 +451,10 @@ spec:
                               repo:
                                 description: Repository name
                                 type: string
+                            required:
+                            - branch
+                            - org
+                            - repo
                             type: object
                           type:
                             description: 'Type of context: File, Repository, API,
@@ -440,6 +463,8 @@ spec:
                             - File
                             - Repository
                             type: string
+                        required:
+                        - type
                         type: object
                       type: array
                     jobName:
@@ -457,6 +482,9 @@ spec:
                       - Succeeded
                       - Failed
                       type: string
+                  required:
+                  - contexts
+                  - status
                   type: object
                 type: array
             type: object

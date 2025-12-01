@@ -57,22 +57,11 @@ spec:
           spec:
             description: Spec defines the desired state of BatchRun
             properties:
-              agentTemplateRef:
+              agentImage:
                 description: |-
-                  Agent template reference (optional override)
-                  If not specified, uses WorkspaceConfig default or convention-based discovery
-                properties:
-                  key:
-                    description: |-
-                      Key within the ConfigMap that contains the Job template YAML
-                      If not specified, defaults to "agent-template.yaml"
-                    type: string
-                  name:
-                    description: Name of the ConfigMap containing the agent template
-                    type: string
-                required:
-                - name
-                type: object
+                  Agent container image override.
+                  If not specified, uses WorkspaceConfig default or built-in default.
+                type: string
               batchRef:
                 description: Reference to an existing Batch
                 type: string

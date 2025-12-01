@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   name: batches.kubetask.io
 spec:
   group: kubetask.io
@@ -76,6 +76,9 @@ spec:
                                   description: Specify whether the ConfigMap must
                                     be defined
                                   type: boolean
+                              required:
+                              - key
+                              - name
                               type: object
                             inline:
                               description: Inline content
@@ -93,8 +96,14 @@ spec:
                                   description: Specify whether the Secret must be
                                     defined
                                   type: boolean
+                              required:
+                              - key
+                              - name
                               type: object
                           type: object
+                      required:
+                      - name
+                      - source
                       type: object
                     repository:
                       description: Repository context (required when Type == "Repository")
@@ -108,6 +117,10 @@ spec:
                         repo:
                           description: Repository name
                           type: string
+                      required:
+                      - branch
+                      - org
+                      - repo
                       type: object
                     type:
                       description: 'Type of context: File, Repository, API, Database,
@@ -116,6 +129,8 @@ spec:
                       - File
                       - Repository
                       type: string
+                  required:
+                  - type
                   type: object
                 type: array
               variableContexts:
@@ -124,7 +139,6 @@ spec:
                   Each item is a list of contexts for one task
                   Task[i] = commonContext (constant) + variableContexts[i] (variable)
                   Total tasks = len(variableContexts)
-
 
                   Example:
                     commonContext: [task.md, guide.md]  // constant - same for all tasks
@@ -165,6 +179,9 @@ spec:
                                     description: Specify whether the ConfigMap must
                                       be defined
                                     type: boolean
+                                required:
+                                - key
+                                - name
                                 type: object
                               inline:
                                 description: Inline content
@@ -182,8 +199,14 @@ spec:
                                     description: Specify whether the Secret must be
                                       defined
                                     type: boolean
+                                required:
+                                - key
+                                - name
                                 type: object
                             type: object
+                        required:
+                        - name
+                        - source
                         type: object
                       repository:
                         description: Repository context (required when Type == "Repository")
@@ -197,6 +220,10 @@ spec:
                           repo:
                             description: Repository name
                             type: string
+                        required:
+                        - branch
+                        - org
+                        - repo
                         type: object
                       type:
                         description: 'Type of context: File, Repository, API, Database,
@@ -205,9 +232,19 @@ spec:
                         - File
                         - Repository
                         type: string
+                    required:
+                    - type
                     type: object
                   type: array
                 type: array
+              workspaceConfigRef:
+                description: |-
+                  WorkspaceConfigRef references a WorkspaceConfig for this Batch.
+                  If not specified, uses the "default" WorkspaceConfig in the same namespace.
+                type: string
+            required:
+            - commonContext
+            - variableContexts
             type: object
         type: object
     served: true
