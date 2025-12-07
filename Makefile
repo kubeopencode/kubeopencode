@@ -135,7 +135,7 @@ verify: check-env
 
 # Build the docker image
 docker-build:
-	docker build -t $(IMG) .
+	docker build --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_TIME=$(BUILD_DATE) -t $(IMG) .
 .PHONY: docker-build
 
 # Push the docker image
@@ -148,6 +148,8 @@ docker-buildx:
 	docker buildx create --use --name=kubetask-builder || true
 	docker buildx build \
 		--platform=$(PLATFORMS) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_DATE) \
 		--tag $(IMG) \
 		--push \
 		.
@@ -229,7 +231,7 @@ e2e-kind-delete: ## Delete kind cluster
 
 # Build docker image for e2e testing
 e2e-docker-build: ## Build docker image for e2e testing
-	docker build -t $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(E2E_IMG_TAG) .
+	docker build --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_TIME=$(BUILD_DATE) -t $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(E2E_IMG_TAG) .
 .PHONY: e2e-docker-build
 
 # Load docker image into kind cluster
