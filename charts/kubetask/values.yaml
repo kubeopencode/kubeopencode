@@ -58,81 +58,9 @@ controller:
 agent:
   # Default container image for the agent (used when WorkspaceConfig.agentImage is not set)
   image:
-    repository: quay.io/zhaoxue/kubetask-agent
+    repository: quay.io/zhaoxue/kubetask-agent-gemini
     pullPolicy: IfNotPresent
     tag: "latest"
-
-# Workspace PVC configuration
-workspace:
-  # Whether to create a PersistentVolumeClaim for workspace
-  enabled: true
-
-  # Storage class for the PVC
-  # Leave empty for default storage class
-  storageClass: ""
-
-  # Size of the workspace volume
-  size: 100Gi
-
-  # Access mode (ReadWriteMany required for parallel execution)
-  accessMode: ReadWriteMany
-
-# GitHub authentication
-github:
-  # GitHub token for cloning repositories
-  # Should be provided via --set github.token=xxx or from existing secret
-  token: ""
-
-  # Alternatively, use an existing secret
-  existingSecret: ""
-  existingSecretKey: "token"
-
-# Claude/AI authentication
-claude:
-  # Anthropic API key for Claude
-  apiKey: ""
-
-  # Alternatively, use an existing secret
-  existingSecret: ""
-  existingSecretKey: "api-key"
-
-  # Vertex AI configuration (if using Vertex AI)
-  vertexAI:
-    enabled: false
-    projectID: ""
-    location: ""
-    # Service account key JSON (base64 encoded)
-    serviceAccountKey: ""
-
-# Job template ConfigMap
-jobTemplate:
-  # Whether to create the default job template ConfigMap
-  create: true
-
-  # Custom job template (YAML string)
-  # If not provided, uses built-in default template
-  template: ""
-
-# Metrics and monitoring
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: false
-    additionalLabels: {}
-
-# Cleanup CronJob configuration
-cleanup:
-  # Whether to enable automatic cleanup of old BatchRuns
-  enabled: true
-
-  # Schedule for cleanup CronJob (cron format)
-  schedule: "0 2 * * *"  # Daily at 2 AM
-
-  # TTL in days for completed BatchRuns
-  ttlDays: 3
-
-  # TTL in days for failed BatchRuns
-  failedTTLDays: 7
 
 # Namespace configuration
 namespaceOverride: ""
