@@ -744,7 +744,7 @@ var _ = Describe("TaskController", func() {
 					return ""
 				}
 				return updatedTask.Status.Phase
-			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseSucceeded))
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseCompleted))
 
 			By("Checking CompletionTime is set")
 			finalTask := &kubetaskv1alpha1.Task{}

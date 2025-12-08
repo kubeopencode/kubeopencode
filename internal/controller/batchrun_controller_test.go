@@ -252,7 +252,7 @@ var _ = Describe("BatchRunController", func() {
 				return task.Status.Phase
 			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
 
-			task.Status.Phase = kubetaskv1alpha1.TaskPhaseSucceeded
+			task.Status.Phase = kubetaskv1alpha1.TaskPhaseCompleted
 			now := metav1.Now()
 			task.Status.CompletionTime = &now
 			Expect(k8sClient.Status().Update(ctx, task)).Should(Succeed())
@@ -265,7 +265,7 @@ var _ = Describe("BatchRunController", func() {
 					return ""
 				}
 				return updatedBatchRun.Status.Phase
-			}, timeout, interval).Should(Equal(kubetaskv1alpha1.BatchRunPhaseSucceeded))
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.BatchRunPhaseCompleted))
 
 			By("Verifying progress is updated")
 			finalBatchRun := &kubetaskv1alpha1.BatchRun{}
@@ -677,7 +677,7 @@ var _ = Describe("BatchRunController", func() {
 				return task0.Status.Phase
 			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
 
-			task0.Status.Phase = kubetaskv1alpha1.TaskPhaseSucceeded
+			task0.Status.Phase = kubetaskv1alpha1.TaskPhaseCompleted
 			now := metav1.Now()
 			task0.Status.CompletionTime = &now
 			Expect(k8sClient.Status().Update(ctx, task0)).Should(Succeed())
