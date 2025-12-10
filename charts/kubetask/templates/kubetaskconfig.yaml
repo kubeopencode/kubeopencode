@@ -1,0 +1,12 @@
+{{- if .Values.kubetaskConfig.create }}
+apiVersion: kubetask.io/v1alpha1
+kind: KubeTaskConfig
+metadata:
+  name: default
+  namespace: {{ include "kubetask.namespace" . }}
+  labels:
+    {{- include "kubetask.labels" . | nindent 4 }}
+spec:
+  taskLifecycle:
+    ttlSecondsAfterFinished: {{ .Values.kubetaskConfig.taskLifecycle.ttlSecondsAfterFinished }}
+{{- end }}

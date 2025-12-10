@@ -185,6 +185,30 @@ type AgentSpec struct {
 	// +optional
 	AgentImage string `json:"agentImage,omitempty"`
 
+	// HumanInTheLoop configures whether tasks using this agent require human participation.
+	// When enabled, the agent container will remain running after task completion,
+	// allowing users to exec into the container for debugging, review, or manual intervention.
+	//
+	// IMPORTANT: When humanInTheLoop is enabled, you MUST also specify the Command field.
+	// The controller wraps the command to add a sleep after completion.
+	// Without Command, the controller cannot wrap the entrypoint.
+	// +optional
+	HumanInTheLoop *HumanInTheLoop `json:"humanInTheLoop,omitempty"`
+
+	// Command specifies the entrypoint command for the agent container.
+	// This overrides the default ENTRYPOINT of the container image.
+	//
+	// This field is REQUIRED when humanInTheLoop is enabled, as the controller
+	// needs to wrap the command with a sleep to keep the container running.
+	//
+	// Example:
+	//   command: ["sh", "-c", "gemini --yolo -p \"$(cat /workspace/task.md)\""]
+	//
+	// The command will be wrapped to:
+	//   sh -c 'original-command; sleep $KUBETASK_KEEP_ALIVE_SECONDS'
+	// +optional
+	Command []string `json:"command,omitempty"`
+
 	// Tools container image that provides CLI tools (git, gh, kubectl, etc.)
 	// for the agent to use during task execution.
 	//
@@ -372,4 +396,68 @@ type AgentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Agent `json:"items"`
+}
+
+// HumanInTheLoop configures human participation requirements for an agent.
+// When enabled, the agent container remains running after task completion,
+// allowing users to kubectl exec into the container for debugging or review.
+type HumanInTheLoop struct {
+	// Enabled indicates whether human-in-the-loop mode is active.
+	// When true, the agent container will sleep after task completion
+	// instead of exiting immediately.
+	// +required
+	Enabled bool `json:"enabled"`
+
+	// KeepAliveSeconds specifies how long the container should remain running
+	// after task completion, allowing time for human interaction.
+	// Users can kubectl exec into the container during this period.
+	// Defaults to 3600 (1 hour) if not specified when enabled is true.
+	// +optional
+	// +kubebuilder:default=3600
+	KeepAliveSeconds *int32 `json:"keepAliveSeconds,omitempty"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:resource:scope="Namespaced"
+// +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
+
+// KubeTaskConfig defines system-level configuration for KubeTask.
+// This CRD provides cluster or namespace-level settings for task lifecycle management,
+// including TTL-based cleanup and future archive capabilities.
+type KubeTaskConfig struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	// Spec defines the KubeTask configuration
+	Spec KubeTaskConfigSpec `json:"spec"`
+}
+
+// KubeTaskConfigSpec defines the system-level configuration
+type KubeTaskConfigSpec struct {
+	// TaskLifecycle configures task lifecycle management including cleanup policies.
+	// +optional
+	TaskLifecycle *TaskLifecycleConfig `json:"taskLifecycle,omitempty"`
+}
+
+// TaskLifecycleConfig defines task lifecycle management settings
+type TaskLifecycleConfig struct {
+	// TTLSecondsAfterFinished specifies how long completed or failed Tasks
+	// should be retained before automatic deletion.
+	// The timer starts when a Task enters Completed or Failed phase.
+	// Associated Jobs and ConfigMaps are deleted via OwnerReference cascade.
+	// Defaults to 604800 (7 days) if not specified.
+	// Set to 0 to disable automatic cleanup.
+	// +optional
+	// +kubebuilder:default=604800
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// KubeTaskConfigList contains a list of KubeTaskConfig
+type KubeTaskConfigList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []KubeTaskConfig `json:"items"`
 }

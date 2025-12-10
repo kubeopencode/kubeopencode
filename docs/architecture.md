@@ -7,8 +7,9 @@
 3. [System Architecture](#system-architecture)
 4. [Custom Resource Definitions](#custom-resource-definitions)
 5. [Agent Configuration](#agent-configuration)
-6. [Complete Examples](#complete-examples)
-7. [kubectl Usage](#kubectl-usage)
+6. [System Configuration](#system-configuration)
+7. [Complete Examples](#complete-examples)
+8. [kubectl Usage](#kubectl-usage)
 
 ---
 
@@ -43,6 +44,7 @@ KubeTask is a Kubernetes-native system that executes AI-powered tasks using Cust
 |----------|---------|-----------|
 | **Task** | Single task execution (primary API) | Stable - semantic name |
 | **Agent** | AI agent configuration (HOW to execute) | Stable - independent of project name |
+| **KubeTaskConfig** | System-level configuration (TTL, lifecycle) | Stable - system settings |
 
 ### Key Design Decisions
 
@@ -91,11 +93,18 @@ Agent (execution configuration)
 └── AgentSpec
     ├── agentImage: string
     ├── toolsImage: string
+    ├── command: []string
+    ├── humanInTheLoop: *HumanInTheLoop
     ├── defaultContexts: []Context
     ├── credentials: []Credential
     ├── podLabels: map[string]string
     ├── scheduling: *PodScheduling
     └── serviceAccountName: string
+
+KubeTaskConfig (system configuration)
+└── KubeTaskConfigSpec
+    └── taskLifecycle: *TaskLifecycleConfig
+        └── ttlSecondsAfterFinished: *int32
 ```
 
 ### Complete Type Definitions
@@ -128,11 +137,32 @@ type Agent struct {
 type AgentSpec struct {
     AgentImage         string
     ToolsImage         string
+    Command            []string          // Custom entrypoint command
+    HumanInTheLoop     *HumanInTheLoop   // Keep container alive after task completion
     DefaultContexts    []Context
     Credentials        []Credential
     PodLabels          map[string]string
     Scheduling         *PodScheduling
     ServiceAccountName string
+}
+
+// HumanInTheLoop keeps container running after task completion for debugging
+type HumanInTheLoop struct {
+    Enabled          bool    // Enable human-in-the-loop mode
+    KeepAliveSeconds *int32  // How long to keep container alive (default: 3600)
+}
+
+// KubeTaskConfig defines system-level configuration
+type KubeTaskConfig struct {
+    Spec KubeTaskConfigSpec
+}
+
+type KubeTaskConfigSpec struct {
+    TaskLifecycle *TaskLifecycleConfig
+}
+
+type TaskLifecycleConfig struct {
+    TTLSecondsAfterFinished *int32  // TTL for completed/failed tasks (default: 604800 = 7 days)
 }
 
 // Context system
@@ -325,6 +355,14 @@ spec:
   # Optional: Tools image (provides CLI tools like git, gh, kubectl)
   toolsImage: quay.io/myorg/tools:v1.0
 
+  # Optional: Custom entrypoint command (required for humanInTheLoop)
+  command: ["sh", "-c", "gemini --yolo -p \"$(cat /workspace/task.md)\""]
+
+  # Optional: Keep container alive after task completion for debugging
+  humanInTheLoop:
+    enabled: true
+    keepAliveSeconds: 3600  # Default: 3600 (1 hour)
+
   # Optional: Default contexts for all tasks using this agent
   defaultContexts:
     - type: File
@@ -374,11 +412,25 @@ spec:
 |-------|------|----------|-------------|
 | `spec.agentImage` | String | No | Agent container image |
 | `spec.toolsImage` | String | No | Tools image (git, gh, kubectl, etc.) |
+| `spec.command` | []String | No | Custom entrypoint command (required for humanInTheLoop) |
+| `spec.humanInTheLoop` | *HumanInTheLoop | No | Keep container alive after completion |
 | `spec.defaultContexts` | []Context | No | Default contexts for all tasks |
 | `spec.credentials` | []Credential | No | Secrets as env vars or file mounts |
 | `spec.podLabels` | map[string]string | No | Additional pod labels |
 | `spec.scheduling` | *PodScheduling | No | Node selector, tolerations, affinity |
 | `spec.serviceAccountName` | String | Yes | ServiceAccount for agent pods |
+
+**Human-in-the-Loop:**
+
+When `humanInTheLoop.enabled` is true, the controller wraps the `command` with a sleep to keep the container running after task completion. This allows users to `kubectl exec` into the container for debugging or review.
+
+```yaml
+humanInTheLoop:
+  enabled: true
+  keepAliveSeconds: 3600  # Keep alive for 1 hour (default)
+```
+
+**Important:** When `humanInTheLoop` is enabled, you MUST also specify `command`. The controller wraps the command to add the sleep behavior.
 
 ---
 
@@ -409,6 +461,63 @@ When a Task references an Agent with `defaultContexts`, contexts are merged:
 
 1. **Agent.defaultContexts** (base layer, lowest priority)
 2. **Task.contexts** (task-specific, highest priority)
+
+---
+
+## System Configuration
+
+### KubeTaskConfig (System-level Configuration)
+
+KubeTaskConfig provides cluster or namespace-level settings for task lifecycle management.
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: KubeTaskConfig
+metadata:
+  name: default
+  namespace: kubetask-system
+spec:
+  taskLifecycle:
+    # TTL for completed/failed tasks before automatic deletion
+    # Default: 604800 (7 days)
+    # Set to 0 to disable automatic cleanup
+    ttlSecondsAfterFinished: 604800
+```
+
+**Field Description:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `spec.taskLifecycle.ttlSecondsAfterFinished` | int32 | No | TTL in seconds for completed/failed tasks (default: 604800 = 7 days) |
+
+### TTL-based Cleanup
+
+The controller automatically deletes completed or failed Tasks after the configured TTL:
+
+1. Task enters `Completed` or `Failed` phase
+2. Controller records `CompletionTime`
+3. After TTL expires, controller deletes the Task CR
+4. Associated Job and ConfigMap are deleted via OwnerReference cascade
+
+**Configuration Lookup Order:**
+
+1. `KubeTaskConfig/default` in the Task's namespace
+2. Built-in default (604800 seconds = 7 days)
+
+**Disabling Cleanup:**
+
+Set `ttlSecondsAfterFinished: 0` to disable automatic cleanup:
+
+```yaml
+spec:
+  taskLifecycle:
+    ttlSecondsAfterFinished: 0  # Disable automatic cleanup
+```
+
+### Future Extensions (TODO)
+
+- **Historical Archiving**: Archive Tasks to external storage (S3, GCS) before deletion (similar to Tekton Results)
+- **Retention by Count**: Keep the last N successful/failed tasks
 
 ---
 
@@ -589,11 +698,17 @@ kubectl get agent default -o yaml
 **API**:
 - **Task** - primary API for single task execution
 - **Agent** - stable, project-independent configuration
+- **KubeTaskConfig** - system-level settings (TTL, lifecycle)
 
 **Context Types**:
 - `FilePath` + `Inline` - single file with inline content
 - `FilePath` + `ConfigMapKeyRef` - single file from ConfigMap key
 - `DirPath` + `ConfigMapRef` - directory with all ConfigMap keys as files
+
+**Task Lifecycle**:
+- TTL-based automatic cleanup (default: 7 days)
+- Human-in-the-loop debugging support
+- OwnerReference cascade deletion
 
 **Batch Operations**:
 - Use Helm, Kustomize, or other templating tools
@@ -610,5 +725,5 @@ kubectl get agent default -o yaml
 
 **Status**: FINAL
 **Date**: 2025-12-10
-**Version**: v3.0
+**Version**: v3.1
 **Maintainer**: KubeTask Team

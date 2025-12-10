@@ -6,7 +6,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +30,15 @@ const (
 
 	// ContextConfigMapSuffix is the suffix for ConfigMap names created for context
 	ContextConfigMapSuffix = "-context"
+
+	// DefaultTTLSecondsAfterFinished is the default TTL for completed/failed tasks (7 days)
+	DefaultTTLSecondsAfterFinished int32 = 604800
+
+	// DefaultKeepAliveSeconds is the default keep-alive duration for human-in-the-loop (1 hour)
+	DefaultKeepAliveSeconds int32 = 3600
+
+	// EnvHumanInTheLoopKeepAlive is the environment variable name for keep-alive seconds
+	EnvHumanInTheLoopKeepAlive = "KUBETASK_KEEP_ALIVE_SECONDS"
 )
 
 // TaskReconciler reconciles a Task object
@@ -40,6 +51,7 @@ type TaskReconciler struct {
 // +kubebuilder:rbac:groups=kubetask.io,resources=tasks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kubetask.io,resources=tasks/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kubetask.io,resources=agents,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kubetask.io,resources=kubetaskconfigs,verbs=get;list;watch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -64,10 +76,10 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return r.initializeTask(ctx, task)
 	}
 
-	// If completed/failed, skip
+	// If completed/failed, check TTL for cleanup
 	if task.Status.Phase == kubetaskv1alpha1.TaskPhaseCompleted ||
 		task.Status.Phase == kubetaskv1alpha1.TaskPhaseFailed {
-		return ctrl.Result{}, nil
+		return r.handleTaskCleanup(ctx, task)
 	}
 
 	// Update task status from Job status
@@ -199,6 +211,74 @@ func (r *TaskReconciler) updateTaskStatusFromJob(ctx context.Context, task *kube
 	return nil
 }
 
+// handleTaskCleanup checks if a completed/failed task should be deleted based on TTL
+func (r *TaskReconciler) handleTaskCleanup(ctx context.Context, task *kubetaskv1alpha1.Task) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	// Get TTL configuration
+	ttlSeconds := r.getTTLSecondsAfterFinished(ctx, task.Namespace)
+
+	// TTL of 0 means no automatic cleanup
+	if ttlSeconds == 0 {
+		return ctrl.Result{}, nil
+	}
+
+	// Check if task has completion time
+	if task.Status.CompletionTime == nil {
+		return ctrl.Result{}, nil
+	}
+
+	// Calculate time since completion
+	completionTime := task.Status.CompletionTime.Time
+	ttlDuration := time.Duration(ttlSeconds) * time.Second
+	expirationTime := completionTime.Add(ttlDuration)
+	now := time.Now()
+
+	if now.After(expirationTime) {
+		// Task has expired, delete it
+		log.Info("deleting expired task", "task", task.Name, "completedAt", completionTime, "ttl", ttlSeconds)
+		if err := r.Delete(ctx, task); err != nil {
+			if !errors.IsNotFound(err) {
+				log.Error(err, "unable to delete expired task")
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Task not yet expired, requeue to check again at expiration time
+	requeueAfter := expirationTime.Sub(now)
+	log.V(1).Info("task not yet expired, requeueing", "task", task.Name, "requeueAfter", requeueAfter)
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
+}
+
+// getTTLSecondsAfterFinished retrieves the TTL configuration from KubeTaskConfig.
+// It looks for config in the following order:
+// 1. KubeTaskConfig named "default" in the task's namespace
+// 2. Built-in default (7 days)
+func (r *TaskReconciler) getTTLSecondsAfterFinished(ctx context.Context, namespace string) int32 {
+	log := log.FromContext(ctx)
+
+	// Try to get KubeTaskConfig from the task's namespace
+	config := &kubetaskv1alpha1.KubeTaskConfig{}
+	configKey := types.NamespacedName{Name: "default", Namespace: namespace}
+
+	if err := r.Get(ctx, configKey, config); err != nil {
+		if !errors.IsNotFound(err) {
+			log.Error(err, "unable to get KubeTaskConfig, using default TTL")
+		}
+		// Config not found, use built-in default
+		return DefaultTTLSecondsAfterFinished
+	}
+
+	// Config found, extract TTL
+	if config.Spec.TaskLifecycle != nil && config.Spec.TaskLifecycle.TTLSecondsAfterFinished != nil {
+		return *config.Spec.TaskLifecycle.TTLSecondsAfterFinished
+	}
+
+	return DefaultTTLSecondsAfterFinished
+}
+
 // SetupWithManager sets up the controller with the Manager
 func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -211,11 +291,13 @@ func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 type agentConfig struct {
 	agentImage         string
 	toolsImage         string
+	command            []string
 	defaultContexts    []kubetaskv1alpha1.Context
 	credentials        []kubetaskv1alpha1.Credential
 	podLabels          map[string]string
 	scheduling         *kubetaskv1alpha1.PodScheduling
 	serviceAccountName string
+	humanInTheLoop     *kubetaskv1alpha1.HumanInTheLoop
 }
 
 // getAgentConfig retrieves the agent configuration from Agent.
@@ -255,11 +337,13 @@ func (r *TaskReconciler) getAgentConfig(ctx context.Context, task *kubetaskv1alp
 	return agentConfig{
 		agentImage:         agentImage,
 		toolsImage:         agent.Spec.ToolsImage,
+		command:            agent.Spec.Command,
 		defaultContexts:    agent.Spec.DefaultContexts,
 		credentials:        agent.Spec.Credentials,
 		podLabels:          agent.Spec.PodLabels,
 		scheduling:         agent.Spec.Scheduling,
 		serviceAccountName: agent.Spec.ServiceAccountName,
+		humanInTheLoop:     agent.Spec.HumanInTheLoop,
 	}, nil
 }
 
@@ -464,6 +548,18 @@ func (r *TaskReconciler) buildJob(task *kubetaskv1alpha1.Task, jobName string, c
 		)
 	}
 
+	// Add human-in-the-loop keep-alive environment variable if enabled
+	if cfg.humanInTheLoop != nil && cfg.humanInTheLoop.Enabled {
+		keepAliveSeconds := DefaultKeepAliveSeconds
+		if cfg.humanInTheLoop.KeepAliveSeconds != nil {
+			keepAliveSeconds = *cfg.humanInTheLoop.KeepAliveSeconds
+		}
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  EnvHumanInTheLoopKeepAlive,
+			Value: strconv.Itoa(int(keepAliveSeconds)),
+		})
+	}
+
 	// Add credentials (secrets as env vars or file mounts)
 	for i, cred := range cfg.credentials {
 		// Add as environment variable if Env is specified
@@ -570,21 +666,45 @@ func (r *TaskReconciler) buildJob(task *kubetaskv1alpha1.Task, jobName string, c
 		podLabels[k] = v
 	}
 
+	// Build agent container
+	agentContainer := corev1.Container{
+		Name:            "agent",
+		Image:           cfg.agentImage,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Env:             envVars,
+		VolumeMounts:    volumeMounts,
+	}
+
+	// Apply command if specified
+	if len(cfg.command) > 0 {
+		// If humanInTheLoop is enabled, wrap the command with sleep
+		if cfg.humanInTheLoop != nil && cfg.humanInTheLoop.Enabled {
+			keepAliveSeconds := DefaultKeepAliveSeconds
+			if cfg.humanInTheLoop.KeepAliveSeconds != nil {
+				keepAliveSeconds = *cfg.humanInTheLoop.KeepAliveSeconds
+			}
+
+			// Build the wrapped command that runs original command then sleeps
+			// Format: sh -c 'original_command; EXIT_CODE=$?; echo "Human-in-the-loop: keeping container alive..."; sleep N; exit $EXIT_CODE'
+			originalCmd := strings.Join(cfg.command, " ")
+			wrappedScript := fmt.Sprintf(
+				`%s; EXIT_CODE=$?; echo "Human-in-the-loop: keeping container alive for %d seconds. Use 'kubectl exec' to access."; sleep %d; exit $EXIT_CODE`,
+				originalCmd, keepAliveSeconds, keepAliveSeconds,
+			)
+			agentContainer.Command = []string{"sh", "-c", wrappedScript}
+		} else {
+			// No humanInTheLoop, use command as-is
+			agentContainer.Command = cfg.command
+		}
+	}
+
 	// Build PodSpec with scheduling configuration
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: cfg.serviceAccountName,
 		InitContainers:     initContainers,
-		Containers: []corev1.Container{
-			{
-				Name:            "agent",
-				Image:           cfg.agentImage,
-				ImagePullPolicy: corev1.PullIfNotPresent,
-				Env:             envVars,
-				VolumeMounts:    volumeMounts,
-			},
-		},
-		Volumes:       volumes,
-		RestartPolicy: corev1.RestartPolicyNever,
+		Containers:         []corev1.Container{agentContainer},
+		Volumes:            volumes,
+		RestartPolicy:      corev1.RestartPolicyNever,
 	}
 
 	// Apply scheduling configuration if specified

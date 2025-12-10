@@ -73,3 +73,14 @@ commonLabels: {}
 
 # Additional annotations for all resources
 commonAnnotations: {}
+
+# KubeTaskConfig - system-level configuration
+# This creates a default KubeTaskConfig in the release namespace
+kubetaskConfig:
+  # Whether to create the default KubeTaskConfig
+  create: true
+  # Task lifecycle management
+  taskLifecycle:
+    # TTL for completed/failed tasks (7 days = 604800 seconds)
+    # Set to 0 to disable automatic cleanup
+    ttlSecondsAfterFinished: 604800

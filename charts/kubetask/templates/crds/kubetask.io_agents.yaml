@@ -52,6 +52,22 @@ spec:
                   The controller generates Jobs with this image.
                   If not specified, defaults to "quay.io/zhaoxue/kubetask-agent:latest".
                 type: string
+              command:
+                description: |-
+                  Command specifies the entrypoint command for the agent container.
+                  This overrides the default ENTRYPOINT of the container image.
+
+                  This field is REQUIRED when humanInTheLoop is enabled, as the controller
+                  needs to wrap the command with a sleep to keep the container running.
+
+                  Example:
+                    command: ["sh", "-c", "gemini --yolo -p \"$(cat /workspace/task.md)\""]
+
+                  The command will be wrapped to:
+                    sh -c 'original-command; sleep $KUBETASK_KEEP_ALIVE_SECONDS'
+                items:
+                  type: string
+                type: array
               credentials:
                 description: |-
                   Credentials defines secrets that should be available to the agent.
@@ -198,6 +214,34 @@ spec:
                   - type
                   type: object
                 type: array
+              humanInTheLoop:
+                description: |-
+                  HumanInTheLoop configures whether tasks using this agent require human participation.
+                  When enabled, the agent container will remain running after task completion,
+                  allowing users to exec into the container for debugging, review, or manual intervention.
+
+                  IMPORTANT: When humanInTheLoop is enabled, you MUST also specify the Command field.
+                  The controller wraps the command to add a sleep after completion.
+                  Without Command, the controller cannot wrap the entrypoint.
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled indicates whether human-in-the-loop mode is active.
+                      When true, the agent container will sleep after task completion
+                      instead of exiting immediately.
+                    type: boolean
+                  keepAliveSeconds:
+                    default: 3600
+                    description: |-
+                      KeepAliveSeconds specifies how long the container should remain running
+                      after task completion, allowing time for human interaction.
+                      Users can kubectl exec into the container during this period.
+                      Defaults to 3600 (1 hour) if not specified when enabled is true.
+                    format: int32
+                    type: integer
+                required:
+                - enabled
+                type: object
               podLabels:
                 additionalProperties:
                   type: string
