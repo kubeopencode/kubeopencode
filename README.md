@@ -289,6 +289,37 @@ spec:
           inline: "Update dependencies"
 ```
 
+## Agent Images
+
+KubeTask provides **template agent images** that serve as starting points for building your own customized agents. These templates demonstrate the agent interface pattern and include common development tools, but are designed to be customized based on your specific requirements.
+
+**Important**: The provided agent images (gemini, goose, echo) are examples/templates. You should build and customize your own agent images according to your needs:
+
+- Choose which AI CLI to include (Gemini, Claude Code, Goose, etc.)
+- Install the specific tools your tasks require
+- Configure credentials and environment variables
+- Optimize image size for your use case
+
+### Available Templates
+
+| Template | Description | Use Case |
+|----------|-------------|----------|
+| `gemini` | Google Gemini CLI with Go, git, kubectl | General development tasks |
+| `goose` | Block's Goose agent with Go, git, kubectl | Multi-provider AI tasks |
+| `echo` | Minimal Alpine image | E2E testing and debugging |
+
+### Building Your Agent
+
+```bash
+# Build from template
+make agent-build AGENT=gemini
+
+# Customize registry and version
+make agent-build AGENT=gemini IMG_REGISTRY=docker.io IMG_ORG=myorg VERSION=v1.0.0
+```
+
+For detailed guidance on building custom agent images, see the [Agent Developer Guide](agents/README.md).
+
 ## Development
 
 ### Building from Source
