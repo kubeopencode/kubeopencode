@@ -11,6 +11,6 @@ keywords:
   - kubernetes-native
 maintainers:
   - name: KubeTask Team
-home: https://github.com/kubetask-io/kubetask
+home: https://github.com/kubetask/kubetask
 sources:
-  - https://github.com/kubetask-io/kubetask
+  - https://github.com/kubetask/kubetask
