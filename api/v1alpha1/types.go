@@ -234,23 +234,11 @@ type AgentSpec struct {
 	// +optional
 	Credentials []Credential `json:"credentials,omitempty"`
 
-	// PodLabels defines additional labels to add to the agent pod.
-	// These labels are applied to the Job's pod template and enable integration with:
-	//   - NetworkPolicy podSelector for network isolation
-	//   - Service selector for service discovery
-	//   - PodMonitor/ServiceMonitor for Prometheus monitoring
-	//   - Any other label-based pod selection
-	//
-	// Example: To make pods match a NetworkPolicy with podSelector:
-	//   podLabels:
-	//     network-policy: agent-restricted
+	// PodSpec defines advanced Pod configuration for agent pods.
+	// This includes labels, scheduling, runtime class, and other Pod-level settings.
+	// Use this for fine-grained control over how agent pods are created.
 	// +optional
-	PodLabels map[string]string `json:"podLabels,omitempty"`
-
-	// Scheduling defines pod scheduling configuration for agent pods.
-	// This includes node selection, tolerations, and affinity rules.
-	// +optional
-	Scheduling *PodScheduling `json:"scheduling,omitempty"`
+	PodSpec *AgentPodSpec `json:"podSpec,omitempty"`
 
 	// ServiceAccountName specifies the Kubernetes ServiceAccount to use for agent pods.
 	// This controls what cluster resources the agent can access via RBAC.
@@ -261,6 +249,46 @@ type AgentSpec struct {
 	//
 	// +required
 	ServiceAccountName string `json:"serviceAccountName"`
+}
+
+// AgentPodSpec defines advanced Pod configuration for agent pods.
+// This groups all Pod-level settings that control how the agent container runs.
+type AgentPodSpec struct {
+	// Labels defines additional labels to add to the agent pod.
+	// These labels are applied to the Job's pod template and enable integration with:
+	//   - NetworkPolicy podSelector for network isolation
+	//   - Service selector for service discovery
+	//   - PodMonitor/ServiceMonitor for Prometheus monitoring
+	//   - Any other label-based pod selection
+	//
+	// Example: To make pods match a NetworkPolicy with podSelector:
+	//   labels:
+	//     network-policy: agent-restricted
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Scheduling defines pod scheduling configuration for agent pods.
+	// This includes node selection, tolerations, and affinity rules.
+	// +optional
+	Scheduling *PodScheduling `json:"scheduling,omitempty"`
+
+	// RuntimeClassName specifies the RuntimeClass to use for agent pods.
+	// RuntimeClass provides a way to select container runtime configurations
+	// such as gVisor (runsc) or Kata Containers for enhanced isolation.
+	//
+	// This is useful when running untrusted AI agent code that may generate
+	// and execute arbitrary commands. Using gVisor or Kata provides an
+	// additional layer of security beyond standard container isolation.
+	//
+	// The RuntimeClass must exist in the cluster before use.
+	// Common values: "gvisor", "kata", "runc" (default if not specified)
+	//
+	// Example:
+	//   runtimeClassName: gvisor
+	//
+	// See: https://kubernetes.io/docs/concepts/containers/runtime-class/
+	// +optional
+	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
 }
 
 // PodScheduling defines scheduling configuration for agent pods.

@@ -280,13 +280,13 @@ var _ = Describe("TaskController", func() {
 		})
 	})
 
-	Context("When creating a Task with Agent that has podLabels", func() {
-		It("Should apply podLabels to the Job's pod template", func() {
+	Context("When creating a Task with Agent that has podSpec.labels", func() {
+		It("Should apply labels to the Job's pod template", func() {
 			taskName := "test-task-labels"
 			agentName := "test-workspace-labels"
-			inlineContent := "# Test with podLabels"
+			inlineContent := "# Test with podSpec.labels"
 
-			By("Creating Agent with podLabels")
+			By("Creating Agent with podSpec.labels")
 			agent := &kubetaskv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -294,9 +294,11 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
-					PodLabels: map[string]string{
-						"network-policy": "agent-restricted",
-						"team":           "platform",
+					PodSpec: &kubetaskv1alpha1.AgentPodSpec{
+						Labels: map[string]string{
+							"network-policy": "agent-restricted",
+							"team":           "platform",
+						},
 					},
 				},
 			}
@@ -347,13 +349,13 @@ var _ = Describe("TaskController", func() {
 		})
 	})
 
-	Context("When creating a Task with Agent that has scheduling", func() {
+	Context("When creating a Task with Agent that has podSpec.scheduling", func() {
 		It("Should apply scheduling configuration to the Job", func() {
 			taskName := "test-task-scheduling"
 			agentName := "test-workspace-scheduling"
-			inlineContent := "# Test with scheduling"
+			inlineContent := "# Test with podSpec.scheduling"
 
-			By("Creating Agent with scheduling")
+			By("Creating Agent with podSpec.scheduling")
 			agent := &kubetaskv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -361,17 +363,19 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
-					Scheduling: &kubetaskv1alpha1.PodScheduling{
-						NodeSelector: map[string]string{
-							"kubernetes.io/os": "linux",
-							"node-type":        "gpu",
-						},
-						Tolerations: []corev1.Toleration{
-							{
-								Key:      "dedicated",
-								Operator: corev1.TolerationOpEqual,
-								Value:    "ai-workload",
-								Effect:   corev1.TaintEffectNoSchedule,
+					PodSpec: &kubetaskv1alpha1.AgentPodSpec{
+						Scheduling: &kubetaskv1alpha1.PodScheduling{
+							NodeSelector: map[string]string{
+								"kubernetes.io/os": "linux",
+								"node-type":        "gpu",
+							},
+							Tolerations: []corev1.Toleration{
+								{
+									Key:      "dedicated",
+									Operator: corev1.TolerationOpEqual,
+									Value:    "ai-workload",
+									Effect:   corev1.TaintEffectNoSchedule,
+								},
 							},
 						},
 					},
@@ -420,6 +424,70 @@ var _ = Describe("TaskController", func() {
 			Expect(createdJob.Spec.Template.Spec.Tolerations).Should(HaveLen(1))
 			Expect(createdJob.Spec.Template.Spec.Tolerations[0].Key).Should(Equal("dedicated"))
 			Expect(createdJob.Spec.Template.Spec.Tolerations[0].Value).Should(Equal("ai-workload"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
+
+	Context("When creating a Task with Agent that has podSpec.runtimeClassName", func() {
+		It("Should apply runtimeClassName to the Job's pod spec", func() {
+			taskName := "test-task-runtime"
+			agentName := "test-agent-runtime"
+			runtimeClassName := "gvisor"
+			inlineContent := "# Test with podSpec.runtimeClassName"
+
+			By("Creating Agent with podSpec.runtimeClassName")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					PodSpec: &kubetaskv1alpha1.AgentPodSpec{
+						RuntimeClassName: &runtimeClassName,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef: agentName,
+					Contexts: []kubetaskv1alpha1.Context{
+						{
+							Type: kubetaskv1alpha1.ContextTypeFile,
+							File: &kubetaskv1alpha1.FileContext{
+								FilePath: "/workspace/task.md",
+								Source: kubetaskv1alpha1.FileSource{
+									Inline: &inlineContent,
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Job has runtimeClassName set")
+			jobName := fmt.Sprintf("%s-job", taskName)
+			jobLookupKey := types.NamespacedName{Name: jobName, Namespace: taskNamespace}
+			createdJob := &batchv1.Job{}
+			Eventually(func() *string {
+				if err := k8sClient.Get(ctx, jobLookupKey, createdJob); err != nil {
+					return nil
+				}
+				return createdJob.Spec.Template.Spec.RuntimeClassName
+			}, timeout, interval).ShouldNot(BeNil())
+
+			Expect(*createdJob.Spec.Template.Spec.RuntimeClassName).Should(Equal(runtimeClassName))
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())

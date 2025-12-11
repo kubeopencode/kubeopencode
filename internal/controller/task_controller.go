@@ -293,8 +293,7 @@ type agentConfig struct {
 	command            []string
 	defaultContexts    []kubetaskv1alpha1.Context
 	credentials        []kubetaskv1alpha1.Credential
-	podLabels          map[string]string
-	scheduling         *kubetaskv1alpha1.PodScheduling
+	podSpec            *kubetaskv1alpha1.AgentPodSpec
 	serviceAccountName string
 	humanInTheLoop     *kubetaskv1alpha1.HumanInTheLoop
 }
@@ -338,8 +337,7 @@ func (r *TaskReconciler) getAgentConfig(ctx context.Context, task *kubetaskv1alp
 		command:            agent.Spec.Command,
 		defaultContexts:    agent.Spec.DefaultContexts,
 		credentials:        agent.Spec.Credentials,
-		podLabels:          agent.Spec.PodLabels,
-		scheduling:         agent.Spec.Scheduling,
+		podSpec:            agent.Spec.PodSpec,
 		serviceAccountName: agent.Spec.ServiceAccountName,
 		humanInTheLoop:     agent.Spec.HumanInTheLoop,
 	}, nil
@@ -627,9 +625,11 @@ func (r *TaskReconciler) buildJob(task *kubetaskv1alpha1.Task, jobName string, c
 		"kubetask.io/task": task.Name,
 	}
 
-	// Add custom pod labels from Agent
-	for k, v := range cfg.podLabels {
-		podLabels[k] = v
+	// Add custom pod labels from Agent.PodSpec
+	if cfg.podSpec != nil {
+		for k, v := range cfg.podSpec.Labels {
+			podLabels[k] = v
+		}
 	}
 
 	// Build agent container
@@ -672,16 +672,24 @@ func (r *TaskReconciler) buildJob(task *kubetaskv1alpha1.Task, jobName string, c
 		RestartPolicy:      corev1.RestartPolicyNever,
 	}
 
-	// Apply scheduling configuration if specified
-	if cfg.scheduling != nil {
-		if cfg.scheduling.NodeSelector != nil {
-			podSpec.NodeSelector = cfg.scheduling.NodeSelector
+	// Apply PodSpec configuration if specified
+	if cfg.podSpec != nil {
+		// Apply scheduling configuration
+		if cfg.podSpec.Scheduling != nil {
+			if cfg.podSpec.Scheduling.NodeSelector != nil {
+				podSpec.NodeSelector = cfg.podSpec.Scheduling.NodeSelector
+			}
+			if cfg.podSpec.Scheduling.Tolerations != nil {
+				podSpec.Tolerations = cfg.podSpec.Scheduling.Tolerations
+			}
+			if cfg.podSpec.Scheduling.Affinity != nil {
+				podSpec.Affinity = cfg.podSpec.Scheduling.Affinity
+			}
 		}
-		if cfg.scheduling.Tolerations != nil {
-			podSpec.Tolerations = cfg.scheduling.Tolerations
-		}
-		if cfg.scheduling.Affinity != nil {
-			podSpec.Affinity = cfg.scheduling.Affinity
+
+		// Apply runtime class if specified (for gVisor, Kata, etc.)
+		if cfg.podSpec.RuntimeClassName != nil {
+			podSpec.RuntimeClassName = cfg.podSpec.RuntimeClassName
 		}
 	}
 

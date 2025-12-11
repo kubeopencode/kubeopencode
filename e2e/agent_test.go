@@ -17,13 +17,13 @@ import (
 
 var _ = Describe("Agent E2E Tests", func() {
 
-	Context("Agent with custom podLabels", func() {
-		It("should apply podLabels to generated Jobs", func() {
+	Context("Agent with custom podSpec.labels", func() {
+		It("should apply labels to generated Jobs", func() {
 			agentName := uniqueName("ws-labels")
 			taskName := uniqueName("task-labels")
 			content := "# Labels Test"
 
-			By("Creating Agent with podLabels")
+			By("Creating Agent with podSpec.labels")
 			agent := &kubetaskv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -32,10 +32,12 @@ var _ = Describe("Agent E2E Tests", func() {
 				Spec: kubetaskv1alpha1.AgentSpec{
 					AgentImage:         echoImage,
 					ServiceAccountName: testServiceAccount,
-					PodLabels: map[string]string{
-						"custom-label":   "custom-value",
-						"network-policy": "restricted",
-						"team":           "platform",
+					PodSpec: &kubetaskv1alpha1.AgentPodSpec{
+						Labels: map[string]string{
+							"custom-label":   "custom-value",
+							"network-policy": "restricted",
+							"team":           "platform",
+						},
 					},
 				},
 			}
@@ -102,13 +104,13 @@ var _ = Describe("Agent E2E Tests", func() {
 		})
 	})
 
-	Context("Agent with scheduling constraints", func() {
+	Context("Agent with podSpec.scheduling constraints", func() {
 		It("should apply nodeSelector to generated Jobs", func() {
 			agentName := uniqueName("ws-scheduling")
 			taskName := uniqueName("task-scheduling")
 			content := "# Scheduling Test"
 
-			By("Creating Agent with scheduling")
+			By("Creating Agent with podSpec.scheduling")
 			agent := &kubetaskv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -117,9 +119,11 @@ var _ = Describe("Agent E2E Tests", func() {
 				Spec: kubetaskv1alpha1.AgentSpec{
 					AgentImage:         echoImage,
 					ServiceAccountName: testServiceAccount,
-					Scheduling: &kubetaskv1alpha1.PodScheduling{
-						NodeSelector: map[string]string{
-							"kubernetes.io/os": "linux",
+					PodSpec: &kubetaskv1alpha1.AgentPodSpec{
+						Scheduling: &kubetaskv1alpha1.PodScheduling{
+							NodeSelector: map[string]string{
+								"kubernetes.io/os": "linux",
+							},
 						},
 					},
 				},

@@ -516,19 +516,24 @@ spec:
       mountPath: /home/agent/.ssh/id_rsa
       fileMode: 0400
 
-  # Optional: Pod labels for NetworkPolicy, monitoring, etc.
-  podLabels:
-    network-policy: agent-restricted
+  # Optional: Advanced Pod configuration
+  podSpec:
+    # Labels for NetworkPolicy, monitoring, etc.
+    labels:
+      network-policy: agent-restricted
 
-  # Optional: Scheduling constraints
-  scheduling:
-    nodeSelector:
-      kubernetes.io/os: linux
-    tolerations:
-      - key: "dedicated"
-        operator: "Equal"
-        value: "ai-workload"
-        effect: "NoSchedule"
+    # Scheduling constraints
+    scheduling:
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "ai-workload"
+          effect: "NoSchedule"
+
+    # RuntimeClass for enhanced isolation (gVisor, Kata, etc.)
+    runtimeClassName: gvisor
 
   # Required: ServiceAccount for agent pods
   serviceAccountName: kubetask-agent
@@ -543,9 +548,29 @@ spec:
 | `spec.humanInTheLoop` | *HumanInTheLoop | No | Keep container alive after completion |
 | `spec.defaultContexts` | []Context | No | Default contexts for all tasks |
 | `spec.credentials` | []Credential | No | Secrets as env vars or file mounts |
-| `spec.podLabels` | map[string]string | No | Additional pod labels |
-| `spec.scheduling` | *PodScheduling | No | Node selector, tolerations, affinity |
+| `spec.podSpec` | *AgentPodSpec | No | Advanced Pod configuration (labels, scheduling, runtimeClass) |
 | `spec.serviceAccountName` | String | Yes | ServiceAccount for agent pods |
+
+**PodSpec Configuration:**
+
+The `podSpec` field groups all Pod-level settings:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `podSpec.labels` | map[string]string | Additional labels for the pod (for NetworkPolicy, monitoring) |
+| `podSpec.scheduling` | *PodScheduling | Node selector, tolerations, affinity |
+| `podSpec.runtimeClassName` | String | RuntimeClass for container isolation (gVisor, Kata) |
+
+**RuntimeClass for Enhanced Isolation:**
+
+When running untrusted AI agent code, you can use `runtimeClassName` to specify a more secure container runtime:
+
+```yaml
+podSpec:
+  runtimeClassName: gvisor  # or "kata" for Kata Containers
+```
+
+This provides an additional layer of security beyond standard container isolation. The RuntimeClass must exist in the cluster before use. See [Kubernetes RuntimeClass documentation](https://kubernetes.io/docs/concepts/containers/runtime-class/) for details.
 
 **Human-in-the-Loop:**
 
