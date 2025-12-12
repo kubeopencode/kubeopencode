@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -378,15 +379,15 @@ type resolvedContext struct {
 // processAllContexts processes all contexts from Agent and Task, resolving Context CRs
 // and returning the ConfigMap, file mounts, and directory mounts for the Job.
 //
-// Priority (lowest to highest):
-//  1. Agent.contexts (Agent-level Context CRD references)
-//  2. Task.contexts (Task-specific Context CRD references)
-//  3. Task.description (highest, becomes start of ${WORKSPACE_DIR}/task.md)
+// Content order in task.md (top to bottom):
+//  1. Task.description (appears first in task.md)
+//  2. Agent.contexts (Agent-level Context CRD references)
+//  3. Task.contexts (Task-specific Context CRD references, appears last)
 func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubetaskv1alpha1.Task, cfg agentConfig) (*corev1.ConfigMap, []fileMount, []dirMount, error) {
 	var resolved []resolvedContext
 	var dirMounts []dirMount
 
-	// 1. Resolve Agent.contexts (lowest priority)
+	// 1. Resolve Agent.contexts (appears after description in task.md)
 	for _, ref := range cfg.contexts {
 		rc, dm, err := r.resolveContextRef(ctx, ref, task.Namespace)
 		if err != nil {
@@ -399,7 +400,7 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubetaskv
 		}
 	}
 
-	// 2. Resolve Task.contexts (higher priority)
+	// 2. Resolve Task.contexts (appears last in task.md)
 	for _, ref := range task.Spec.Contexts {
 		rc, dm, err := r.resolveContextRef(ctx, ref, task.Namespace)
 		if err != nil {
@@ -535,16 +536,22 @@ func (r *TaskReconciler) resolveContextSpec(ctx context.Context, namespace, name
 			return content, nil, err
 		}
 
-		// If Key is not specified, return a directory mount
-		optional := false
-		if cm.Optional != nil {
-			optional = *cm.Optional
+		// If Key is not specified but mountPath is, return a directory mount
+		if mountPath != "" {
+			optional := false
+			if cm.Optional != nil {
+				optional = *cm.Optional
+			}
+			return "", &dirMount{
+				dirPath:       mountPath,
+				configMapName: cm.Name,
+				optional:      optional,
+			}, nil
 		}
-		return "", &dirMount{
-			dirPath:       mountPath,
-			configMapName: cm.Name,
-			optional:      optional,
-		}, nil
+
+		// If Key is not specified and mountPath is empty, aggregate all keys to task.md
+		content, err := r.getConfigMapAllKeys(ctx, namespace, cm.Name, cm.Optional)
+		return content, nil, err
 
 	case kubetaskv1alpha1.ContextTypeGit:
 		// TODO: Implement Git context support
@@ -577,6 +584,34 @@ func (r *TaskReconciler) getConfigMapKey(ctx context.Context, namespace, name, k
 		return "", nil
 	}
 	return "", fmt.Errorf("key %s not found in ConfigMap %s", key, name)
+}
+
+// getConfigMapAllKeys retrieves all keys from a ConfigMap and formats them for aggregation
+func (r *TaskReconciler) getConfigMapAllKeys(ctx context.Context, namespace, name string, optional *bool) (string, error) {
+	cm := &corev1.ConfigMap{}
+	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, cm); err != nil {
+		if optional != nil && *optional {
+			return "", nil
+		}
+		return "", err
+	}
+
+	if len(cm.Data) == 0 {
+		return "", nil
+	}
+
+	// Sort keys for deterministic output
+	keys := make([]string, 0, len(cm.Data))
+	for k := range cm.Data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var parts []string
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("<file name=%q>\n%s\n</file>", key, cm.Data[key]))
+	}
+	return strings.Join(parts, "\n"), nil
 }
 
 // sanitizeConfigMapKey converts a file path to a valid ConfigMap key

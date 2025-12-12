@@ -493,6 +493,88 @@ var _ = Describe("TaskController", func() {
 		})
 	})
 
+	Context("When creating a Task with ConfigMap Context without key and mountPath", func() {
+		It("Should aggregate all ConfigMap keys to task.md", func() {
+			taskName := "test-task-configmap-all-keys"
+			contextName := "test-context-configmap-all"
+			configMapName := "test-guides-configmap"
+			description := "Review the guides"
+
+			By("Creating ConfigMap with multiple keys")
+			guidesConfigMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      configMapName,
+					Namespace: taskNamespace,
+				},
+				Data: map[string]string{
+					"style-guide.md":    "# Style Guide\n\nFollow these styles.",
+					"security-guide.md": "# Security Guide\n\nFollow security practices.",
+				},
+			}
+			Expect(k8sClient.Create(ctx, guidesConfigMap)).Should(Succeed())
+
+			By("Creating Context CRD referencing ConfigMap without key")
+			context := &kubetaskv1alpha1.Context{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      contextName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.ContextSpec{
+					Type: kubetaskv1alpha1.ContextTypeConfigMap,
+					ConfigMap: &kubetaskv1alpha1.ConfigMapContext{
+						Name: configMapName,
+						// No Key specified - should aggregate all keys
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, context)).Should(Succeed())
+
+			By("Creating Task with Context reference (no mountPath)")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					Description: &description,
+					Contexts: []kubetaskv1alpha1.ContextMount{
+						{
+							Name: contextName,
+							// No MountPath - should aggregate to task.md
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking all ConfigMap keys are aggregated to task.md")
+			contextConfigMapName := taskName + ContextConfigMapSuffix
+			contextConfigMapLookupKey := types.NamespacedName{Name: contextConfigMapName, Namespace: taskNamespace}
+			createdContextConfigMap := &corev1.ConfigMap{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, contextConfigMapLookupKey, createdContextConfigMap) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			taskMdContent := createdContextConfigMap.Data["workspace-task.md"]
+			// Description should be present
+			Expect(taskMdContent).Should(ContainSubstring(description))
+			// Context wrapper should be present
+			Expect(taskMdContent).Should(ContainSubstring("<context"))
+			Expect(taskMdContent).Should(ContainSubstring("</context>"))
+			// All ConfigMap keys should be wrapped in <file> tags
+			Expect(taskMdContent).Should(ContainSubstring(`<file name="security-guide.md">`))
+			Expect(taskMdContent).Should(ContainSubstring("# Security Guide"))
+			Expect(taskMdContent).Should(ContainSubstring(`<file name="style-guide.md">`))
+			Expect(taskMdContent).Should(ContainSubstring("# Style Guide"))
+			Expect(taskMdContent).Should(ContainSubstring("</file>"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, context)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, guidesConfigMap)).Should(Succeed())
+		})
+	})
+
 	Context("When creating a Task with Context without mountPath", func() {
 		It("Should append context to task.md with XML tags", func() {
 			taskName := "test-task-context-aggregate"
