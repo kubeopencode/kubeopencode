@@ -86,7 +86,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: quay.io
-          username: ${{ secrets.QUAY_USERNAME }}
+          username: ${{ secrets.QUAY_ROBOT_ACCOUNT }}
           password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Build and push controller

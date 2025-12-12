@@ -18,7 +18,7 @@ Go to GitHub org → **Settings** → **Secrets and variables** → **Actions** 
 
 | Name | Value |
 |------|-------|
-| `QUAY_USERNAME` | `kubetask+github_actions` |
+| `QUAY_ROBOT_ACCOUNT` | `kubetask+github_actions` |
 | `QUAY_TOKEN` | Robot token from step 1 |
 
 **Note**: Using org-level secrets allows all repositories under the org to share the same credentials.
