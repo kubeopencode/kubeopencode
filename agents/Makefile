@@ -6,7 +6,7 @@ AGENT ?= gemini
 
 # Image URL configuration
 IMG_REGISTRY ?= quay.io
-IMG_ORG ?= zhaoxue
+IMG_ORG ?= kubetask
 IMG_NAME ?= kubetask-agent-$(AGENT)
 VERSION ?= latest
 IMG ?= $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(VERSION)

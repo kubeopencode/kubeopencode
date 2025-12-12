@@ -15,7 +15,7 @@
 # - GOOSE_MODEL: Model name (e.g., claude-sonnet-4-20250514)
 # - API keys: ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
 #
-ARG BASE_IMAGE=quay.io/zhaoxue/kubetask-agent-base:latest
+ARG BASE_IMAGE=quay.io/kubetask/kubetask-agent-base:latest
 FROM ${BASE_IMAGE}
 
 # Install Goose CLI

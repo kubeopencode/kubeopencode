@@ -29,7 +29,7 @@ helm install kubetask ./charts/kubetask \
 cat > my-values.yaml <<EOF
 controller:
   image:
-    repository: quay.io/zhaoxue/kubetask-controller
+    repository: quay.io/kubetask/kubetask-controller
     tag: v0.1.0
 
   resources:
@@ -60,7 +60,7 @@ The following table lists the configurable parameters of the KubeTask chart and 
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `controller.image.repository` | Controller image repository | `quay.io/zhaoxue/kubetask-controller` |
+| `controller.image.repository` | Controller image repository | `quay.io/kubetask/kubetask-controller` |
 | `controller.image.tag` | Controller image tag | `""` (uses chart appVersion) |
 | `controller.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `controller.replicas` | Number of controller replicas | `1` |
@@ -73,7 +73,7 @@ The following table lists the configurable parameters of the KubeTask chart and 
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `agent.image.repository` | Agent image repository | `quay.io/zhaoxue/kubetask-agent-gemini` |
+| `agent.image.repository` | Agent image repository | `quay.io/kubetask/kubetask-agent-gemini` |
 | `agent.image.tag` | Agent image tag | `latest` |
 
 ### Cleanup Configuration

@@ -386,7 +386,7 @@ Key configurations:
 ```yaml
 controller:
   image:
-    repository: quay.io/zhaoxue/kubetask-controller
+    repository: quay.io/kubetask/kubetask-controller
     tag: v0.1.0
   resources:
     limits:

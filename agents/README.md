@@ -113,14 +113,14 @@ make agent-build-all
 
 ### Image Naming
 
-Default: `quay.io/zhaoxue/kubetask-agent-<name>:latest`
+Default: `quay.io/kubetask/kubetask-agent-<name>:latest`
 
 Customize with variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `IMG_REGISTRY` | `quay.io` | Container registry |
-| `IMG_ORG` | `zhaoxue` | Registry organization |
+| `IMG_ORG` | `kubetask` | Registry organization |
 | `VERSION` | `latest` | Image tag |
 
 Example:
@@ -141,7 +141,7 @@ mkdir agents/my-agent
 
 ```dockerfile
 # My Custom Agent Image
-ARG BASE_IMAGE=quay.io/zhaoxue/kubetask-agent-base:latest
+ARG BASE_IMAGE=quay.io/kubetask/kubetask-agent-base:latest
 FROM ${BASE_IMAGE}
 
 # Install your AI CLI
@@ -169,7 +169,7 @@ echo "List files in the current directory" > /tmp/task.md
 docker run --rm \
   -v /tmp/task.md:/workspace/task.md:ro \
   -e MY_API_KEY=$MY_API_KEY \
-  quay.io/zhaoxue/kubetask-agent-my-agent:latest
+  quay.io/kubetask/kubetask-agent-my-agent:latest
 ```
 
 ## Agent Image Requirements
@@ -230,7 +230,7 @@ If the base image doesn't include a tool you need, you have two options:
 ### Option 1: Add to Your Agent Dockerfile
 
 ```dockerfile
-ARG BASE_IMAGE=quay.io/zhaoxue/kubetask-agent-base:latest
+ARG BASE_IMAGE=quay.io/kubetask/kubetask-agent-base:latest
 FROM ${BASE_IMAGE}
 
 # Add additional tools

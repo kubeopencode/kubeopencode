@@ -663,7 +663,7 @@ humanInTheLoop:
 Controller determines the agent image in this priority order:
 
 1. **Agent.spec.agentImage** (from referenced Agent)
-2. **Built-in default** (fallback) - `quay.io/zhaoxue/kubetask-agent-gemini:latest`
+2. **Built-in default** (fallback) - `quay.io/kubetask/kubetask-agent-gemini:latest`
 
 ### How It Works
 

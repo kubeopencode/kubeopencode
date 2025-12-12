@@ -26,7 +26,7 @@ import (
 
 const (
 	// DefaultAgentImage is the default agent container image
-	DefaultAgentImage = "quay.io/zhaoxue/kubetask-agent-gemini:latest"
+	DefaultAgentImage = "quay.io/kubetask/kubetask-agent-gemini:latest"
 
 	// ContextConfigMapSuffix is the suffix for ConfigMap names created for context
 	ContextConfigMapSuffix = "-context"

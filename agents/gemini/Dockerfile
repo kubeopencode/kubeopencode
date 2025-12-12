@@ -9,7 +9,7 @@
 # - GOOGLE_API_KEY: Gemini API key
 # - GOOGLE_CLOUD_PROJECT: GCP project for Vertex AI (optional)
 #
-ARG BASE_IMAGE=quay.io/zhaoxue/kubetask-agent-base:latest
+ARG BASE_IMAGE=quay.io/kubetask/kubetask-agent-base:latest
 FROM ${BASE_IMAGE}
 
 # Install Gemini CLI globally

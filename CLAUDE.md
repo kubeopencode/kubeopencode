@@ -159,7 +159,7 @@ make agent-buildx AGENT=claude      # Multi-arch build claude
 make -C agents list
 ```
 
-The agent images are tagged as `quay.io/zhaoxue/kubetask-agent-<AGENT>:latest` by default. You can customize the registry, org, and version:
+The agent images are tagged as `quay.io/kubetask/kubetask-agent-<AGENT>:latest` by default. You can customize the registry, org, and version:
 
 ```bash
 make agent-build AGENT=gemini IMG_REGISTRY=docker.io IMG_ORG=myorg VERSION=v1.0.0
@@ -288,7 +288,7 @@ internal/controller/
 
 The agent image is discovered via:
 1. `Agent.spec.agentImage` (from referenced Agent)
-2. Built-in default image (fallback: `quay.io/zhaoxue/kubetask-agent-gemini:latest`)
+2. Built-in default image (fallback: `quay.io/kubetask/kubetask-agent-gemini:latest`)
 
 Agent lookup:
 - Task uses `agentRef` to reference an Agent

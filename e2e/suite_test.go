@@ -46,7 +46,7 @@ const (
 	defaultTestNS = "kubetask-e2e-test"
 
 	// Default echo agent image
-	defaultEchoImage = "quay.io/zhaoxue/kubetask-agent-echo:latest"
+	defaultEchoImage = "quay.io/kubetask/kubetask-agent-echo:latest"
 
 	// Test ServiceAccount name for e2e tests
 	testServiceAccount = "kubetask-e2e-agent"

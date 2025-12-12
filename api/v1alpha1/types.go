@@ -227,7 +227,7 @@ type Agent struct {
 type AgentSpec struct {
 	// Agent container image to use for task execution.
 	// The controller generates Jobs with this image.
-	// If not specified, defaults to "quay.io/zhaoxue/kubetask-agent:latest".
+	// If not specified, defaults to "quay.io/kubetask/kubetask-agent:latest".
 	// +optional
 	AgentImage string `json:"agentImage,omitempty"`
 

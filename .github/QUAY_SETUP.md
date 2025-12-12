@@ -6,10 +6,11 @@
 2. Go to **Account Settings** → **Robot Accounts** → **Create Robot Account**
 3. Name it (e.g., `github_actions`)
 4. Grant **Write** permission to:
-   - `zhaoxue/kubetask-controller`
-   - `zhaoxue/kubetask-agent-gemini`
-   - `zhaoxue/kubetask-agent-echo`
-   - `zhaoxue/kubetask-agent-goose`
+   - `kubetask/kubetask-controller`
+   - `kubetask/kubetask-agent-gemini`
+   - `kubetask/kubetask-agent-echo`
+   - `kubetask/kubetask-agent-goose`
+   - `kubetask/kubetask-agent-base`
 
 ## 2. Add GitHub Secrets
 
@@ -17,7 +18,7 @@ Go to GitHub repo → **Settings** → **Secrets and variables** → **Actions**
 
 | Name | Value |
 |------|-------|
-| `QUAY_USERNAME` | `zhaoxue+github_actions` |
+| `QUAY_USERNAME` | `kubetask+github_actions` |
 | `QUAY_PASSWORD` | Robot token from step 1 |
 
 ## 3. Ensure Repositories Exist

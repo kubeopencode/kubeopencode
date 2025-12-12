@@ -11,7 +11,7 @@ BUILD_DATE := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 
 # Image URL to use for building/pushing image targets
 IMG_REGISTRY ?= quay.io
-IMG_ORG ?= zhaoxue
+IMG_ORG ?= kubetask
 IMG_NAME ?= kubetask-controller
 IMG ?= $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(VERSION)
 
@@ -286,19 +286,19 @@ e2e-reload: e2e-docker-build e2e-kind-load e2e-verify-image ## Rebuild and reloa
 
 # Build echo agent image for e2e testing
 e2e-agent-build: ## Build echo agent image for e2e testing
-	docker build -t quay.io/zhaoxue/kubetask-agent-echo:latest agents/echo/
+	docker build -t quay.io/kubetask/kubetask-agent-echo:latest agents/echo/
 .PHONY: e2e-agent-build
 
 # Load echo agent image into kind cluster
 e2e-agent-load: ## Load echo agent image into kind cluster
-	kind load docker-image quay.io/zhaoxue/kubetask-agent-echo:latest --name $(E2E_CLUSTER_NAME)
+	kind load docker-image quay.io/kubetask/kubetask-agent-echo:latest --name $(E2E_CLUSTER_NAME)
 .PHONY: e2e-agent-load
 
 # Run e2e tests
 e2e-test: ## Run e2e tests
 	@echo "Running e2e tests..."
 	E2E_TEST_NAMESPACE=kubetask-e2e-test \
-	E2E_ECHO_IMAGE=quay.io/zhaoxue/kubetask-agent-echo:latest \
+	E2E_ECHO_IMAGE=quay.io/kubetask/kubetask-agent-echo:latest \
 	go test -v ./e2e/... -timeout 30m -ginkgo.v
 .PHONY: e2e-test
 
@@ -306,7 +306,7 @@ e2e-test: ## Run e2e tests
 e2e-test-focus: ## Run specific e2e test (usage: make e2e-test-focus FOCUS="Task")
 	@echo "Running focused e2e tests..."
 	E2E_TEST_NAMESPACE=kubetask-e2e-test \
-	E2E_ECHO_IMAGE=quay.io/zhaoxue/kubetask-agent-echo:latest \
+	E2E_ECHO_IMAGE=quay.io/kubetask/kubetask-agent-echo:latest \
 	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.focus="$(FOCUS)"
 .PHONY: e2e-test-focus
 
