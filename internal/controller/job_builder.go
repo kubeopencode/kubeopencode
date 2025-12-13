@@ -167,8 +167,26 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 		})
 	}
 
+	// envFromSources collects secretRef entries for mounting entire secrets
+	var envFromSources []corev1.EnvFromSource
+
 	// Add credentials (secrets as env vars or file mounts)
 	for i, cred := range cfg.credentials {
+		// Check if Key is specified - determines mounting behavior
+		if cred.SecretRef.Key == nil || *cred.SecretRef.Key == "" {
+			// No key specified: mount entire secret as environment variables
+			// When mounting entire secret, Env and MountPath are ignored
+			envFromSources = append(envFromSources, corev1.EnvFromSource{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: cred.SecretRef.Name,
+					},
+				},
+			})
+			continue
+		}
+
+		// Key is specified: use the existing single-key mounting behavior
 		// Add as environment variable if Env is specified
 		if cred.Env != nil && *cred.Env != "" {
 			envVars = append(envVars, corev1.EnvVar{
@@ -178,7 +196,7 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: cred.SecretRef.Name,
 						},
-						Key: cred.SecretRef.Key,
+						Key: *cred.SecretRef.Key,
 					},
 				},
 			})
@@ -201,7 +219,7 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 						SecretName: cred.SecretRef.Name,
 						Items: []corev1.KeyToPath{
 							{
-								Key:  cred.SecretRef.Key,
+								Key:  *cred.SecretRef.Key,
 								Path: "secret-file",
 								Mode: &fileMode,
 							},
@@ -309,6 +327,7 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 		Image:           cfg.agentImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Env:             envVars,
+		EnvFrom:         envFromSources,
 		VolumeMounts:    volumeMounts,
 	}
 

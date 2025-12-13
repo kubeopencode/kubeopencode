@@ -448,15 +448,20 @@ type Credential struct {
 	FileMode *int32 `json:"fileMode,omitempty"`
 }
 
-// SecretReference references a specific key in a Kubernetes Secret.
+// SecretReference references a Kubernetes Secret.
+// When Key is specified, only that specific key is used.
+// When Key is omitted, the entire Secret is mounted (all keys become environment variables).
 type SecretReference struct {
 	// Name of the Secret.
 	// +required
 	Name string `json:"name"`
 
 	// Key of the Secret to select.
-	// +required
-	Key string `json:"key"`
+	// If not specified, the entire Secret is mounted as environment variables
+	// (each key in the Secret becomes an environment variable with the same name).
+	// When Key is omitted, Env and MountPath fields on the Credential are ignored.
+	// +optional
+	Key *string `json:"key,omitempty"`
 }
 
 // ConfigMapKeySelector selects a key of a ConfigMap.

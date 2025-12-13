@@ -593,12 +593,20 @@ spec:
 
   # Optional: Credentials (secrets as env vars or file mounts)
   credentials:
+    # Mount entire secret as environment variables (all keys become env vars)
+    - name: api-keys
+      secretRef:
+        name: api-credentials
+        # No key specified - all secret keys become ENV vars with same names
+
+    # Mount single key with custom env name
     - name: github-token
       secretRef:
         name: github-creds
         key: token
       env: GITHUB_TOKEN
 
+    # Mount single key as file
     - name: ssh-key
       secretRef:
         name: ssh-keys

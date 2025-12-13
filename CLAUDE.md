@@ -296,8 +296,37 @@ Key Agent spec fields:
 - `workspaceDir`: Working directory (default: "/workspace")
 - `command`: Custom entrypoint command
 - `contexts`: References to Context CRDs (applied to all tasks)
-- `credentials`: Secrets as env vars or file mounts
+- `credentials`: Secrets as env vars or file mounts (supports single key or entire secret)
 - `serviceAccountName`: Kubernetes ServiceAccount for RBAC
+
+**Credentials Mounting:**
+
+Credentials can be mounted in two ways:
+
+1. **Entire Secret** (all keys become ENV vars):
+```yaml
+credentials:
+- name: api-keys
+  secretRef:
+    name: api-credentials
+    # No key specified - all keys in secret become ENV vars
+```
+
+2. **Single Key** (with optional rename or file mount):
+```yaml
+credentials:
+- name: github-token
+  secretRef:
+    name: github-creds
+    key: token        # Specific key
+  env: GITHUB_TOKEN   # Optional: rename the env var
+- name: ssh-key
+  secretRef:
+    name: ssh-keys
+    key: id_rsa
+  mountPath: /home/agent/.ssh/id_rsa  # Mount as file
+  fileMode: 0400
+```
 
 ### Agent Image Discovery
 

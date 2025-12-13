@@ -15,6 +15,11 @@ import (
 	kubetaskv1alpha1 "github.com/kubetask/kubetask/api/v1alpha1"
 )
 
+// stringPtr returns a pointer to the given string value
+func stringPtr(s string) *string {
+	return &s
+}
+
 var _ = Describe("Agent E2E Tests", func() {
 
 	Context("Agent with custom podSpec.labels", func() {
@@ -188,7 +193,7 @@ var _ = Describe("Agent E2E Tests", func() {
 							Name: "test-api-key",
 							SecretRef: kubetaskv1alpha1.SecretReference{
 								Name: secretName,
-								Key:  "api-key",
+								Key:  stringPtr("api-key"),
 							},
 							Env: &envName,
 						},

@@ -157,6 +157,11 @@ func TestBuildJob_BasicTask(t *testing.T) {
 	}
 }
 
+// stringPtr returns a pointer to the given string value
+func stringPtr(s string) *string {
+	return &s
+}
+
 func TestBuildJob_WithCredentials(t *testing.T) {
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
@@ -180,7 +185,7 @@ func TestBuildJob_WithCredentials(t *testing.T) {
 				Name: "api-token",
 				SecretRef: kubetaskv1alpha1.SecretReference{
 					Name: "my-secret",
-					Key:  "token",
+					Key:  stringPtr("token"),
 				},
 				Env: &envName,
 			},
@@ -188,7 +193,7 @@ func TestBuildJob_WithCredentials(t *testing.T) {
 				Name: "ssh-key",
 				SecretRef: kubetaskv1alpha1.SecretReference{
 					Name: "ssh-secret",
-					Key:  "private-key",
+					Key:  stringPtr("private-key"),
 				},
 				MountPath: &mountPath,
 			},
@@ -240,6 +245,123 @@ func TestBuildJob_WithCredentials(t *testing.T) {
 	}
 	if !foundVolume {
 		t.Errorf("Secret volume for ssh-secret not found")
+	}
+}
+
+func TestBuildJob_WithEntireSecretCredential(t *testing.T) {
+	task := &kubetaskv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubetask.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-agent:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		credentials: []kubetaskv1alpha1.Credential{
+			{
+				// No Key specified - mount entire secret as env vars
+				Name: "api-keys",
+				SecretRef: kubetaskv1alpha1.SecretReference{
+					Name: "api-credentials",
+					// Key is nil - entire secret should be mounted
+				},
+			},
+		},
+	}
+
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+
+	container := job.Spec.Template.Spec.Containers[0]
+
+	// Verify envFrom is set with secretRef
+	if len(container.EnvFrom) != 1 {
+		t.Fatalf("Expected 1 envFrom entry, got %d", len(container.EnvFrom))
+	}
+
+	envFrom := container.EnvFrom[0]
+	if envFrom.SecretRef == nil {
+		t.Errorf("EnvFrom.SecretRef should not be nil")
+	} else {
+		if envFrom.SecretRef.Name != "api-credentials" {
+			t.Errorf("EnvFrom.SecretRef.Name = %q, want %q", envFrom.SecretRef.Name, "api-credentials")
+		}
+	}
+}
+
+func TestBuildJob_WithMixedCredentials(t *testing.T) {
+	task := &kubetaskv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubetask.io/v1alpha1"
+	task.Kind = "Task"
+
+	envName := "GITHUB_TOKEN"
+
+	cfg := agentConfig{
+		agentImage:         "test-agent:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		credentials: []kubetaskv1alpha1.Credential{
+			{
+				// Entire secret mount (no key)
+				Name: "all-api-keys",
+				SecretRef: kubetaskv1alpha1.SecretReference{
+					Name: "api-credentials",
+				},
+			},
+			{
+				// Single key mount with env rename
+				Name: "github-token",
+				SecretRef: kubetaskv1alpha1.SecretReference{
+					Name: "github-secret",
+					Key:  stringPtr("token"),
+				},
+				Env: &envName,
+			},
+		},
+	}
+
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+
+	container := job.Spec.Template.Spec.Containers[0]
+
+	// Verify envFrom has 1 entry (entire secret)
+	if len(container.EnvFrom) != 1 {
+		t.Fatalf("Expected 1 envFrom entry, got %d", len(container.EnvFrom))
+	}
+	if container.EnvFrom[0].SecretRef.Name != "api-credentials" {
+		t.Errorf("EnvFrom.SecretRef.Name = %q, want %q", container.EnvFrom[0].SecretRef.Name, "api-credentials")
+	}
+
+	// Verify env has GITHUB_TOKEN from single key mount
+	var foundGithubToken bool
+	for _, env := range container.Env {
+		if env.Name == "GITHUB_TOKEN" {
+			foundGithubToken = true
+			if env.ValueFrom == nil || env.ValueFrom.SecretKeyRef == nil {
+				t.Errorf("GITHUB_TOKEN env should have SecretKeyRef")
+			} else {
+				if env.ValueFrom.SecretKeyRef.Name != "github-secret" {
+					t.Errorf("SecretKeyRef.Name = %q, want %q", env.ValueFrom.SecretKeyRef.Name, "github-secret")
+				}
+				if env.ValueFrom.SecretKeyRef.Key != "token" {
+					t.Errorf("SecretKeyRef.Key = %q, want %q", env.ValueFrom.SecretKeyRef.Key, "token")
+				}
+			}
+		}
+	}
+	if !foundGithubToken {
+		t.Errorf("GITHUB_TOKEN env not found")
 	}
 }
 

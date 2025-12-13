@@ -157,13 +157,16 @@ spec:
                         the credential.
                       properties:
                         key:
-                          description: Key of the Secret to select.
+                          description: |-
+                            Key of the Secret to select.
+                            If not specified, the entire Secret is mounted as environment variables
+                            (each key in the Secret becomes an environment variable with the same name).
+                            When Key is omitted, Env and MountPath fields on the Credential are ignored.
                           type: string
                         name:
                           description: Name of the Secret.
                           type: string
                       required:
-                      - key
                       - name
                       type: object
                   required:
