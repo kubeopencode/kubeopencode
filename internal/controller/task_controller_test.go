@@ -179,7 +179,7 @@ var _ = Describe("TaskController", func() {
 							Name: "api-token",
 							SecretRef: kubetaskv1alpha1.SecretReference{
 								Name: secretName,
-								Key:  "token",
+								Key:  stringPtr("token"),
 							},
 							Env: &envName,
 						},
@@ -187,7 +187,7 @@ var _ = Describe("TaskController", func() {
 							Name: "ssh-key",
 							SecretRef: kubetaskv1alpha1.SecretReference{
 								Name: secretName,
-								Key:  "key",
+								Key:  stringPtr("key"),
 							},
 							MountPath: &mountPath,
 						},

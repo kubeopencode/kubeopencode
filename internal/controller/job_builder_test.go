@@ -1,5 +1,7 @@
 // Copyright Contributors to the KubeTask project
 
+//go:build !integration
+
 package controller
 
 import (
