@@ -9,7 +9,7 @@ import (
 )
 
 // ContextType defines the type of context source
-// +kubebuilder:validation:Enum=Inline;ConfigMap;Git;Ref
+// +kubebuilder:validation:Enum=Inline;ConfigMap;Git
 type ContextType string
 
 const (
@@ -93,22 +93,6 @@ type GitSecretReference struct {
 	Name string `json:"name"`
 }
 
-// FileSource represents a source for file content (used in Context CRD)
-type FileSource struct {
-	// Inline content
-	// +optional
-	Inline *string `json:"inline,omitempty"`
-
-	// Reference to a key in a ConfigMap
-	// +optional
-	ConfigMapKeyRef *ConfigMapKeySelector `json:"configMapKeyRef,omitempty"`
-
-	// Reference to an entire ConfigMap
-	// All keys in the ConfigMap will be mounted as files in the directory.
-	// +optional
-	ConfigMapRef *ConfigMapReference `json:"configMapRef,omitempty"`
-}
-
 // ContextMount references a Context resource and specifies how to mount it.
 // This allows the same Context to be mounted at different paths by different Tasks.
 type ContextMount struct {
@@ -158,7 +142,7 @@ const (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope="Namespaced"
+// +kubebuilder:resource:scope="Namespaced",shortName=tk
 // +kubebuilder:printcolumn:JSONPath=`.status.phase`,name="Phase",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.jobName`,name="Job",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
@@ -217,6 +201,10 @@ type TaskSpec struct {
 
 // TaskExecutionStatus defines the observed state of Task
 type TaskExecutionStatus struct {
+	// ObservedGeneration is the most recent generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Execution phase
 	// +optional
 	Phase TaskPhase `json:"phase,omitempty"`
@@ -235,6 +223,8 @@ type TaskExecutionStatus struct {
 
 	// Kubernetes standard conditions
 	// +optional
+	// +listType=map
+	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
@@ -249,7 +239,10 @@ type TaskList struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Namespaced"
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope="Namespaced",shortName=ag
+// +kubebuilder:printcolumn:JSONPath=`.spec.agentImage`,name="Image",type=string,priority=1
+// +kubebuilder:printcolumn:JSONPath=`.spec.serviceAccountName`,name="ServiceAccount",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 
 // Agent defines the AI agent configuration for task execution.
@@ -261,6 +254,10 @@ type Agent struct {
 
 	// Spec defines the agent configuration
 	Spec AgentSpec `json:"spec"`
+
+	// Status represents the current status of the Agent
+	// +optional
+	Status AgentStatus `json:"status,omitempty"`
 }
 
 // AgentSpec defines agent configuration
@@ -334,6 +331,19 @@ type AgentSpec struct {
 	//
 	// +required
 	ServiceAccountName string `json:"serviceAccountName"`
+}
+
+// AgentStatus defines the observed state of Agent
+type AgentStatus struct {
+	// ObservedGeneration is the most recent generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Conditions represent the latest available observations of the Agent's state.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // AgentPodSpec defines advanced Pod configuration for agent pods.
@@ -521,7 +531,7 @@ type HumanInTheLoop struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Namespaced"
+// +kubebuilder:resource:scope="Namespaced",shortName=ktc
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 
 // KubeTaskConfig defines system-level configuration for KubeTask.
@@ -583,7 +593,7 @@ const (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope="Namespaced"
+// +kubebuilder:resource:scope="Namespaced",shortName=ctk
 // +kubebuilder:printcolumn:JSONPath=`.spec.schedule`,name="Schedule",type=string
 // +kubebuilder:printcolumn:JSONPath=`.spec.suspend`,name="Suspend",type=boolean
 // +kubebuilder:printcolumn:JSONPath=`.status.lastScheduleTime`,name="Last Schedule",type=date
@@ -657,6 +667,10 @@ type TaskTemplateSpec struct {
 
 // CronTaskStatus defines the observed state of CronTask
 type CronTaskStatus struct {
+	// ObservedGeneration is the most recent generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Active is a list of references to currently running Tasks.
 	// +optional
 	Active []corev1.ObjectReference `json:"active,omitempty"`
@@ -671,6 +685,8 @@ type CronTaskStatus struct {
 
 	// Conditions represent the latest available observations of the CronTask's state.
 	// +optional
+	// +listType=map
+	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
@@ -685,7 +701,8 @@ type CronTaskList struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Namespaced"
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope="Namespaced",shortName=ctx
 // +kubebuilder:printcolumn:JSONPath=`.spec.type`,name="Type",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 
@@ -708,6 +725,10 @@ type Context struct {
 
 	// Spec defines the context configuration
 	Spec ContextSpec `json:"spec"`
+
+	// Status represents the current status of the Context
+	// +optional
+	Status ContextStatus `json:"status,omitempty"`
 }
 
 // ContextSpec defines the Context configuration.
@@ -729,6 +750,19 @@ type ContextSpec struct {
 	// Git context (required when Type == "Git")
 	// +optional
 	Git *GitContext `json:"git,omitempty"`
+}
+
+// ContextStatus defines the observed state of Context
+type ContextStatus struct {
+	// ObservedGeneration is the most recent generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Conditions represent the latest available observations of the Context's state.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -124,6 +124,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Check if suspended
 	if cronTask.Spec.Suspend != nil && *cronTask.Spec.Suspend {
 		log.V(1).Info("CronTask is suspended, skipping scheduling")
+		cronTask.Status.ObservedGeneration = cronTask.Generation
 		if err := r.Status().Update(ctx, cronTask); err != nil {
 			log.Error(err, "unable to update CronTask status")
 			return ctrl.Result{}, err
@@ -135,6 +136,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	schedule, err := cron.ParseStandard(cronTask.Spec.Schedule)
 	if err != nil {
 		log.Error(err, "invalid cron schedule", "schedule", cronTask.Spec.Schedule)
+		cronTask.Status.ObservedGeneration = cronTask.Generation
 		meta.SetStatusCondition(&cronTask.Status.Conditions, metav1.Condition{
 			Type:    "Scheduled",
 			Status:  metav1.ConditionFalse,
@@ -165,6 +167,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				// Skip this run
 				log.V(1).Info("concurrency policy forbids concurrent runs, skipping", "active", len(activeTasks))
 				// Update status and requeue for next schedule
+				cronTask.Status.ObservedGeneration = cronTask.Generation
 				if err := r.Status().Update(ctx, cronTask); err != nil {
 					log.Error(err, "unable to update CronTask status")
 					return ctrl.Result{}, err
@@ -208,6 +211,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// Update status
+	cronTask.Status.ObservedGeneration = cronTask.Generation
 	if err := r.Status().Update(ctx, cronTask); err != nil {
 		log.Error(err, "unable to update CronTask status")
 		return ctrl.Result{}, err

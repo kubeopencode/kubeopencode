@@ -104,6 +104,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 	if err != nil {
 		log.Error(err, "unable to get Agent")
 		// Update task status to Failed
+		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubetaskv1alpha1.TaskPhaseFailed
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    "Ready",
@@ -126,6 +127,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 	jobKey := types.NamespacedName{Name: jobName, Namespace: task.Namespace}
 	if err := r.Get(ctx, jobKey, existingJob); err == nil {
 		// Job already exists, update status
+		task.Status.ObservedGeneration = task.Generation
 		task.Status.JobName = jobName
 		task.Status.Phase = kubetaskv1alpha1.TaskPhaseRunning
 		now := metav1.Now()
@@ -163,6 +165,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 	}
 
 	// Update status
+	task.Status.ObservedGeneration = task.Generation
 	task.Status.JobName = jobName
 	task.Status.Phase = kubetaskv1alpha1.TaskPhaseRunning
 	now := metav1.Now()
@@ -198,12 +201,14 @@ func (r *TaskReconciler) updateTaskStatusFromJob(ctx context.Context, task *kube
 
 	// Check Job completion
 	if job.Status.Succeeded > 0 {
+		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubetaskv1alpha1.TaskPhaseCompleted
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
 		log.Info("task completed", "job", task.Status.JobName)
 		return r.Status().Update(ctx, task)
 	} else if job.Status.Failed > 0 {
+		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubetaskv1alpha1.TaskPhaseFailed
 		now := metav1.Now()
 		task.Status.CompletionTime = &now

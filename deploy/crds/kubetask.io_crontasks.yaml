@@ -11,6 +11,8 @@ spec:
     kind: CronTask
     listKind: CronTaskList
     plural: crontasks
+    shortNames:
+    - ctk
     singular: crontask
   scope: Namespaced
   versions:
@@ -306,6 +308,9 @@ spec:
                   - type
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
               lastScheduleTime:
                 description: LastScheduleTime is the last time a Task was successfully
                   scheduled.
@@ -316,7 +321,14 @@ spec:
                   successfully.
                 format: date-time
                 type: string
+              observedGeneration:
+                description: ObservedGeneration is the most recent generation observed
+                  by the controller.
+                format: int64
+                type: integer
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

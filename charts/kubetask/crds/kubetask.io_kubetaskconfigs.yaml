@@ -11,6 +11,8 @@ spec:
     kind: KubeTaskConfig
     listKind: KubeTaskConfigList
     plural: kubetaskconfigs
+    shortNames:
+    - ktc
     singular: kubetaskconfig
   scope: Namespaced
   versions:
@@ -63,6 +65,8 @@ spec:
                     type: integer
                 type: object
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
