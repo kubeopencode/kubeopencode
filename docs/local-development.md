@@ -12,7 +12,15 @@ This guide describes how to set up a local development environment for KubeTask 
 
 ## Quick Start
 
-### 1. Create Kind Cluster
+### 1. Create or Use Existing Kind Cluster
+
+Check if you already have a Kind cluster running:
+
+```bash
+kind get clusters
+```
+
+If you have an existing cluster (e.g., `kind`), you can use it directly. Otherwise, create a new one:
 
 ```bash
 kind create cluster --name kubetask
@@ -24,6 +32,8 @@ Verify the cluster is running:
 kubectl cluster-info
 ```
 
+**Note:** The examples below use `--name kubetask` for Kind commands. If using an existing cluster with a different name (e.g., `kind`), replace `--name kubetask` with your cluster name.
+
 ### 2. Build Images
 
 Build the controller image:
@@ -32,10 +42,10 @@ Build the controller image:
 make docker-build
 ```
 
-Build the agent image (echo agent for testing):
+Build the agent image (gemini is the default):
 
 ```bash
-make agent-build AGENT=echo
+make agent-build
 ```
 
 ### 3. Load Images to Kind
@@ -44,7 +54,7 @@ Load images into the Kind cluster (required because Kind cannot pull from local 
 
 ```bash
 kind load docker-image quay.io/kubetask/kubetask-controller:v0.1.0 --name kubetask
-kind load docker-image quay.io/kubetask/kubetask-agent-echo:latest --name kubetask
+kind load docker-image quay.io/kubetask/kubetask-agent-gemini:latest --name kubetask
 ```
 
 ### 4. Deploy with Helm
@@ -54,7 +64,7 @@ helm upgrade --install kubetask ./charts/kubetask \
   --namespace kubetask-system \
   --create-namespace \
   --set controller.image.pullPolicy=Never \
-  --set agent.image.repository=quay.io/kubetask/kubetask-agent-echo \
+  --set agent.image.repository=quay.io/kubetask/kubetask-agent-gemini \
   --set agent.image.pullPolicy=Never
 ```
 
@@ -135,10 +145,10 @@ cat <<EOF | kubectl apply -f -
 apiVersion: kubetask.io/v1alpha1
 kind: Agent
 metadata:
-  name: echo-agent
+  name: gemini-agent
   namespace: test
 spec:
-  agentImage: quay.io/kubetask/kubetask-agent-echo:latest
+  agentImage: quay.io/kubetask/kubetask-agent-gemini:latest
   serviceAccountName: task-runner
 EOF
 ```
@@ -154,7 +164,7 @@ metadata:
   namespace: test
 spec:
   agentRef:
-    name: echo-agent
+    name: gemini-agent
   prompt: "Hello, KubeTask!"
 EOF
 ```
