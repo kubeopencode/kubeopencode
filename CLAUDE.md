@@ -1,5 +1,7 @@
 # Claude Development Guidelines for KubeTask
 
+> **Note**: `AGENTS.md` is a symbolic link to this file (`CLAUDE.md`), ensuring both files are always identical.
+
 This document provides guidelines for AI assistants (like Claude) working on the KubeTask project.
 
 ## Project Overview
