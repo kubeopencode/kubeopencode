@@ -122,7 +122,8 @@ Agent (execution configuration)
     ├── contexts: []ContextMount     (references to Context CRDs)
     ├── credentials: []Credential
     ├── podSpec: *AgentPodSpec
-    └── serviceAccountName: string
+    ├── serviceAccountName: string
+    └── maxConcurrentTasks: *int32   (limit concurrent Tasks, nil/0 = unlimited)
 
 KubeTaskConfig (system configuration)
 └── KubeTaskConfigSpec
@@ -371,7 +372,7 @@ status:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status.phase` | TaskPhase | Execution phase: Pending\|Running\|Completed\|Failed |
+| `status.phase` | TaskPhase | Execution phase: Pending\|Queued\|Running\|Completed\|Failed |
 | `status.jobName` | String | Kubernetes Job name |
 | `status.startTime` | Timestamp | Start time |
 | `status.completionTime` | Timestamp | End time |
@@ -726,6 +727,53 @@ When `ContextMount.mountPath` is empty, the context content is appended to `/wor
 ```
 
 This enables multiple contexts to be aggregated into a single file that the agent reads.
+
+### Concurrency Control
+
+Agents can limit the number of concurrent Tasks to prevent overwhelming backend AI services with rate limits:
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: Agent
+metadata:
+  name: claude-agent
+spec:
+  agentImage: quay.io/kubetask/kubetask-agent-claude:latest
+  serviceAccountName: kubetask-agent
+  maxConcurrentTasks: 3  # Only 3 Tasks can run concurrently
+```
+
+**Behavior:**
+
+| `maxConcurrentTasks` Value | Behavior |
+|---------------------------|----------|
+| `nil` (not set) | Unlimited - all Tasks run immediately |
+| `0` | Unlimited - same as nil |
+| `> 0` | Limited - Tasks queue when at capacity |
+
+**Task Lifecycle with Queuing:**
+
+```
+Task Created
+    │
+    ├─── Agent has capacity ──► Phase: Running ──► Phase: Completed/Failed
+    │
+    └─── Agent at capacity ──► Phase: Queued
+                                    │
+                                    ▼ (requeue every 10s)
+                               Check capacity
+                                    │
+                                    ├─── Capacity available ──► Phase: Running
+                                    │
+                                    └─── Still at capacity ──► Remain Queued
+```
+
+**Implementation Details:**
+
+- Tasks are labeled with `kubetask.io/agent: <agent-name>` for efficient capacity tracking
+- Queued Tasks have a `Queued` condition with reason `AgentAtCapacity`
+- Tasks are processed in approximate FIFO order based on creation timestamp
+- When a running Task completes, queued Tasks are checked every 10 seconds
 
 ---
 

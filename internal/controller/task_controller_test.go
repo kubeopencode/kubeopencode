@@ -1019,4 +1019,266 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Delete(ctx, config)).Should(Succeed())
 		})
 	})
+
+	Context("When Agent has maxConcurrentTasks set", func() {
+		It("Should queue Tasks when at capacity", func() {
+			agentName := "test-agent-concurrency"
+			maxConcurrent := int32(1)
+			description1 := "# Task 1"
+			description2 := "# Task 2"
+
+			By("Creating Agent with maxConcurrentTasks=1")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					MaxConcurrentTasks: &maxConcurrent,
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating first Task")
+			task1 := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-concurrent-1",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description1,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task1)).Should(Succeed())
+
+			By("Waiting for first Task to be Running")
+			task1LookupKey := types.NamespacedName{Name: "test-task-concurrent-1", Namespace: taskNamespace}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				updatedTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task1LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
+
+			By("Verifying first Task has agent label")
+			task1Updated := &kubetaskv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, task1LookupKey, task1Updated)).Should(Succeed())
+			Expect(task1Updated.Labels).Should(HaveKeyWithValue(AgentLabelKey, agentName))
+
+			By("Creating second Task")
+			task2 := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-concurrent-2",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description2,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task2)).Should(Succeed())
+
+			By("Checking second Task is Queued")
+			task2LookupKey := types.NamespacedName{Name: "test-task-concurrent-2", Namespace: taskNamespace}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				updatedTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseQueued))
+
+			By("Verifying second Task has Queued condition")
+			task2Updated := &kubetaskv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, task2LookupKey, task2Updated)).Should(Succeed())
+			Expect(task2Updated.Labels).Should(HaveKeyWithValue(AgentLabelKey, agentName))
+
+			// Check for Queued condition
+			var queuedCondition *metav1.Condition
+			for i := range task2Updated.Status.Conditions {
+				if task2Updated.Status.Conditions[i].Type == "Queued" {
+					queuedCondition = &task2Updated.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(queuedCondition).ShouldNot(BeNil())
+			Expect(queuedCondition.Status).Should(Equal(metav1.ConditionTrue))
+			Expect(queuedCondition.Reason).Should(Equal("AgentAtCapacity"))
+
+			By("Simulating first Task completion")
+			job1Name := fmt.Sprintf("%s-job", "test-task-concurrent-1")
+			job1LookupKey := types.NamespacedName{Name: job1Name, Namespace: taskNamespace}
+			job1 := &batchv1.Job{}
+			Expect(k8sClient.Get(ctx, job1LookupKey, job1)).Should(Succeed())
+			job1.Status.Succeeded = 1
+			Expect(k8sClient.Status().Update(ctx, job1)).Should(Succeed())
+
+			By("Waiting for first Task to complete")
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				updatedTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task1LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseCompleted))
+
+			By("Checking second Task transitions to Running")
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				updatedTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, task2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should allow unlimited Tasks when maxConcurrentTasks is 0", func() {
+			agentName := "test-agent-unlimited"
+			maxConcurrent := int32(0) // 0 means unlimited
+			description1 := "# Task 1"
+			description2 := "# Task 2"
+
+			By("Creating Agent with maxConcurrentTasks=0 (unlimited)")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					MaxConcurrentTasks: &maxConcurrent,
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating first Task")
+			task1 := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-unlimited-1",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description1,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task1)).Should(Succeed())
+
+			By("Waiting for first Task to be Running")
+			task1LookupKey := types.NamespacedName{Name: "test-task-unlimited-1", Namespace: taskNamespace}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				updatedTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task1LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
+
+			By("Creating second Task")
+			task2 := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-unlimited-2",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description2,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task2)).Should(Succeed())
+
+			By("Checking second Task is also Running (not Queued)")
+			task2LookupKey := types.NamespacedName{Name: "test-task-unlimited-2", Namespace: taskNamespace}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				updatedTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, task2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should allow unlimited Tasks when maxConcurrentTasks is not set", func() {
+			agentName := "test-agent-no-limit"
+			description1 := "# Task 1"
+			description2 := "# Task 2"
+
+			By("Creating Agent without maxConcurrentTasks (nil)")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					// MaxConcurrentTasks not set (nil)
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating first Task")
+			task1 := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-nolimit-1",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description1,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task1)).Should(Succeed())
+
+			By("Waiting for first Task to be Running")
+			task1LookupKey := types.NamespacedName{Name: "test-task-nolimit-1", Namespace: taskNamespace}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				updatedTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task1LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
+
+			By("Creating second Task")
+			task2 := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-nolimit-2",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description2,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task2)).Should(Succeed())
+
+			By("Checking second Task is also Running (not Queued)")
+			task2LookupKey := types.NamespacedName{Name: "test-task-nolimit-2", Namespace: taskNamespace}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				updatedTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, task2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
 })

@@ -122,12 +122,16 @@ type ContextMount struct {
 }
 
 // TaskPhase represents the current phase of a task
-// +kubebuilder:validation:Enum=Pending;Running;Completed;Failed
+// +kubebuilder:validation:Enum=Pending;Queued;Running;Completed;Failed
 type TaskPhase string
 
 const (
 	// TaskPhasePending means the task has not started yet
 	TaskPhasePending TaskPhase = "Pending"
+	// TaskPhaseQueued means the task is waiting for Agent capacity.
+	// This occurs when the Agent has maxConcurrentTasks set and the limit is reached.
+	// The task will automatically transition to Running when capacity becomes available.
+	TaskPhaseQueued TaskPhase = "Queued"
 	// TaskPhaseRunning means the task is currently executing
 	TaskPhaseRunning TaskPhase = "Running"
 	// TaskPhaseCompleted means the task execution finished (Job exited with code 0).
@@ -331,6 +335,21 @@ type AgentSpec struct {
 	//
 	// +required
 	ServiceAccountName string `json:"serviceAccountName"`
+
+	// MaxConcurrentTasks limits the number of Tasks that can run concurrently
+	// using this Agent. When the limit is reached, new Tasks will enter Queued
+	// phase until capacity becomes available.
+	//
+	// This is useful when the Agent uses backend AI services with rate limits
+	// (e.g., Claude, Gemini API quotas) to prevent overwhelming the service.
+	//
+	// - nil or 0: unlimited (default behavior, no concurrency limit)
+	// - positive number: maximum number of Tasks that can be in Running phase
+	//
+	// Example:
+	//   maxConcurrentTasks: 3  # Only 3 Tasks can run at once
+	// +optional
+	MaxConcurrentTasks *int32 `json:"maxConcurrentTasks,omitempty"`
 }
 
 // AgentStatus defines the observed state of Agent

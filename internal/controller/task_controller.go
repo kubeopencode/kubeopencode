@@ -42,6 +42,12 @@ const (
 
 	// EnvHumanInTheLoopKeepAlive is the environment variable name for keep-alive seconds
 	EnvHumanInTheLoopKeepAlive = "KUBETASK_KEEP_ALIVE_SECONDS"
+
+	// AgentLabelKey is the label key used to identify which Agent a Task uses
+	AgentLabelKey = "kubetask.io/agent"
+
+	// DefaultQueuedRequeueDelay is the default delay for requeuing queued Tasks
+	DefaultQueuedRequeueDelay = 10 * time.Second
 )
 
 // TaskReconciler reconciles a Task object
@@ -80,6 +86,11 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return r.initializeTask(ctx, task)
 	}
 
+	// If queued, check if capacity is available
+	if task.Status.Phase == kubetaskv1alpha1.TaskPhaseQueued {
+		return r.handleQueuedTask(ctx, task)
+	}
+
 	// If completed/failed, check TTL for cleanup
 	if task.Status.Phase == kubetaskv1alpha1.TaskPhaseCompleted ||
 		task.Status.Phase == kubetaskv1alpha1.TaskPhaseFailed {
@@ -99,8 +110,8 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alpha1.Task) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Get agent configuration
-	agentConfig, err := r.getAgentConfig(ctx, task)
+	// Get agent configuration with name
+	agentConfig, agentName, err := r.getAgentConfigWithName(ctx, task)
 	if err != nil {
 		log.Error(err, "unable to get Agent")
 		// Update task status to Failed
@@ -117,6 +128,52 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 			return ctrl.Result{}, updateErr
 		}
 		return ctrl.Result{}, nil // Don't requeue, user needs to fix Agent
+	}
+
+	// Add agent label to Task for capacity tracking
+	if task.Labels == nil {
+		task.Labels = make(map[string]string)
+	}
+	if task.Labels[AgentLabelKey] != agentName {
+		task.Labels[AgentLabelKey] = agentName
+		if err := r.Update(ctx, task); err != nil {
+			log.Error(err, "unable to update Task labels")
+			return ctrl.Result{}, err
+		}
+		// Requeue to continue with updated task
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// Check agent capacity if MaxConcurrentTasks is set
+	if agentConfig.maxConcurrentTasks != nil && *agentConfig.maxConcurrentTasks > 0 {
+		hasCapacity, err := r.checkAgentCapacity(ctx, task.Namespace, agentName, *agentConfig.maxConcurrentTasks)
+		if err != nil {
+			log.Error(err, "unable to check agent capacity")
+			return ctrl.Result{}, err
+		}
+
+		if !hasCapacity {
+			// Agent is at capacity, queue the task
+			log.Info("agent at capacity, queueing task", "agent", agentName, "maxConcurrent", *agentConfig.maxConcurrentTasks)
+
+			task.Status.ObservedGeneration = task.Generation
+			task.Status.Phase = kubetaskv1alpha1.TaskPhaseQueued
+
+			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+				Type:    "Queued",
+				Status:  metav1.ConditionTrue,
+				Reason:  "AgentAtCapacity",
+				Message: fmt.Sprintf("Waiting for agent %q capacity (max: %d)", agentName, *agentConfig.maxConcurrentTasks),
+			})
+
+			if err := r.Status().Update(ctx, task); err != nil {
+				log.Error(err, "unable to update Task status")
+				return ctrl.Result{}, err
+			}
+
+			// Requeue with delay
+			return ctrl.Result{RequeueAfter: DefaultQueuedRequeueDelay}, nil
+		}
 	}
 
 	// Generate Job name
@@ -298,6 +355,13 @@ func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // getAgentConfig retrieves the agent configuration from Agent.
 // Returns an error if Agent is not found or invalid.
 func (r *TaskReconciler) getAgentConfig(ctx context.Context, task *kubetaskv1alpha1.Task) (agentConfig, error) {
+	cfg, _, err := r.getAgentConfigWithName(ctx, task)
+	return cfg, err
+}
+
+// getAgentConfigWithName retrieves the agent configuration and returns the agent name.
+// This is useful when we need to track which agent a task is using.
+func (r *TaskReconciler) getAgentConfigWithName(ctx context.Context, task *kubetaskv1alpha1.Task) (agentConfig, string, error) {
 	log := log.FromContext(ctx)
 
 	// Determine which Agent to use
@@ -315,7 +379,7 @@ func (r *TaskReconciler) getAgentConfig(ctx context.Context, task *kubetaskv1alp
 
 	if err := r.Get(ctx, agentKey, agent); err != nil {
 		log.Error(err, "unable to get Agent", "agent", agentName)
-		return agentConfig{}, fmt.Errorf("Agent %q not found in namespace %q: %w", agentName, task.Namespace, err)
+		return agentConfig{}, "", fmt.Errorf("Agent %q not found in namespace %q: %w", agentName, task.Namespace, err)
 	}
 
 	// Get agent image (optional, has default)
@@ -332,7 +396,7 @@ func (r *TaskReconciler) getAgentConfig(ctx context.Context, task *kubetaskv1alp
 
 	// ServiceAccountName is required
 	if agent.Spec.ServiceAccountName == "" {
-		return agentConfig{}, fmt.Errorf("Agent %q is missing required field serviceAccountName", agentName)
+		return agentConfig{}, "", fmt.Errorf("Agent %q is missing required field serviceAccountName", agentName)
 	}
 
 	return agentConfig{
@@ -343,7 +407,8 @@ func (r *TaskReconciler) getAgentConfig(ctx context.Context, task *kubetaskv1alp
 		credentials:        agent.Spec.Credentials,
 		podSpec:            agent.Spec.PodSpec,
 		serviceAccountName: agent.Spec.ServiceAccountName,
-	}, nil
+		maxConcurrentTasks: agent.Spec.MaxConcurrentTasks,
+	}, agentName, nil
 }
 
 // processAllContexts processes all contexts from Agent and Task, resolving Context CRs
@@ -622,4 +687,107 @@ func (r *TaskReconciler) getConfigMapAllKeys(ctx context.Context, namespace, nam
 		parts = append(parts, fmt.Sprintf("<file name=%q>\n%s\n</file>", key, cm.Data[key]))
 	}
 	return strings.Join(parts, "\n"), nil
+}
+
+// checkAgentCapacity checks if the agent has capacity for a new task.
+// Returns true if capacity is available, false if at limit.
+func (r *TaskReconciler) checkAgentCapacity(ctx context.Context, namespace, agentName string, maxConcurrent int32) (bool, error) {
+	log := log.FromContext(ctx)
+
+	// List all Tasks for this Agent using label selector
+	taskList := &kubetaskv1alpha1.TaskList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabels{AgentLabelKey: agentName},
+	}
+
+	if err := r.List(ctx, taskList, listOpts...); err != nil {
+		return false, err
+	}
+
+	// Count running tasks (those with Jobs created and in progress)
+	runningCount := int32(0)
+	for i := range taskList.Items {
+		task := &taskList.Items[i]
+		// Count tasks that are Running
+		if task.Status.Phase == kubetaskv1alpha1.TaskPhaseRunning {
+			runningCount++
+		}
+	}
+
+	log.V(1).Info("agent capacity check", "agent", agentName, "running", runningCount, "max", maxConcurrent)
+
+	return runningCount < maxConcurrent, nil
+}
+
+// handleQueuedTask checks if a queued task can now be started
+func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubetaskv1alpha1.Task) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	// Get agent configuration with name
+	agentConfig, agentName, err := r.getAgentConfigWithName(ctx, task)
+	if err != nil {
+		log.Error(err, "unable to get Agent for queued task")
+		// Agent might be deleted, fail the task
+		task.Status.Phase = kubetaskv1alpha1.TaskPhaseFailed
+		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+			Type:    "Ready",
+			Status:  metav1.ConditionFalse,
+			Reason:  "AgentError",
+			Message: err.Error(),
+		})
+		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			log.Error(updateErr, "unable to update Task status")
+			return ctrl.Result{}, updateErr
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Check if agent still has MaxConcurrentTasks set
+	if agentConfig.maxConcurrentTasks == nil || *agentConfig.maxConcurrentTasks <= 0 {
+		// Limit removed, proceed to initialize
+		log.Info("agent capacity limit removed, proceeding with task", "agent", agentName)
+		task.Status.Phase = ""
+		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+			Type:    "Queued",
+			Status:  metav1.ConditionFalse,
+			Reason:  "CapacityAvailable",
+			Message: fmt.Sprintf("Agent %q capacity limit removed", agentName),
+		})
+		if err := r.Status().Update(ctx, task); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// Check if capacity is now available
+	hasCapacity, err := r.checkAgentCapacity(ctx, task.Namespace, agentName, *agentConfig.maxConcurrentTasks)
+	if err != nil {
+		log.Error(err, "unable to check agent capacity")
+		return ctrl.Result{}, err
+	}
+
+	if !hasCapacity {
+		// Still at capacity, requeue
+		log.V(1).Info("agent still at capacity, remaining queued", "agent", agentName)
+		return ctrl.Result{RequeueAfter: DefaultQueuedRequeueDelay}, nil
+	}
+
+	// Capacity available, transition to empty phase to trigger initializeTask
+	log.Info("agent capacity available, transitioning to initialize", "agent", agentName)
+	task.Status.Phase = ""
+	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+		Type:    "Queued",
+		Status:  metav1.ConditionFalse,
+		Reason:  "CapacityAvailable",
+		Message: fmt.Sprintf("Agent %q capacity now available", agentName),
+	})
+
+	if err := r.Status().Update(ctx, task); err != nil {
+		log.Error(err, "unable to update queued task status")
+		return ctrl.Result{}, err
+	}
+
+	// Requeue immediately to trigger initializeTask
+	return ctrl.Result{Requeue: true}, nil
 }

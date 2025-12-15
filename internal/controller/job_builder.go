@@ -23,6 +23,7 @@ type agentConfig struct {
 	credentials        []kubetaskv1alpha1.Credential
 	podSpec            *kubetaskv1alpha1.AgentPodSpec
 	serviceAccountName string
+	maxConcurrentTasks *int32
 }
 
 // fileMount represents a file to be mounted at a specific path

@@ -217,6 +217,7 @@ spec:
                 description: Execution phase
                 enum:
                 - Pending
+                - Queued
                 - Running
                 - Completed
                 - Failed

@@ -300,6 +300,29 @@ Key Agent spec fields:
 - `contexts`: References to Context CRDs (applied to all tasks)
 - `credentials`: Secrets as env vars or file mounts (supports single key or entire secret)
 - `serviceAccountName`: Kubernetes ServiceAccount for RBAC
+- `maxConcurrentTasks`: Limit concurrent Tasks using this Agent (nil/0 = unlimited)
+
+**Concurrency Control:**
+
+When an Agent uses backend AI services with rate limits (e.g., Claude, Gemini API quotas),
+you can limit concurrent Task execution using `maxConcurrentTasks`:
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: Agent
+metadata:
+  name: claude-agent
+spec:
+  agentImage: quay.io/kubetask/kubetask-agent-claude:latest
+  serviceAccountName: kubetask-agent
+  maxConcurrentTasks: 3  # Only 3 Tasks can run concurrently
+```
+
+When the limit is reached:
+- New Tasks enter `Queued` phase instead of `Running`
+- Tasks are labeled with `kubetask.io/agent: <agent-name>` for tracking
+- Queued Tasks automatically transition to `Running` when capacity becomes available
+- Tasks are processed in approximate FIFO order
 
 **Credentials Mounting:**
 
