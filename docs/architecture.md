@@ -712,6 +712,16 @@ spec:
 
 **Important:** When `humanInTheLoop` is enabled on a Task, the Agent MUST specify `command`. The controller wraps the command to add the sleep behavior.
 
+**Early Termination:**
+
+To exit a human-in-the-loop Task early (without waiting for the keepAlive timeout), set the terminate annotation:
+
+```bash
+kubectl annotate task my-task kubetask.io/terminate=true
+```
+
+This immediately terminates the Task and sets its status to `Completed` with a `Terminated` condition.
+
 ---
 
 ## Agent Configuration
@@ -985,6 +995,9 @@ kubectl get task update-service-a -o yaml
 # View task logs
 kubectl logs job/$(kubectl get task update-service-a -o jsonpath='{.status.jobName}') -n kubetask-system
 
+# Terminate a running task (immediately stops and marks as Completed)
+kubectl annotate task update-service-a kubetask.io/terminate=true
+
 # Delete task
 kubectl delete task update-service-a -n kubetask-system
 ```
@@ -1077,6 +1090,7 @@ kubectl get agent default -o yaml
 - No retry on failure (AI tasks are non-idempotent)
 - TTL-based automatic cleanup (default: 7 days)
 - Human-in-the-loop debugging support
+- User-initiated termination via `kubetask.io/terminate=true` annotation
 - OwnerReference cascade deletion
 
 **Batch Operations**:

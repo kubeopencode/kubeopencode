@@ -349,6 +349,23 @@ When the limit is reached:
 - Queued Tasks automatically transition to `Running` when capacity becomes available
 - Tasks are processed in approximate FIFO order
 
+**Task Termination:**
+
+Running Tasks can be terminated by setting the `kubetask.io/terminate=true` annotation:
+
+```bash
+kubectl annotate task my-task kubetask.io/terminate=true
+```
+
+When this annotation is detected:
+- The controller deletes the associated Job (and Pod)
+- Task status is set to `Completed` with a `Terminated` condition
+- The `Terminated` condition has reason `UserTerminated`
+
+This is useful for:
+- Exiting `humanInTheLoop` Tasks early after verification is complete
+- Stopping long-running Tasks without waiting for timeout
+
 **Credentials Mounting:**
 
 Credentials can be mounted in two ways:
