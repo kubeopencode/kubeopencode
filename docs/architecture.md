@@ -250,8 +250,8 @@ type AgentSpec struct {
 
 // HumanInTheLoop keeps container running after task completion for debugging
 type HumanInTheLoop struct {
-    Enabled          bool    // Enable human-in-the-loop mode
-    KeepAliveSeconds *int32  // How long to keep container alive (default: 3600)
+    Enabled   bool              // Enable human-in-the-loop mode
+    KeepAlive *metav1.Duration  // How long to keep container alive (default: "1h")
 }
 
 // KubeTaskConfig defines system-level configuration
@@ -680,7 +680,9 @@ When `Task.spec.humanInTheLoop.enabled` is true, the controller wraps the Agent'
 spec:
   humanInTheLoop:
     enabled: true
-    keepAliveSeconds: 3600  # Keep alive for 1 hour (default)
+    keepAlive: "1h"  # Keep alive for 1 hour (default)
+    # keepAlive: "30m"   # 30 minutes
+    # keepAlive: "2h30m" # 2 hours 30 minutes
 ```
 
 **Important:** When `humanInTheLoop` is enabled on a Task, the Agent MUST specify `command`. The controller wraps the command to add the sleep behavior.

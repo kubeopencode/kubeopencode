@@ -551,13 +551,13 @@ type HumanInTheLoop struct {
 	// +required
 	Enabled bool `json:"enabled"`
 
-	// KeepAliveSeconds specifies how long the container should remain running
+	// KeepAlive specifies how long the container should remain running
 	// after task completion, allowing time for human interaction.
 	// Users can kubectl exec into the container during this period.
-	// Defaults to 3600 (1 hour) if not specified when enabled is true.
+	// Uses standard Go duration format (e.g., "1h", "30m", "1h30m").
+	// Defaults to "1h" (1 hour) if not specified when enabled is true.
 	// +optional
-	// +kubebuilder:default=3600
-	KeepAliveSeconds *int32 `json:"keepAliveSeconds,omitempty"`
+	KeepAlive *metav1.Duration `json:"keepAlive,omitempty"`
 }
 
 // +genclient

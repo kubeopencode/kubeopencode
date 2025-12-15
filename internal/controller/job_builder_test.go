@@ -6,6 +6,7 @@ package controller
 
 import (
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -454,7 +455,7 @@ func TestBuildJob_WithEntireSecretAsDirectory(t *testing.T) {
 }
 
 func TestBuildJob_WithHumanInTheLoop(t *testing.T) {
-	keepAlive := int32(1800)
+	keepAlive := metav1.Duration{Duration: 30 * time.Minute}
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-task",
@@ -463,8 +464,8 @@ func TestBuildJob_WithHumanInTheLoop(t *testing.T) {
 		},
 		Spec: kubetaskv1alpha1.TaskSpec{
 			HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-				Enabled:          true,
-				KeepAliveSeconds: &keepAlive,
+				Enabled:   true,
+				KeepAlive: &keepAlive,
 			},
 		},
 	}

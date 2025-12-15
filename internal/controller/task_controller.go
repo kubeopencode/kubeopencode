@@ -37,8 +37,8 @@ const (
 	// DefaultTTLSecondsAfterFinished is the default TTL for completed/failed tasks (7 days)
 	DefaultTTLSecondsAfterFinished int32 = 604800
 
-	// DefaultKeepAliveSeconds is the default keep-alive duration for human-in-the-loop (1 hour)
-	DefaultKeepAliveSeconds int32 = 3600
+	// DefaultKeepAlive is the default keep-alive duration for human-in-the-loop (1 hour)
+	DefaultKeepAlive = time.Hour
 
 	// EnvHumanInTheLoopKeepAlive is the environment variable name for keep-alive seconds
 	EnvHumanInTheLoopKeepAlive = "KUBETASK_KEEP_ALIVE_SECONDS"

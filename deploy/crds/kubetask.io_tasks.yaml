@@ -125,15 +125,14 @@ spec:
                       When true, the agent container will sleep after task completion
                       instead of exiting immediately.
                     type: boolean
-                  keepAliveSeconds:
-                    default: 3600
+                  keepAlive:
                     description: |-
-                      KeepAliveSeconds specifies how long the container should remain running
+                      KeepAlive specifies how long the container should remain running
                       after task completion, allowing time for human interaction.
                       Users can kubectl exec into the container during this period.
-                      Defaults to 3600 (1 hour) if not specified when enabled is true.
-                    format: int32
-                    type: integer
+                      Uses standard Go duration format (e.g., "1h", "30m", "1h30m").
+                      Defaults to "1h" (1 hour) if not specified when enabled is true.
+                    type: string
                 required:
                 - enabled
                 type: object

@@ -158,13 +158,14 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 
 	// Add human-in-the-loop keep-alive environment variable if enabled
 	if task.Spec.HumanInTheLoop != nil && task.Spec.HumanInTheLoop.Enabled {
-		keepAliveSeconds := DefaultKeepAliveSeconds
-		if task.Spec.HumanInTheLoop.KeepAliveSeconds != nil {
-			keepAliveSeconds = *task.Spec.HumanInTheLoop.KeepAliveSeconds
+		keepAlive := DefaultKeepAlive
+		if task.Spec.HumanInTheLoop.KeepAlive != nil {
+			keepAlive = task.Spec.HumanInTheLoop.KeepAlive.Duration
 		}
+		keepAliveSeconds := int64(keepAlive.Seconds())
 		envVars = append(envVars, corev1.EnvVar{
 			Name:  EnvHumanInTheLoopKeepAlive,
-			Value: strconv.Itoa(int(keepAliveSeconds)),
+			Value: strconv.FormatInt(keepAliveSeconds, 10),
 		})
 	}
 
@@ -361,10 +362,11 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 	if len(cfg.command) > 0 {
 		// If humanInTheLoop is enabled on the Task, wrap the command with sleep
 		if task.Spec.HumanInTheLoop != nil && task.Spec.HumanInTheLoop.Enabled {
-			keepAliveSeconds := DefaultKeepAliveSeconds
-			if task.Spec.HumanInTheLoop.KeepAliveSeconds != nil {
-				keepAliveSeconds = *task.Spec.HumanInTheLoop.KeepAliveSeconds
+			keepAlive := DefaultKeepAlive
+			if task.Spec.HumanInTheLoop.KeepAlive != nil {
+				keepAlive = task.Spec.HumanInTheLoop.KeepAlive.Duration
 			}
+			keepAliveSeconds := int64(keepAlive.Seconds())
 
 			// Build the wrapped command that runs original command then sleeps
 			// Format: sh -c 'original_command; EXIT_CODE=$?; echo "Human-in-the-loop: keeping container alive..."; sleep N; exit $EXIT_CODE'

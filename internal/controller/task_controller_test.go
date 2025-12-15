@@ -8,6 +8,7 @@ package controller
 
 import (
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -833,7 +834,7 @@ var _ = Describe("TaskController", func() {
 			taskName := "test-task-hitl"
 			agentName := "test-agent-hitl"
 			description := "# Human-in-the-loop test"
-			keepAliveSeconds := int32(1800) // 30 minutes
+			keepAlive := metav1.Duration{Duration: 30 * time.Minute} // 30 minutes
 
 			By("Creating Agent with command")
 			agent := &kubetaskv1alpha1.Agent{
@@ -858,8 +859,8 @@ var _ = Describe("TaskController", func() {
 					AgentRef:    agentName,
 					Description: &description,
 					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-						Enabled:          true,
-						KeepAliveSeconds: &keepAliveSeconds,
+						Enabled:   true,
+						KeepAlive: &keepAlive,
 					},
 				},
 			}
@@ -919,7 +920,7 @@ var _ = Describe("TaskController", func() {
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Creating Task with humanInTheLoop enabled but no keepAliveSeconds")
+			By("Creating Task with humanInTheLoop enabled but no keepAlive")
 			task := &kubetaskv1alpha1.Task{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      taskName,
