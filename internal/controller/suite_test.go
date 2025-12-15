@@ -143,6 +143,8 @@ var _ = BeforeSuite(func() {
 		},
 		Spec: kubetaskv1alpha1.AgentSpec{
 			ServiceAccountName: "test-agent",
+			WorkspaceDir:       "/workspace",
+			Command:            []string{"sh", "-c", "echo 'default agent'"},
 		},
 	}
 	Expect(k8sClient.Create(ctx, defaultAgent)).Should(Succeed())

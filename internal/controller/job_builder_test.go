@@ -507,8 +507,10 @@ func TestBuildJob_WithHumanInTheLoop(t *testing.T) {
 	if !contains(script, "Human-in-the-loop") {
 		t.Errorf("Command script should contain 'Human-in-the-loop', got: %s", script)
 	}
-	if !contains(script, "sh -c echo hello") {
-		t.Errorf("Command script should contain original command 'sh -c echo hello', got: %s", script)
+	// Since the original command is already "sh -c <script>", we extract the inner script
+	// and wrap it in a subshell ( ) to isolate exit/exec commands
+	if !contains(script, "( echo hello )") {
+		t.Errorf("Command script should contain inner script in subshell '( echo hello )', got: %s", script)
 	}
 
 	// Verify keep-alive env var
@@ -523,6 +525,72 @@ func TestBuildJob_WithHumanInTheLoop(t *testing.T) {
 	}
 	if !foundKeepAliveEnv {
 		t.Errorf("KUBETASK_KEEP_ALIVE_SECONDS env not found")
+	}
+}
+
+func TestBuildJob_WithHumanInTheLoop_NonShCCommand(t *testing.T) {
+	// Test that non "sh -c" commands are handled correctly using $@ approach
+	keepAlive := metav1.Duration{Duration: 30 * time.Minute}
+	task := &kubetaskv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubetaskv1alpha1.TaskSpec{
+			HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+				Enabled:   true,
+				KeepAlive: &keepAlive,
+			},
+		},
+	}
+	task.APIVersion = "kubetask.io/v1alpha1"
+	task.Kind = "Task"
+
+	// Non sh-c command with arguments that contain special characters
+	cfg := agentConfig{
+		agentImage:         "test-agent:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		command:            []string{"python", "-c", "print('hello; world')"},
+	}
+
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+
+	container := job.Spec.Template.Spec.Containers[0]
+
+	// Verify command uses $@ approach for non sh-c commands
+	// Format: ["sh", "-c", '"$@"; EXIT_CODE=$?; ...', "--", "python", "-c", "print('hello; world')"]
+	if len(container.Command) != 7 {
+		t.Fatalf("len(Command) = %d, want 7, got: %v", len(container.Command), container.Command)
+	}
+	if container.Command[0] != "sh" {
+		t.Errorf("Command[0] = %q, want %q", container.Command[0], "sh")
+	}
+	if container.Command[1] != "-c" {
+		t.Errorf("Command[1] = %q, want %q", container.Command[1], "-c")
+	}
+	// Command[2] is the wrapper script
+	script := container.Command[2]
+	if !contains(script, `"$@"`) {
+		t.Errorf("Command script should use $@ for argument passing, got: %s", script)
+	}
+	if !contains(script, "sleep 1800") {
+		t.Errorf("Command script should contain 'sleep 1800', got: %s", script)
+	}
+	// Command[3] should be "--" separator
+	if container.Command[3] != "--" {
+		t.Errorf("Command[3] = %q, want %q", container.Command[3], "--")
+	}
+	// Command[4:] should be the original command
+	if container.Command[4] != "python" {
+		t.Errorf("Command[4] = %q, want %q", container.Command[4], "python")
+	}
+	if container.Command[5] != "-c" {
+		t.Errorf("Command[5] = %q, want %q", container.Command[5], "-c")
+	}
+	if container.Command[6] != "print('hello; world')" {
+		t.Errorf("Command[6] = %q, want %q", container.Command[6], "print('hello; world')")
 	}
 }
 

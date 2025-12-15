@@ -367,14 +367,39 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 		}
 		keepAliveSeconds := int64(keepAlive.Seconds())
 
-		// Build the wrapped command that runs original command then sleeps
-		// Format: sh -c 'original_command; EXIT_CODE=$?; echo "Human-in-the-loop: keeping container alive..."; sleep N; exit $EXIT_CODE'
-		originalCmd := strings.Join(cfg.command, " ")
-		wrappedScript := fmt.Sprintf(
-			`%s; EXIT_CODE=$?; echo "Human-in-the-loop: keeping container alive for %d seconds. Use 'kubectl exec' to access."; sleep %d; exit $EXIT_CODE`,
-			originalCmd, keepAliveSeconds, keepAliveSeconds,
-		)
-		agentContainer.Command = []string{"sh", "-c", wrappedScript}
+		// Use a wrapper script approach that handles edge cases:
+		// 1. Commands containing 'exit' or 'exec' - we use a subshell to isolate them
+		// 2. Commands with special characters - we pass original command via env var
+		// 3. Non sh-c commands - we properly quote them
+		//
+		// The wrapper script:
+		// - Runs original command in a subshell to isolate exit/exec
+		// - Captures exit code regardless of how the command terminates
+		// - Always executes sleep after the command completes
+		//
+		// Note: If the original command uses 'exec', it will replace the subshell
+		// but the parent shell will still continue with the sleep.
+		if len(cfg.command) == 3 && cfg.command[0] == "sh" && cfg.command[1] == "-c" {
+			// Command is already "sh -c <script>" - run the script in a subshell
+			// Using ( ) creates a subshell, so exit/exec won't affect the wrapper
+			innerScript := cfg.command[2]
+			wrappedScript := fmt.Sprintf(
+				`( %s ); EXIT_CODE=$?; echo "Human-in-the-loop: keeping container alive for %d seconds. Use 'kubectl exec' to access."; sleep %d; exit $EXIT_CODE`,
+				innerScript, keepAliveSeconds, keepAliveSeconds,
+			)
+			agentContainer.Command = []string{"sh", "-c", wrappedScript}
+		} else {
+			// For other command formats, execute them directly (not via shell string parsing)
+			// This avoids issues with special characters in arguments
+			// We use "$@" to properly handle all arguments
+			wrappedScript := fmt.Sprintf(
+				`"$@"; EXIT_CODE=$?; echo "Human-in-the-loop: keeping container alive for %d seconds. Use 'kubectl exec' to access."; sleep %d; exit $EXIT_CODE`,
+				keepAliveSeconds, keepAliveSeconds,
+			)
+			// Prepend "sh -c" with "--" separator, then append original command as arguments
+			// This way the original command is executed directly, not parsed as a shell string
+			agentContainer.Command = append([]string{"sh", "-c", wrappedScript, "--"}, cfg.command...)
+		}
 	} else {
 		// No humanInTheLoop on Task, use command as-is
 		agentContainer.Command = cfg.command

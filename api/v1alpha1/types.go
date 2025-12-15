@@ -287,14 +287,34 @@ type AgentSpec struct {
 	// customize execution behavior (e.g., output format, flags) without
 	// modifying the agent image. The agent image only provides the tools.
 	//
-	// When Task.spec.humanInTheLoop is enabled, the controller wraps this
-	// command with a sleep to keep the container running after task completion.
+	// ## humanInTheLoop Integration
 	//
-	// Example:
+	// When Task.spec.humanInTheLoop is enabled, the controller wraps this command
+	// to keep the container running after task completion, allowing interactive
+	// debugging via `kubectl exec`.
+	//
+	// The wrapping behavior depends on the command format:
+	//
+	// 1. For "sh -c <script>" format (recommended):
+	//    The script is wrapped in a subshell to isolate exit/exec:
+	//      sh -c '( <script> ); EXIT_CODE=$?; sleep N; exit $EXIT_CODE'
+	//
+	// 2. For other formats (e.g., ["python", "-c", "..."]):
+	//    Arguments are passed via $@ to preserve special characters:
+	//      sh -c '"$@"; EXIT_CODE=$?; sleep N; exit $EXIT_CODE' -- python -c ...
+	//
+	// ## Best Practices
+	//
+	// - Use ["sh", "-c", "<script>"] format for shell scripts
+	// - Avoid using 'exec' as it replaces the shell process (though subshell
+	//   isolation mitigates this for humanInTheLoop)
+	// - Commands with 'exit' work correctly - the exit code is captured and
+	//   the sleep still executes
+	//
+	// ## Example
+	//
 	//   command: ["sh", "-c", "gemini --yolo -p \"$(cat /workspace/task.md)\""]
 	//
-	// When humanInTheLoop is enabled on a Task, the command will be wrapped to:
-	//   sh -c 'original-command; sleep $KUBETASK_KEEP_ALIVE_SECONDS'
 	// +required
 	// +kubebuilder:validation:MinItems=1
 	Command []string `json:"command"`

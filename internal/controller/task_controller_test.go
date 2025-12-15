@@ -108,6 +108,8 @@ var _ = Describe("TaskController", func() {
 				Spec: kubetaskv1alpha1.AgentSpec{
 					AgentImage:         customAgentImage,
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
 				},
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
@@ -193,6 +195,8 @@ var _ = Describe("TaskController", func() {
 							MountPath: &mountPath,
 						},
 					},
+					WorkspaceDir: "/workspace",
+					Command:      []string{"sh", "-c", "echo test"},
 				},
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
@@ -264,6 +268,8 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
 					PodSpec: &kubetaskv1alpha1.AgentPodSpec{
 						Labels: map[string]string{
 							"network-policy": "agent-restricted",
@@ -323,6 +329,8 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
 					PodSpec: &kubetaskv1alpha1.AgentPodSpec{
 						Scheduling: &kubetaskv1alpha1.PodScheduling{
 							NodeSelector: map[string]string{
@@ -396,6 +404,8 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
 					PodSpec: &kubetaskv1alpha1.AgentPodSpec{
 						RuntimeClassName: &runtimeClassName,
 					},
@@ -684,6 +694,8 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
 					Contexts: []kubetaskv1alpha1.ContextMount{
 						{
 							Name: agentContextName,
@@ -844,6 +856,7 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
 					Command:            []string{"sh", "-c", "echo hello"},
 				},
 			}
@@ -882,7 +895,8 @@ var _ = Describe("TaskController", func() {
 			Expect(container.Command).Should(HaveLen(3))
 			Expect(container.Command[0]).Should(Equal("sh"))
 			Expect(container.Command[1]).Should(Equal("-c"))
-			Expect(container.Command[2]).Should(ContainSubstring("sh -c echo hello"))
+			// The inner script is extracted and wrapped in a subshell ( ) to isolate exit/exec
+			Expect(container.Command[2]).Should(ContainSubstring("( echo hello )"))
 			Expect(container.Command[2]).Should(ContainSubstring("sleep 1800"))
 			Expect(container.Command[2]).Should(ContainSubstring("Human-in-the-loop"))
 
@@ -915,6 +929,7 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
 					Command:            []string{"./run.sh"},
 				},
 			}
@@ -1036,6 +1051,8 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
 					MaxConcurrentTasks: &maxConcurrent,
 				},
 			}
@@ -1155,6 +1172,8 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
 					MaxConcurrentTasks: &maxConcurrent,
 				},
 			}
@@ -1225,6 +1244,8 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubetaskv1alpha1.AgentSpec{
 					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
 					// MaxConcurrentTasks not set (nil)
 				},
 			}
