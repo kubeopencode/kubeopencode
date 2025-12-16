@@ -200,13 +200,19 @@ kubetask/
 
 ## Making Changes
 
-### Adding New API Fields
+### API Changes (Add/Update/Delete Fields)
+
+When making **any** changes to the API (adding, updating, or deleting fields):
 
 1. Update `api/v1alpha1/types.go`
-2. Add appropriate kubebuilder markers
+2. Add/update appropriate kubebuilder markers
 3. Run `make update` to regenerate CRDs and deepcopy
 4. Run `make verify` to ensure everything is correct
-5. Update documentation in `docs/architecture.md`
+5. **Update documentation** in `docs/architecture.md`
+6. **Update integration tests** in `internal/controller/*_test.go` to cover the API changes
+7. **Update E2E tests** in `e2e/` to verify the changes work end-to-end
+
+> **IMPORTANT**: API changes are incomplete without corresponding updates to documentation, integration tests, and E2E tests. All three must be updated together with any API modification.
 
 ### Modifying Controllers
 
