@@ -68,8 +68,6 @@ KubeTask enables you to execute AI agent tasks (like Claude, Gemini) using Kuber
 
 - Kubernetes 1.25+
 - Helm 3.8+
-- GitHub Personal Access Token (optional)
-- Anthropic Claude API key or Vertex AI credentials
 
 ### Installation
 
@@ -101,11 +99,11 @@ spec:
   workspaceDir: /workspace  # Optional, defaults to /workspace
   serviceAccountName: kubetask-agent
   credentials:
-    - name: anthropic-api-key
+    - name: gemini-api-key
       secretRef:
         name: ai-credentials
-        key: anthropic-key
-      env: ANTHROPIC_API_KEY
+        key: gemini-key
+      env: GEMINI_API_KEY
 ```
 
 #### 2. Create a Context (Optional)
