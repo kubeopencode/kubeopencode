@@ -64,12 +64,11 @@ kind: Context
 metadata:
   name: coding-standards
 spec:
-  type: Inline
-  inline:
-    content: |
-      # Coding Standards
-      - Use descriptive variable names
-      - Write unit tests
+  type: Text
+  text: |
+    # Coding Standards
+    - Use descriptive variable names
+    - Write unit tests
 ```
 
 #### 2. No Mount Path in Context
@@ -146,7 +145,7 @@ When resolving contexts, lower priority content appears first in task.md:
 ### Mitigations
 
 - `Task.description` provides simple UX for the most common case
-- Context CRD with `type: Inline` is straightforward for simple content
+- Context CRD with `type: Text` is straightforward for simple content
 - Clear documentation and examples
 
 ## Examples
@@ -163,7 +162,7 @@ spec:
   agentRef: gemini
 ```
 
-### Reusable Context with Inline Content
+### Reusable Context with Text Content
 
 ```yaml
 apiVersion: kubetask.io/v1alpha1
@@ -171,13 +170,12 @@ kind: Context
 metadata:
   name: coding-standards
 spec:
-  type: Inline
-  inline:
-    content: |
-      # Coding Standards
-      - Use descriptive variable names
-      - Write unit tests for all functions
-      - Follow Go conventions
+  type: Text
+  text: |
+    # Coding Standards
+    - Use descriptive variable names
+    - Write unit tests for all functions
+    - Follow Go conventions
 ---
 apiVersion: kubetask.io/v1alpha1
 kind: Task

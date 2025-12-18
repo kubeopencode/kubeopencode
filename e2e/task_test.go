@@ -138,10 +138,8 @@ var _ = Describe("Task E2E Tests", func() {
 					Namespace: testNS,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: content1,
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: content1,
 				},
 			}
 			Expect(k8sClient.Create(ctx, ctx1)).Should(Succeed())
@@ -152,10 +150,8 @@ var _ = Describe("Task E2E Tests", func() {
 					Namespace: testNS,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: content2,
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: content2,
 				},
 			}
 			Expect(k8sClient.Create(ctx, ctx2)).Should(Succeed())
@@ -166,10 +162,8 @@ var _ = Describe("Task E2E Tests", func() {
 					Namespace: testNS,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: content3,
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: content3,
 				},
 			}
 			Expect(k8sClient.Create(ctx, ctx3)).Should(Succeed())
@@ -329,10 +323,8 @@ var _ = Describe("Task E2E Tests", func() {
 					Namespace: testNS,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: defaultContent,
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: defaultContent,
 				},
 			}
 			Expect(k8sClient.Create(ctx, agentContext)).Should(Succeed())
@@ -344,10 +336,8 @@ var _ = Describe("Task E2E Tests", func() {
 					Namespace: testNS,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: taskContextContent,
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: taskContextContent,
 				},
 			}
 			Expect(k8sClient.Create(ctx, taskContext)).Should(Succeed())

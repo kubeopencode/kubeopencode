@@ -198,12 +198,11 @@ KubeTask uses a **Context CRD** to provide reusable context to AI agents:
   metadata:
     name: coding-standards
   spec:
-    type: Inline
-    inline:
-      content: |
-        # Coding Standards
-        - Use descriptive names
-        - Write unit tests
+    type: Text
+    text: |
+      # Coding Standards
+      - Use descriptive names
+      - Write unit tests
   ```
 
 - **ConfigMap Reference**:

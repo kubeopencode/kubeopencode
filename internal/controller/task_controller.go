@@ -713,7 +713,7 @@ func (r *TaskReconciler) resolveContextItem(ctx context.Context, item *kubetaskv
 	// Create a temporary ContextSpec from the ContextItem
 	spec := &kubetaskv1alpha1.ContextSpec{
 		Type:      item.Type,
-		Inline:    item.Inline,
+		Text:      item.Text,
 		ConfigMap: item.ConfigMap,
 		Git:       item.Git,
 		Runtime:   item.Runtime,
@@ -774,11 +774,11 @@ func resolveMountPath(mountPath, workspaceDir string) string {
 // Returns: content string, dirMount pointer, gitMount pointer, error
 func (r *TaskReconciler) resolveContextSpec(ctx context.Context, namespace, name, workspaceDir string, spec *kubetaskv1alpha1.ContextSpec, mountPath string) (string, *dirMount, *gitMount, error) {
 	switch spec.Type {
-	case kubetaskv1alpha1.ContextTypeInline:
-		if spec.Inline == nil {
+	case kubetaskv1alpha1.ContextTypeText:
+		if spec.Text == "" {
 			return "", nil, nil, nil
 		}
-		return spec.Inline.Content, nil, nil, nil
+		return spec.Text, nil, nil, nil
 
 	case kubetaskv1alpha1.ContextTypeConfigMap:
 		if spec.ConfigMap == nil {

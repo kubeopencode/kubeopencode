@@ -460,10 +460,8 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: contextContent,
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: contextContent,
 				},
 			}
 			Expect(k8sClient.Create(ctx, context)).Should(Succeed())
@@ -605,10 +603,8 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: contextContent,
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: contextContent,
 				},
 			}
 			Expect(k8sClient.Create(ctx, context)).Should(Succeed())
@@ -670,10 +666,8 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: agentContextContent,
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: agentContextContent,
 				},
 			}
 			Expect(k8sClient.Create(ctx, agentContext)).Should(Succeed())
@@ -685,10 +679,8 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: taskContextContent,
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: taskContextContent,
 				},
 			}
 			Expect(k8sClient.Create(ctx, taskContext)).Should(Succeed())
@@ -1631,10 +1623,8 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: "content from context 1",
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: "content from context 1",
 				},
 			}
 			Expect(k8sClient.Create(ctx, context1)).Should(Succeed())
@@ -1645,10 +1635,8 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubetaskv1alpha1.ContextSpec{
-					Type: kubetaskv1alpha1.ContextTypeInline,
-					Inline: &kubetaskv1alpha1.InlineContext{
-						Content: "content from context 2",
-					},
+					Type: kubetaskv1alpha1.ContextTypeText,
+					Text: "content from context 2",
 				},
 			}
 			Expect(k8sClient.Create(ctx, context2)).Should(Succeed())

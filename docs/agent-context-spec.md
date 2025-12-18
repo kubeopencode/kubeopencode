@@ -32,13 +32,12 @@ kind: Context
 metadata:
   name: coding-standards
 spec:
-  type: Inline
-  inline:
-    content: |
-      # Coding Standards
-      - Use descriptive variable names
-      - Write unit tests for all functions
-      - Follow Go conventions
+  type: Text
+  text: |
+    # Coding Standards
+    - Use descriptive variable names
+    - Write unit tests for all functions
+    - Follow Go conventions
 ```
 
 ### 2. ConfigMap Key Reference
@@ -169,11 +168,10 @@ kind: Context
 metadata:
   name: coding-standards
 spec:
-  type: Inline
-  inline:
-    content: |
-      # Coding Standards
-      Follow Go conventions.
+  type: Text
+  text: |
+    # Coding Standards
+    Follow Go conventions.
 ---
 # Task referencing the Context
 apiVersion: kubetask.io/v1alpha1

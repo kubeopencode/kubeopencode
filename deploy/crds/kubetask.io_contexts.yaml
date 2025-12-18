@@ -127,25 +127,21 @@ spec:
                 required:
                 - repository
                 type: object
-              inline:
-                description: Inline context (required when Type == "Inline")
-                properties:
-                  content:
-                    description: Content is the inline content to mount as a file.
-                    type: string
-                required:
-                - content
-                type: object
               runtime:
                 description: |-
                   Runtime context (optional when Type == "Runtime")
                   Enables KubeTask platform awareness. The controller injects a system prompt
                   that explains the runtime environment to the agent.
                 type: object
+              text:
+                description: |-
+                  Text is the text content (required when Type == "Text").
+                  Contains text content defined directly in YAML.
+                type: string
               type:
-                description: 'Type of context source: Inline, ConfigMap, Git, or Runtime'
+                description: 'Type of context source: Text, ConfigMap, Git, or Runtime'
                 enum:
-                - Inline
+                - Text
                 - ConfigMap
                 - Git
                 - Runtime

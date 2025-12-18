@@ -9,12 +9,14 @@ import (
 )
 
 // ContextType defines the type of context source
-// +kubebuilder:validation:Enum=Inline;ConfigMap;Git;Runtime
+// +kubebuilder:validation:Enum=Text;ConfigMap;Git;Runtime
 type ContextType string
 
 const (
-	// ContextTypeInline represents inline content
-	ContextTypeInline ContextType = "Inline"
+	// ContextTypeText represents text content defined directly in YAML.
+	// Previously named "Inline", renamed to "Text" to avoid confusion with
+	// ContextSource.Inline (which means "embedded definition" vs "ref").
+	ContextTypeText ContextType = "Text"
 
 	// ContextTypeConfigMap represents content from a ConfigMap
 	ContextTypeConfigMap ContextType = "ConfigMap"
@@ -27,13 +29,6 @@ const (
 	// the runtime environment to the agent.
 	ContextTypeRuntime ContextType = "Runtime"
 )
-
-// InlineContext provides content directly in the YAML.
-type InlineContext struct {
-	// Content is the inline content to mount as a file.
-	// +required
-	Content string `json:"content"`
-}
 
 // ConfigMapContext references a ConfigMap for context content.
 type ConfigMapContext struct {
@@ -196,7 +191,7 @@ type ContextRef struct {
 // ContextItem defines inline context with content and mount path.
 // This is the inline version of Context CRD, used directly in Task/Agent specs.
 type ContextItem struct {
-	// Type of context source: Inline, ConfigMap, Git, or Runtime
+	// Type of context source: Text, ConfigMap, Git, or Runtime
 	// +required
 	Type ContextType `json:"type"`
 
@@ -213,9 +208,10 @@ type ContextItem struct {
 	// +optional
 	MountPath string `json:"mountPath,omitempty"`
 
-	// Inline context (required when Type == "Inline")
+	// Text is the text content (required when Type == "Text").
+	// Contains text content defined directly in YAML.
 	// +optional
-	Inline *InlineContext `json:"inline,omitempty"`
+	Text string `json:"text,omitempty"`
 
 	// ConfigMap context (required when Type == "ConfigMap")
 	// +optional
@@ -875,13 +871,14 @@ type Context struct {
 // Context uses the same simplified structure as ContextItem but without mountPath,
 // since the mount path is specified by the referencing Task/Agent via ContextMount.
 type ContextSpec struct {
-	// Type of context source: Inline, ConfigMap, Git, or Runtime
+	// Type of context source: Text, ConfigMap, Git, or Runtime
 	// +required
 	Type ContextType `json:"type"`
 
-	// Inline context (required when Type == "Inline")
+	// Text is the text content (required when Type == "Text").
+	// Contains text content defined directly in YAML.
 	// +optional
-	Inline *InlineContext `json:"inline,omitempty"`
+	Text string `json:"text,omitempty"`
 
 	// ConfigMap context (required when Type == "ConfigMap")
 	// +optional
