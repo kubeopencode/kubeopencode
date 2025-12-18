@@ -9,8 +9,8 @@ bin/
 cover.out
 
 # Built binaries
-controller
-git-init
+/controller
+/git-init
 
 # Helm
 dist/
