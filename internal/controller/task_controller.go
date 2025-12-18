@@ -592,8 +592,11 @@ func (r *TaskReconciler) resolveContextRef(ctx context.Context, ref *kubetaskv1a
 		return nil, nil, nil, fmt.Errorf("context %q not found in namespace %q: %w", ref.Name, namespace, err)
 	}
 
+	// Resolve mountPath: relative paths are prefixed with workspaceDir
+	resolvedPath := resolveMountPath(ref.MountPath, workspaceDir)
+
 	// Resolve content based on context type
-	content, dm, gm, err := r.resolveContextSpec(ctx, namespace, ref.Name, workspaceDir, &contextCR.Spec, ref.MountPath)
+	content, dm, gm, err := r.resolveContextSpec(ctx, namespace, ref.Name, workspaceDir, &contextCR.Spec, resolvedPath)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -611,7 +614,7 @@ func (r *TaskReconciler) resolveContextRef(ctx context.Context, ref *kubetaskv1a
 		namespace: namespace,
 		ctxType:   string(contextCR.Spec.Type),
 		content:   content,
-		mountPath: ref.MountPath,
+		mountPath: resolvedPath,
 	}, nil, nil, nil
 }
 
@@ -628,8 +631,11 @@ func (r *TaskReconciler) resolveContextItem(ctx context.Context, item *kubetaskv
 	// Use a generated name for inline contexts
 	name := "inline"
 
+	// Resolve mountPath: relative paths are prefixed with workspaceDir
+	resolvedPath := resolveMountPath(item.MountPath, workspaceDir)
+
 	// Resolve content based on context type
-	content, dm, gm, err := r.resolveContextSpec(ctx, defaultNS, name, workspaceDir, spec, item.MountPath)
+	content, dm, gm, err := r.resolveContextSpec(ctx, defaultNS, name, workspaceDir, spec, resolvedPath)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -647,8 +653,22 @@ func (r *TaskReconciler) resolveContextItem(ctx context.Context, item *kubetaskv
 		namespace: defaultNS,
 		ctxType:   string(item.Type),
 		content:   content,
-		mountPath: item.MountPath,
+		mountPath: resolvedPath,
 	}, nil, nil, nil
+}
+
+// resolveMountPath converts relative paths to absolute paths based on workspaceDir.
+// Paths starting with "/" are treated as absolute and returned as-is.
+// Paths NOT starting with "/" are treated as relative and prefixed with workspaceDir.
+// This follows Tekton conventions for workspace path resolution.
+func resolveMountPath(mountPath, workspaceDir string) string {
+	if mountPath == "" {
+		return ""
+	}
+	if strings.HasPrefix(mountPath, "/") {
+		return mountPath
+	}
+	return workspaceDir + "/" + mountPath
 }
 
 // resolveContextSpec resolves content from a ContextSpec (used by Context CRD)

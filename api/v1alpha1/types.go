@@ -108,8 +108,15 @@ type ContextMount struct {
 	Namespace string `json:"namespace,omitempty"`
 
 	// MountPath specifies where this context should be mounted in the agent pod.
-	// If specified, the context content is written to this file path.
-	// Example: "${WORKSPACE_DIR}/guides/coding-standards.md"
+	//
+	// Path resolution follows Tekton conventions:
+	// - Absolute paths (starting with "/") are used as-is
+	// - Relative paths (NOT starting with "/") are prefixed with the agent's workspaceDir
+	//
+	// Examples:
+	// - "/etc/config/app.conf" -> mounts at /etc/config/app.conf (absolute)
+	// - "guides/readme.md" -> mounts at ${workspaceDir}/guides/readme.md (relative)
+	// - "task-context.md" -> mounts at ${workspaceDir}/task-context.md (relative)
 	//
 	// If NOT specified (empty), the context content is appended to ${WORKSPACE_DIR}/task.md
 	// (where WORKSPACE_DIR is configured in Agent.spec.workspaceDir, defaulting to "/workspace")
@@ -153,8 +160,14 @@ type ContextRef struct {
 	Namespace string `json:"namespace,omitempty"`
 
 	// MountPath specifies where this context should be mounted in the agent pod.
-	// If specified, the context content is written to this file path.
-	// Example: "${WORKSPACE_DIR}/guides/coding-standards.md"
+	//
+	// Path resolution follows Tekton conventions:
+	// - Absolute paths (starting with "/") are used as-is
+	// - Relative paths (NOT starting with "/") are prefixed with the agent's workspaceDir
+	//
+	// Examples:
+	// - "/etc/config/app.conf" -> mounts at /etc/config/app.conf (absolute)
+	// - "guides/readme.md" -> mounts at ${workspaceDir}/guides/readme.md (relative)
 	//
 	// If NOT specified (empty), the context content is appended to ${WORKSPACE_DIR}/task.md
 	// in a structured XML format.
@@ -170,7 +183,12 @@ type ContextItem struct {
 	Type ContextType `json:"type"`
 
 	// MountPath specifies where this context should be mounted in the agent pod.
-	// Same semantics as ContextRef.MountPath.
+	//
+	// Path resolution follows Tekton conventions:
+	// - Absolute paths (starting with "/") are used as-is
+	// - Relative paths (NOT starting with "/") are prefixed with the agent's workspaceDir
+	//
+	// See ContextRef.MountPath for detailed examples.
 	// +optional
 	MountPath string `json:"mountPath,omitempty"`
 

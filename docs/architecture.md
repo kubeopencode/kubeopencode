@@ -1148,6 +1148,24 @@ When a Task references an Agent, contexts are merged with the following priority
 2. **Task.contexts** (array order)
 3. **Task.description** (highest priority, becomes start of /workspace/task.md)
 
+**MountPath Path Resolution:**
+
+Path resolution follows [Tekton Workspaces](https://tekton.dev/docs/pipelines/workspaces/) conventions:
+
+- **Absolute paths** (starting with `/`) are used as-is: `/etc/config/app.conf` → mounts at `/etc/config/app.conf`
+- **Relative paths** (NOT starting with `/`) are prefixed with the agent's workspaceDir: `guides/readme.md` → mounts at `${workspaceDir}/guides/readme.md`
+
+Examples:
+```yaml
+contexts:
+  - ref:
+      name: coding-standards
+      mountPath: /etc/custom-config  # Absolute path - used as-is
+  - ref:
+      name: dev-guide
+      mountPath: guides/readme.md     # Relative path - becomes ${workspaceDir}/guides/readme.md
+```
+
 **Empty MountPath Behavior:**
 
 When `mountPath` is empty (in either `ContextRef` or `ContextItem`), the context content is appended to `/workspace/task.md` with XML tags:

@@ -1473,3 +1473,73 @@ func TestBuildJob_WithHumanInTheLoop_CustomCommand(t *testing.T) {
 		t.Errorf("Sidecar port = %d, want 8080", sidecar.Ports[0].ContainerPort)
 	}
 }
+
+// TestResolveMountPath tests the Tekton-style path resolution for mountPath.
+// Paths starting with "/" are absolute, paths without "/" prefix are relative
+// and get prefixed with workspaceDir.
+func TestResolveMountPath(t *testing.T) {
+	tests := []struct {
+		name         string
+		mountPath    string
+		workspaceDir string
+		want         string
+	}{
+		{
+			name:         "empty path returns empty",
+			mountPath:    "",
+			workspaceDir: "/workspace",
+			want:         "",
+		},
+		{
+			name:         "absolute path unchanged",
+			mountPath:    "/etc/config/app.conf",
+			workspaceDir: "/workspace",
+			want:         "/etc/config/app.conf",
+		},
+		{
+			name:         "absolute path with workspace prefix unchanged",
+			mountPath:    "/workspace/task.md",
+			workspaceDir: "/workspace",
+			want:         "/workspace/task.md",
+		},
+		{
+			name:         "relative path gets prefixed",
+			mountPath:    "guides/readme.md",
+			workspaceDir: "/workspace",
+			want:         "/workspace/guides/readme.md",
+		},
+		{
+			name:         "simple filename gets prefixed",
+			mountPath:    "task-context.md",
+			workspaceDir: "/workspace",
+			want:         "/workspace/task-context.md",
+		},
+		{
+			name:         "dot-slash relative path gets prefixed",
+			mountPath:    "./guides/readme.md",
+			workspaceDir: "/workspace",
+			want:         "/workspace/./guides/readme.md",
+		},
+		{
+			name:         "relative path with custom workspaceDir",
+			mountPath:    "config/settings.yaml",
+			workspaceDir: "/home/agent",
+			want:         "/home/agent/config/settings.yaml",
+		},
+		{
+			name:         "deeply nested relative path",
+			mountPath:    "a/b/c/d/file.txt",
+			workspaceDir: "/workspace",
+			want:         "/workspace/a/b/c/d/file.txt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveMountPath(tt.mountPath, tt.workspaceDir)
+			if got != tt.want {
+				t.Errorf("resolveMountPath(%q, %q) = %q, want %q", tt.mountPath, tt.workspaceDir, got, tt.want)
+			}
+		})
+	}
+}

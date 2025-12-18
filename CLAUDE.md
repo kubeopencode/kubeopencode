@@ -59,6 +59,9 @@ Tasks use the **Context CRD** to reference reusable context resources:
 **ContextMount** is used in Task/Agent to reference Context CRDs:
 - `name`: Name of the Context CRD
 - `mountPath`: Where to mount (empty = append to task.md with XML tags)
+  - Path resolution follows Tekton conventions:
+    - Absolute paths (`/etc/config`) are used as-is
+    - Relative paths (`guides/readme.md`) are prefixed with workspaceDir
 
 **Future**: MCP contexts (extensible design)
 
