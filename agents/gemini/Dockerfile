@@ -17,6 +17,10 @@ USER root
 RUN npm install -g @google/gemini-cli
 USER agent
 
+# Pre-configure Gemini CLI settings (enable preview features)
+RUN mkdir -p ~/.gemini && \
+    echo '{"general.previewFeatures": true}' > ~/.gemini/settings.json
+
 # Recommended command for Agent configuration:
 # command: ["sh", "-c", "gemini --output-format stream-json --yolo -p \"$(cat ${WORKSPACE_DIR}/task.md)\""]
 #
