@@ -841,14 +841,14 @@ var _ = Describe("TaskController", func() {
 		})
 	})
 
-	Context("When creating a Task with humanInTheLoop enabled", func() {
-		It("Should wrap command with sleep for keep-alive", func() {
+	Context("When creating a Task with humanInTheLoop enabled on Agent", func() {
+		It("Should create a sidecar container for keep-alive", func() {
 			taskName := "test-task-hitl"
 			agentName := "test-agent-hitl"
 			description := "# Human-in-the-loop test"
 			keepAlive := metav1.Duration{Duration: 30 * time.Minute} // 30 minutes
 
-			By("Creating Agent with command")
+			By("Creating Agent with command and humanInTheLoop enabled")
 			agent := &kubetaskv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -858,11 +858,15 @@ var _ = Describe("TaskController", func() {
 					ServiceAccountName: "test-agent",
 					WorkspaceDir:       "/workspace",
 					Command:            []string{"sh", "-c", "echo hello"},
+					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+						Enabled:   true,
+						KeepAlive: &keepAlive,
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Creating Task with humanInTheLoop enabled")
+			By("Creating Task referencing the Agent")
 			task := &kubetaskv1alpha1.Task{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      taskName,
@@ -871,15 +875,11 @@ var _ = Describe("TaskController", func() {
 				Spec: kubetaskv1alpha1.TaskSpec{
 					AgentRef:    agentName,
 					Description: &description,
-					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-						Enabled:   true,
-						KeepAlive: &keepAlive,
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
-			By("Checking Job command is wrapped with sleep")
+			By("Checking Job has two containers (agent + sidecar)")
 			jobName := fmt.Sprintf("%s-job", taskName)
 			jobLookupKey := types.NamespacedName{Name: jobName, Namespace: taskNamespace}
 			createdJob := &batchv1.Job{}
@@ -887,22 +887,25 @@ var _ = Describe("TaskController", func() {
 				if err := k8sClient.Get(ctx, jobLookupKey, createdJob); err != nil {
 					return false
 				}
-				return len(createdJob.Spec.Template.Spec.Containers) > 0
+				return len(createdJob.Spec.Template.Spec.Containers) == 2
 			}, timeout, interval).Should(BeTrue())
 
-			// Command should be wrapped: sh -c 'original_command; EXIT_CODE=$?; ... sleep N; exit $EXIT_CODE'
-			container := createdJob.Spec.Template.Spec.Containers[0]
-			Expect(container.Command).Should(HaveLen(3))
-			Expect(container.Command[0]).Should(Equal("sh"))
-			Expect(container.Command[1]).Should(Equal("-c"))
-			// The inner script is extracted and wrapped in a subshell ( ) to isolate exit/exec
-			Expect(container.Command[2]).Should(ContainSubstring("( echo hello )"))
-			Expect(container.Command[2]).Should(ContainSubstring("sleep 1800"))
-			Expect(container.Command[2]).Should(ContainSubstring("Human-in-the-loop"))
+			// Agent container should have original command (not wrapped)
+			agentContainer := createdJob.Spec.Template.Spec.Containers[0]
+			Expect(agentContainer.Name).Should(Equal("agent"))
+			Expect(agentContainer.Command).Should(HaveLen(3))
+			Expect(agentContainer.Command[2]).Should(Equal("echo hello"))
 
-			By("Checking keep-alive environment variable is set")
+			// Sidecar container should have sleep command
+			sidecarContainer := createdJob.Spec.Template.Spec.Containers[1]
+			Expect(sidecarContainer.Name).Should(Equal("keep-alive"))
+			Expect(sidecarContainer.Command).Should(HaveLen(2))
+			Expect(sidecarContainer.Command[0]).Should(Equal("sleep"))
+			Expect(sidecarContainer.Command[1]).Should(Equal("1800")) // 30 minutes
+
+			By("Checking keep-alive environment variable is set on agent container")
 			var keepAliveEnv *corev1.EnvVar
-			for _, env := range container.Env {
+			for _, env := range agentContainer.Env {
 				if env.Name == EnvHumanInTheLoopKeepAlive {
 					keepAliveEnv = &env
 					break
@@ -921,7 +924,7 @@ var _ = Describe("TaskController", func() {
 			agentName := "test-agent-hitl-default"
 			description := "# Human-in-the-loop default test"
 
-			By("Creating Agent with command")
+			By("Creating Agent with humanInTheLoop but no keepAlive")
 			agent := &kubetaskv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -931,11 +934,15 @@ var _ = Describe("TaskController", func() {
 					ServiceAccountName: "test-agent",
 					WorkspaceDir:       "/workspace",
 					Command:            []string{"./run.sh"},
+					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+						Enabled: true,
+						// KeepAlive not specified, should use default (1 hour)
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Creating Task with humanInTheLoop enabled but no keepAlive")
+			By("Creating Task referencing the Agent")
 			task := &kubetaskv1alpha1.Task{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      taskName,
@@ -944,14 +951,11 @@ var _ = Describe("TaskController", func() {
 				Spec: kubetaskv1alpha1.TaskSpec{
 					AgentRef:    agentName,
 					Description: &description,
-					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-						Enabled: true,
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
-			By("Checking Job uses default keep-alive (3600 seconds)")
+			By("Checking sidecar uses default keep-alive (3600 seconds)")
 			jobName := fmt.Sprintf("%s-job", taskName)
 			jobLookupKey := types.NamespacedName{Name: jobName, Namespace: taskNamespace}
 			createdJob := &batchv1.Job{}
@@ -959,11 +963,11 @@ var _ = Describe("TaskController", func() {
 				if err := k8sClient.Get(ctx, jobLookupKey, createdJob); err != nil {
 					return false
 				}
-				return len(createdJob.Spec.Template.Spec.Containers) > 0
+				return len(createdJob.Spec.Template.Spec.Containers) == 2
 			}, timeout, interval).Should(BeTrue())
 
-			container := createdJob.Spec.Template.Spec.Containers[0]
-			Expect(container.Command[2]).Should(ContainSubstring("sleep 3600"))
+			sidecarContainer := createdJob.Spec.Template.Spec.Containers[1]
+			Expect(sidecarContainer.Command[1]).Should(Equal("3600"))
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())

@@ -462,7 +462,8 @@ func TestBuildJob_WithEntireSecretAsDirectory(t *testing.T) {
 	}
 }
 
-func TestBuildJob_WithHumanInTheLoop(t *testing.T) {
+func TestBuildJob_WithHumanInTheLoop_Sidecar(t *testing.T) {
+	// Test that humanInTheLoop creates a sidecar container instead of wrapping command
 	keepAlive := metav1.Duration{Duration: 30 * time.Minute}
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
@@ -470,12 +471,7 @@ func TestBuildJob_WithHumanInTheLoop(t *testing.T) {
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubetaskv1alpha1.TaskSpec{
-			HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-				Enabled:   true,
-				KeepAlive: &keepAlive,
-			},
-		},
+		Spec: kubetaskv1alpha1.TaskSpec{},
 	}
 	task.APIVersion = "kubetask.io/v1alpha1"
 	task.Kind = "Task"
@@ -485,40 +481,69 @@ func TestBuildJob_WithHumanInTheLoop(t *testing.T) {
 		workspaceDir:       "/workspace",
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "echo hello"},
+		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+			Enabled:   true,
+			KeepAlive: &keepAlive,
+		},
 	}
 
 	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
 
-	container := job.Spec.Template.Spec.Containers[0]
-
-	// Verify command is wrapped
-	if len(container.Command) != 3 {
-		t.Fatalf("len(Command) = %d, want 3", len(container.Command))
-	}
-	if container.Command[0] != "sh" {
-		t.Errorf("Command[0] = %q, want %q", container.Command[0], "sh")
-	}
-	if container.Command[1] != "-c" {
-		t.Errorf("Command[1] = %q, want %q", container.Command[1], "-c")
+	// Verify there are 2 containers: agent and keep-alive sidecar
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("len(Containers) = %d, want 2 (agent + sidecar)", len(containers))
 	}
 
-	// Verify wrapped script contains sleep
-	script := container.Command[2]
-	if !contains(script, "sleep 1800") {
-		t.Errorf("Command script should contain 'sleep 1800', got: %s", script)
+	// Verify agent container command is NOT wrapped (uses original command)
+	agentContainer := containers[0]
+	if agentContainer.Name != "agent" {
+		t.Errorf("Containers[0].Name = %q, want %q", agentContainer.Name, "agent")
 	}
-	if !contains(script, "Human-in-the-loop") {
-		t.Errorf("Command script should contain 'Human-in-the-loop', got: %s", script)
+	if len(agentContainer.Command) != 3 {
+		t.Fatalf("len(agent Command) = %d, want 3", len(agentContainer.Command))
 	}
-	// Since the original command is already "sh -c <script>", we extract the inner script
-	// and wrap it in a subshell ( ) to isolate exit/exec commands
-	if !contains(script, "( echo hello )") {
-		t.Errorf("Command script should contain inner script in subshell '( echo hello )', got: %s", script)
+	if agentContainer.Command[2] != "echo hello" {
+		t.Errorf("Agent command should be original 'echo hello', got: %s", agentContainer.Command[2])
 	}
 
-	// Verify keep-alive env var
+	// Verify sidecar container
+	sidecar := containers[1]
+	if sidecar.Name != "keep-alive" {
+		t.Errorf("Containers[1].Name = %q, want %q", sidecar.Name, "keep-alive")
+	}
+	if sidecar.Image != "test-agent:v1.0.0" {
+		t.Errorf("Sidecar image = %q, want %q (same as agent)", sidecar.Image, "test-agent:v1.0.0")
+	}
+	// Verify sidecar has the same ImagePullPolicy as agent
+	if sidecar.ImagePullPolicy != agentContainer.ImagePullPolicy {
+		t.Errorf("Sidecar ImagePullPolicy = %q, agent ImagePullPolicy = %q, should be equal",
+			sidecar.ImagePullPolicy, agentContainer.ImagePullPolicy)
+	}
+	// Verify sidecar command is sleep with correct duration
+	if len(sidecar.Command) != 2 {
+		t.Fatalf("len(sidecar Command) = %d, want 2", len(sidecar.Command))
+	}
+	if sidecar.Command[0] != "sleep" {
+		t.Errorf("Sidecar Command[0] = %q, want %q", sidecar.Command[0], "sleep")
+	}
+	if sidecar.Command[1] != "1800" {
+		t.Errorf("Sidecar Command[1] = %q, want %q (30 minutes)", sidecar.Command[1], "1800")
+	}
+
+	// Verify sidecar shares the same working directory
+	if sidecar.WorkingDir != "/workspace" {
+		t.Errorf("Sidecar WorkingDir = %q, want %q", sidecar.WorkingDir, "/workspace")
+	}
+
+	// Verify sidecar has the same volume mounts as agent
+	if len(sidecar.VolumeMounts) != len(agentContainer.VolumeMounts) {
+		t.Errorf("Sidecar should have same number of volume mounts as agent")
+	}
+
+	// Verify keep-alive env var in agent container
 	var foundKeepAliveEnv bool
-	for _, env := range container.Env {
+	for _, env := range agentContainer.Env {
 		if env.Name == EnvHumanInTheLoopKeepAlive {
 			foundKeepAliveEnv = true
 			if env.Value != "1800" {
@@ -527,12 +552,12 @@ func TestBuildJob_WithHumanInTheLoop(t *testing.T) {
 		}
 	}
 	if !foundKeepAliveEnv {
-		t.Errorf("KUBETASK_KEEP_ALIVE_SECONDS env not found")
+		t.Errorf("KUBETASK_KEEP_ALIVE_SECONDS env not found in agent container")
 	}
 }
 
-func TestBuildJob_WithHumanInTheLoop_NonShCCommand(t *testing.T) {
-	// Test that non "sh -c" commands are handled correctly using $@ approach
+func TestBuildJob_WithHumanInTheLoop_CustomImage(t *testing.T) {
+	// Test that custom image can be specified for the sidecar
 	keepAlive := metav1.Duration{Duration: 30 * time.Minute}
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
@@ -540,60 +565,44 @@ func TestBuildJob_WithHumanInTheLoop_NonShCCommand(t *testing.T) {
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubetaskv1alpha1.TaskSpec{
-			HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-				Enabled:   true,
-				KeepAlive: &keepAlive,
-			},
-		},
+		Spec: kubetaskv1alpha1.TaskSpec{},
 	}
 	task.APIVersion = "kubetask.io/v1alpha1"
 	task.Kind = "Task"
 
-	// Non sh-c command with arguments that contain special characters
 	cfg := agentConfig{
 		agentImage:         "test-agent:v1.0.0",
 		workspaceDir:       "/workspace",
 		serviceAccountName: "test-sa",
 		command:            []string{"python", "-c", "print('hello; world')"},
+		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+			Enabled:   true,
+			KeepAlive: &keepAlive,
+			Image:     "busybox:stable", // Custom lightweight image
+		},
 	}
 
 	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
 
-	container := job.Spec.Template.Spec.Containers[0]
+	// Verify there are 2 containers
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("len(Containers) = %d, want 2", len(containers))
+	}
 
-	// Verify command uses $@ approach for non sh-c commands
-	// Format: ["sh", "-c", '"$@"; EXIT_CODE=$?; ...', "--", "python", "-c", "print('hello; world')"]
-	if len(container.Command) != 7 {
-		t.Fatalf("len(Command) = %d, want 7, got: %v", len(container.Command), container.Command)
+	// Verify agent container uses original command unmodified
+	agentContainer := containers[0]
+	if len(agentContainer.Command) != 3 {
+		t.Fatalf("len(agent Command) = %d, want 3, got: %v", len(agentContainer.Command), agentContainer.Command)
 	}
-	if container.Command[0] != "sh" {
-		t.Errorf("Command[0] = %q, want %q", container.Command[0], "sh")
+	if agentContainer.Command[0] != "python" {
+		t.Errorf("Agent Command[0] = %q, want %q", agentContainer.Command[0], "python")
 	}
-	if container.Command[1] != "-c" {
-		t.Errorf("Command[1] = %q, want %q", container.Command[1], "-c")
-	}
-	// Command[2] is the wrapper script
-	script := container.Command[2]
-	if !contains(script, `"$@"`) {
-		t.Errorf("Command script should use $@ for argument passing, got: %s", script)
-	}
-	if !contains(script, "sleep 1800") {
-		t.Errorf("Command script should contain 'sleep 1800', got: %s", script)
-	}
-	// Command[3] should be "--" separator
-	if container.Command[3] != "--" {
-		t.Errorf("Command[3] = %q, want %q", container.Command[3], "--")
-	}
-	// Command[4:] should be the original command
-	if container.Command[4] != "python" {
-		t.Errorf("Command[4] = %q, want %q", container.Command[4], "python")
-	}
-	if container.Command[5] != "-c" {
-		t.Errorf("Command[5] = %q, want %q", container.Command[5], "-c")
-	}
-	if container.Command[6] != "print('hello; world')" {
-		t.Errorf("Command[6] = %q, want %q", container.Command[6], "print('hello; world')")
+
+	// Verify sidecar uses custom image
+	sidecar := containers[1]
+	if sidecar.Image != "busybox:stable" {
+		t.Errorf("Sidecar image = %q, want %q", sidecar.Image, "busybox:stable")
 	}
 }
 
@@ -1007,6 +1016,7 @@ func TestBuildGitSyncInitContainer(t *testing.T) {
 }
 
 func TestBuildJob_WithHumanInTheLoop_Ports(t *testing.T) {
+	// Test that ports are applied to the sidecar container, not the agent
 	keepAlive := metav1.Duration{Duration: 30 * time.Minute}
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1014,24 +1024,7 @@ func TestBuildJob_WithHumanInTheLoop_Ports(t *testing.T) {
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubetaskv1alpha1.TaskSpec{
-			HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-				Enabled:   true,
-				KeepAlive: &keepAlive,
-				Ports: []kubetaskv1alpha1.ContainerPort{
-					{
-						Name:          "dev-server",
-						ContainerPort: 3000,
-						Protocol:      corev1.ProtocolTCP,
-					},
-					{
-						Name:          "api",
-						ContainerPort: 8080,
-						// Protocol not specified, should default to TCP
-					},
-				},
-			},
-		},
+		Spec: kubetaskv1alpha1.TaskSpec{},
 	}
 	task.APIVersion = "kubetask.io/v1alpha1"
 	task.Kind = "Task"
@@ -1041,60 +1034,75 @@ func TestBuildJob_WithHumanInTheLoop_Ports(t *testing.T) {
 		workspaceDir:       "/workspace",
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "npm run dev"},
+		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+			Enabled:   true,
+			KeepAlive: &keepAlive,
+			Ports: []kubetaskv1alpha1.ContainerPort{
+				{
+					Name:          "dev-server",
+					ContainerPort: 3000,
+					Protocol:      corev1.ProtocolTCP,
+				},
+				{
+					Name:          "api",
+					ContainerPort: 8080,
+					// Protocol not specified, should default to TCP
+				},
+			},
+		},
 	}
 
 	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
 
-	container := job.Spec.Template.Spec.Containers[0]
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("len(Containers) = %d, want 2", len(containers))
+	}
 
-	// Verify container ports are set
-	if len(container.Ports) != 2 {
-		t.Fatalf("len(container.Ports) = %d, want 2", len(container.Ports))
+	// Verify agent container has no ports
+	agentContainer := containers[0]
+	if len(agentContainer.Ports) != 0 {
+		t.Errorf("Agent container should have no ports, got %d", len(agentContainer.Ports))
+	}
+
+	// Verify sidecar container has the ports
+	sidecar := containers[1]
+	if len(sidecar.Ports) != 2 {
+		t.Fatalf("len(sidecar.Ports) = %d, want 2", len(sidecar.Ports))
 	}
 
 	// Verify first port
-	if container.Ports[0].Name != "dev-server" {
-		t.Errorf("Ports[0].Name = %q, want %q", container.Ports[0].Name, "dev-server")
+	if sidecar.Ports[0].Name != "dev-server" {
+		t.Errorf("Ports[0].Name = %q, want %q", sidecar.Ports[0].Name, "dev-server")
 	}
-	if container.Ports[0].ContainerPort != 3000 {
-		t.Errorf("Ports[0].ContainerPort = %d, want %d", container.Ports[0].ContainerPort, 3000)
+	if sidecar.Ports[0].ContainerPort != 3000 {
+		t.Errorf("Ports[0].ContainerPort = %d, want %d", sidecar.Ports[0].ContainerPort, 3000)
 	}
-	if container.Ports[0].Protocol != corev1.ProtocolTCP {
-		t.Errorf("Ports[0].Protocol = %q, want %q", container.Ports[0].Protocol, corev1.ProtocolTCP)
+	if sidecar.Ports[0].Protocol != corev1.ProtocolTCP {
+		t.Errorf("Ports[0].Protocol = %q, want %q", sidecar.Ports[0].Protocol, corev1.ProtocolTCP)
 	}
 
 	// Verify second port (with default protocol)
-	if container.Ports[1].Name != "api" {
-		t.Errorf("Ports[1].Name = %q, want %q", container.Ports[1].Name, "api")
+	if sidecar.Ports[1].Name != "api" {
+		t.Errorf("Ports[1].Name = %q, want %q", sidecar.Ports[1].Name, "api")
 	}
-	if container.Ports[1].ContainerPort != 8080 {
-		t.Errorf("Ports[1].ContainerPort = %d, want %d", container.Ports[1].ContainerPort, 8080)
+	if sidecar.Ports[1].ContainerPort != 8080 {
+		t.Errorf("Ports[1].ContainerPort = %d, want %d", sidecar.Ports[1].ContainerPort, 8080)
 	}
-	if container.Ports[1].Protocol != corev1.ProtocolTCP {
-		t.Errorf("Ports[1].Protocol = %q, want %q (default)", container.Ports[1].Protocol, corev1.ProtocolTCP)
+	if sidecar.Ports[1].Protocol != corev1.ProtocolTCP {
+		t.Errorf("Ports[1].Protocol = %q, want %q (default)", sidecar.Ports[1].Protocol, corev1.ProtocolTCP)
 	}
 }
 
-func TestBuildJob_WithHumanInTheLoop_PortsDisabled(t *testing.T) {
-	// Test that ports can be specified even when humanInTheLoop.enabled is false
-	// (ports are still useful for the container, just not the keep-alive behavior)
+func TestBuildJob_WithHumanInTheLoop_Disabled(t *testing.T) {
+	// Test that when humanInTheLoop is disabled, no sidecar is created
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-task",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubetaskv1alpha1.TaskSpec{
-			HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-				Enabled: false,
-				Ports: []kubetaskv1alpha1.ContainerPort{
-					{
-						Name:          "http",
-						ContainerPort: 80,
-					},
-				},
-			},
-		},
+		Spec: kubetaskv1alpha1.TaskSpec{},
 	}
 	task.APIVersion = "kubetask.io/v1alpha1"
 	task.Kind = "Task"
@@ -1104,40 +1112,41 @@ func TestBuildJob_WithHumanInTheLoop_PortsDisabled(t *testing.T) {
 		workspaceDir:       "/workspace",
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "echo test"},
+		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+			Enabled: false,
+			Ports: []kubetaskv1alpha1.ContainerPort{
+				{
+					Name:          "http",
+					ContainerPort: 80,
+				},
+			},
+		},
 	}
 
 	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
 
-	container := job.Spec.Template.Spec.Containers[0]
+	containers := job.Spec.Template.Spec.Containers
 
-	// Ports should still be applied even when enabled is false
-	if len(container.Ports) != 1 {
-		t.Fatalf("len(container.Ports) = %d, want 1", len(container.Ports))
+	// Only agent container should exist, no sidecar
+	if len(containers) != 1 {
+		t.Fatalf("len(Containers) = %d, want 1 (no sidecar when disabled)", len(containers))
 	}
-	if container.Ports[0].ContainerPort != 80 {
-		t.Errorf("Ports[0].ContainerPort = %d, want %d", container.Ports[0].ContainerPort, 80)
+
+	// Agent container should have no ports (ports only apply to sidecar)
+	if len(containers[0].Ports) != 0 {
+		t.Errorf("Agent container should have no ports when humanInTheLoop is disabled, got %d", len(containers[0].Ports))
 	}
 }
 
 func TestBuildJob_WithHumanInTheLoop_UDPPort(t *testing.T) {
+	// Test that UDP protocol is respected on sidecar ports
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-task",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubetaskv1alpha1.TaskSpec{
-			HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-				Enabled: true,
-				Ports: []kubetaskv1alpha1.ContainerPort{
-					{
-						Name:          "dns",
-						ContainerPort: 53,
-						Protocol:      corev1.ProtocolUDP,
-					},
-				},
-			},
-		},
+		Spec: kubetaskv1alpha1.TaskSpec{},
 	}
 	task.APIVersion = "kubetask.io/v1alpha1"
 	task.Kind = "Task"
@@ -1147,32 +1156,44 @@ func TestBuildJob_WithHumanInTheLoop_UDPPort(t *testing.T) {
 		workspaceDir:       "/workspace",
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "echo test"},
+		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+			Enabled: true,
+			Ports: []kubetaskv1alpha1.ContainerPort{
+				{
+					Name:          "dns",
+					ContainerPort: 53,
+					Protocol:      corev1.ProtocolUDP,
+				},
+			},
+		},
 	}
 
 	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
 
-	container := job.Spec.Template.Spec.Containers[0]
-
-	// Verify UDP protocol is respected
-	if len(container.Ports) != 1 {
-		t.Fatalf("len(container.Ports) = %d, want 1", len(container.Ports))
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("len(Containers) = %d, want 2", len(containers))
 	}
-	if container.Ports[0].Protocol != corev1.ProtocolUDP {
-		t.Errorf("Ports[0].Protocol = %q, want %q", container.Ports[0].Protocol, corev1.ProtocolUDP)
+
+	// Verify UDP protocol is respected on sidecar
+	sidecar := containers[1]
+	if len(sidecar.Ports) != 1 {
+		t.Fatalf("len(sidecar.Ports) = %d, want 1", len(sidecar.Ports))
+	}
+	if sidecar.Ports[0].Protocol != corev1.ProtocolUDP {
+		t.Errorf("Ports[0].Protocol = %q, want %q", sidecar.Ports[0].Protocol, corev1.ProtocolUDP)
 	}
 }
 
 func TestBuildJob_WithHumanInTheLoop_FromAgent(t *testing.T) {
-	// Test that humanInTheLoop from Agent is used when Task doesn't specify it
+	// Test that humanInTheLoop from Agent creates sidecar with correct configuration
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-task",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubetaskv1alpha1.TaskSpec{
-			// No humanInTheLoop specified in Task
-		},
+		Spec: kubetaskv1alpha1.TaskSpec{},
 	}
 	task.APIVersion = "kubetask.io/v1alpha1"
 	task.Kind = "Task"
@@ -1197,147 +1218,193 @@ func TestBuildJob_WithHumanInTheLoop_FromAgent(t *testing.T) {
 
 	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
 
-	container := job.Spec.Template.Spec.Containers[0]
-
-	// Verify command is wrapped with sleep (from Agent's humanInTheLoop)
-	script := container.Command[2]
-	if !contains(script, "sleep 7200") {
-		t.Errorf("Command script should contain 'sleep 7200' (2 hours from Agent), got: %s", script)
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("len(Containers) = %d, want 2", len(containers))
 	}
 
-	// Verify ports from Agent's humanInTheLoop are applied
-	if len(container.Ports) != 1 {
-		t.Fatalf("len(container.Ports) = %d, want 1", len(container.Ports))
+	// Verify sidecar has correct sleep duration (2 hours = 7200 seconds)
+	sidecar := containers[1]
+	if sidecar.Command[1] != "7200" {
+		t.Errorf("Sidecar Command[1] = %q, want %q (2 hours)", sidecar.Command[1], "7200")
 	}
-	if container.Ports[0].Name != "agent-port" {
-		t.Errorf("Ports[0].Name = %q, want %q", container.Ports[0].Name, "agent-port")
+
+	// Verify ports from Agent's humanInTheLoop are applied to sidecar
+	if len(sidecar.Ports) != 1 {
+		t.Fatalf("len(sidecar.Ports) = %d, want 1", len(sidecar.Ports))
 	}
-	if container.Ports[0].ContainerPort != 9000 {
-		t.Errorf("Ports[0].ContainerPort = %d, want %d", container.Ports[0].ContainerPort, 9000)
+	if sidecar.Ports[0].Name != "agent-port" {
+		t.Errorf("Ports[0].Name = %q, want %q", sidecar.Ports[0].Name, "agent-port")
+	}
+	if sidecar.Ports[0].ContainerPort != 9000 {
+		t.Errorf("Ports[0].ContainerPort = %d, want %d", sidecar.Ports[0].ContainerPort, 9000)
 	}
 }
 
-func TestBuildJob_WithHumanInTheLoop_TaskOverridesAgent(t *testing.T) {
-	// Test that Task's humanInTheLoop overrides Agent's
-	taskKeepAlive := metav1.Duration{Duration: 30 * time.Minute}
+func TestBuildJob_WithHumanInTheLoop_DefaultKeepAlive(t *testing.T) {
+	// Test that default keepAlive (1 hour) is used when not specified
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-task",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubetaskv1alpha1.TaskSpec{
-			HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-				Enabled:   true,
-				KeepAlive: &taskKeepAlive,
-				Ports: []kubetaskv1alpha1.ContainerPort{
-					{
-						Name:          "task-port",
-						ContainerPort: 8000,
-					},
-				},
-			},
-		},
+		Spec: kubetaskv1alpha1.TaskSpec{},
 	}
 	task.APIVersion = "kubetask.io/v1alpha1"
 	task.Kind = "Task"
 
-	agentKeepAlive := metav1.Duration{Duration: 2 * time.Hour}
 	cfg := agentConfig{
 		agentImage:         "test-agent:v1.0.0",
 		workspaceDir:       "/workspace",
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "echo test"},
+		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+			Enabled: true,
+			// KeepAlive not specified, should use default (1 hour)
+		},
+	}
+
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("len(Containers) = %d, want 2", len(containers))
+	}
+
+	// Verify sidecar uses default keepAlive (1 hour = 3600 seconds)
+	sidecar := containers[1]
+	if sidecar.Command[1] != "3600" {
+		t.Errorf("Sidecar Command[1] = %q, want %q (default 1 hour)", sidecar.Command[1], "3600")
+	}
+}
+
+func TestBuildJob_WithHumanInTheLoop_SidecarSharesAllMounts(t *testing.T) {
+	// Test that sidecar container has all the same mounts as agent container
+	// including context ConfigMap, directory mounts, and git mounts
+	keepAlive := metav1.Duration{Duration: 30 * time.Minute}
+	task := &kubetaskv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubetaskv1alpha1.TaskSpec{},
+	}
+	task.APIVersion = "kubetask.io/v1alpha1"
+	task.Kind = "Task"
+
+	envVarName := "GITHUB_TOKEN"
+	secretKey := "token"
+	mountPath := "/home/agent/.ssh/id_rsa"
+	cfg := agentConfig{
+		agentImage:         "test-agent:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		command:            []string{"sh", "-c", "echo hello"},
+		credentials: []kubetaskv1alpha1.Credential{
+			{
+				SecretRef: kubetaskv1alpha1.SecretReference{
+					Name: "github-creds",
+					Key:  &secretKey,
+				},
+				Env: &envVarName,
+			},
+			{
+				SecretRef: kubetaskv1alpha1.SecretReference{
+					Name: "ssh-key",
+					Key:  &secretKey,
+				},
+				MountPath: &mountPath,
+			},
+		},
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
 			Enabled:   true,
-			KeepAlive: &agentKeepAlive,
-			Ports: []kubetaskv1alpha1.ContainerPort{
-				{
-					Name:          "agent-port",
-					ContainerPort: 9000,
-				},
-			},
+			KeepAlive: &keepAlive,
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
-
-	container := job.Spec.Template.Spec.Containers[0]
-
-	// Verify command uses Task's keepAlive (30 minutes = 1800 seconds), not Agent's
-	script := container.Command[2]
-	if !contains(script, "sleep 1800") {
-		t.Errorf("Command script should contain 'sleep 1800' (30m from Task), got: %s", script)
-	}
-	if contains(script, "sleep 7200") {
-		t.Errorf("Command script should NOT contain 'sleep 7200' (Agent's value), got: %s", script)
-	}
-
-	// Verify ports from Task's humanInTheLoop are used, not Agent's
-	if len(container.Ports) != 1 {
-		t.Fatalf("len(container.Ports) = %d, want 1", len(container.Ports))
-	}
-	if container.Ports[0].Name != "task-port" {
-		t.Errorf("Ports[0].Name = %q, want %q (from Task)", container.Ports[0].Name, "task-port")
-	}
-	if container.Ports[0].ContainerPort != 8000 {
-		t.Errorf("Ports[0].ContainerPort = %d, want %d (from Task)", container.Ports[0].ContainerPort, 8000)
-	}
-}
-
-func TestBuildJob_WithHumanInTheLoop_TaskDisablesAgentDefault(t *testing.T) {
-	// Test that Task can disable humanInTheLoop even when Agent has it enabled
-	task := &kubetaskv1alpha1.Task{
+	// Create context ConfigMap with file mounts
+	contextConfigMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
+			Name:      "test-task-context",
 			Namespace: "default",
-			UID:       types.UID("test-uid"),
 		},
-		Spec: kubetaskv1alpha1.TaskSpec{
-			HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-				Enabled: false, // Task explicitly disables
-			},
-		},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	agentKeepAlive := metav1.Duration{Duration: 2 * time.Hour}
-	cfg := agentConfig{
-		agentImage:         "test-agent:v1.0.0",
-		workspaceDir:       "/workspace",
-		serviceAccountName: "test-sa",
-		command:            []string{"sh", "-c", "echo test"},
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled:   true, // Agent has it enabled
-			KeepAlive: &agentKeepAlive,
+		Data: map[string]string{
+			"workspace-task.md": "# Test Task",
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
-
-	container := job.Spec.Template.Spec.Containers[0]
-
-	// Verify command is NOT wrapped (Task disabled humanInTheLoop)
-	if len(container.Command) != 3 {
-		t.Fatalf("len(Command) = %d, want 3 (unwrapped command)", len(container.Command))
+	fileMounts := []fileMount{
+		{filePath: "/workspace/task.md"},
 	}
-	script := container.Command[2]
-	if contains(script, "sleep") {
-		t.Errorf("Command should NOT contain sleep (Task disabled humanInTheLoop), got: %s", script)
+
+	dirMounts := []dirMount{
+		{dirPath: "/workspace/config", configMapName: "my-config", optional: false},
 	}
-}
 
-// contains checks if a string contains a substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
+	gitMounts := []gitMount{
+		{
+			contextName: "my-repo",
+			repository:  "https://github.com/example/repo",
+			ref:         "main",
+			mountPath:   "/workspace/src",
+		},
+	}
 
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
+	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, dirMounts, gitMounts)
+
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("len(Containers) = %d, want 2", len(containers))
+	}
+
+	agentContainer := containers[0]
+	sidecar := containers[1]
+
+	// Verify sidecar has the same number of volume mounts as agent
+	if len(sidecar.VolumeMounts) != len(agentContainer.VolumeMounts) {
+		t.Errorf("Sidecar VolumeMounts count = %d, agent VolumeMounts count = %d, should be equal",
+			len(sidecar.VolumeMounts), len(agentContainer.VolumeMounts))
+	}
+
+	// Verify specific mounts exist on both agent and sidecar
+	agentMountPaths := make(map[string]bool)
+	for _, vm := range agentContainer.VolumeMounts {
+		agentMountPaths[vm.MountPath] = true
+	}
+
+	sidecarMountPaths := make(map[string]bool)
+	for _, vm := range sidecar.VolumeMounts {
+		sidecarMountPaths[vm.MountPath] = true
+	}
+
+	// Verify all expected mounts are present
+	expectedMounts := []string{
+		"/workspace/task.md",      // Context ConfigMap file mount
+		"/workspace/config",       // Directory mount
+		"/workspace/src",          // Git mount
+		"/home/agent/.ssh/id_rsa", // Credential file mount
+	}
+
+	for _, path := range expectedMounts {
+		if !agentMountPaths[path] {
+			t.Errorf("Agent container missing expected mount: %s", path)
+		}
+		if !sidecarMountPaths[path] {
+			t.Errorf("Sidecar container missing expected mount: %s (should have same mounts as agent)", path)
 		}
 	}
-	return false
+
+	// Verify sidecar has the same environment variables as agent
+	if len(sidecar.Env) != len(agentContainer.Env) {
+		t.Errorf("Sidecar Env count = %d, agent Env count = %d, should be equal",
+			len(sidecar.Env), len(agentContainer.Env))
+	}
+
+	// Verify sidecar has the same EnvFrom as agent
+	if len(sidecar.EnvFrom) != len(agentContainer.EnvFrom) {
+		t.Errorf("Sidecar EnvFrom count = %d, agent EnvFrom count = %d, should be equal",
+			len(sidecar.EnvFrom), len(agentContainer.EnvFrom))
+	}
 }

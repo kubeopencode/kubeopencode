@@ -191,16 +191,6 @@ type TaskSpec struct {
 	// If not specified, uses the "default" Agent in the same namespace.
 	// +optional
 	AgentRef string `json:"agentRef,omitempty"`
-
-	// HumanInTheLoop configures whether this task requires human participation.
-	// When enabled, the agent container will remain running after task completion,
-	// allowing users to exec into the container for debugging, review, or manual intervention.
-	//
-	// IMPORTANT: When humanInTheLoop is enabled, the Agent MUST also specify the Command field.
-	// The controller wraps the command to add a sleep after completion.
-	// Without Command in the Agent, the controller cannot wrap the entrypoint.
-	// +optional
-	HumanInTheLoop *HumanInTheLoop `json:"humanInTheLoop,omitempty"`
 }
 
 // TaskExecutionStatus defines the observed state of Task
@@ -224,16 +214,6 @@ type TaskExecutionStatus struct {
 	// Completion time
 	// +optional
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
-
-	// EffectiveHumanInTheLoop shows the resolved humanInTheLoop configuration
-	// that is actually being used for this Task. This is the result of merging
-	// Agent.spec.humanInTheLoop and Task.spec.humanInTheLoop, where Task takes
-	// precedence if specified.
-	//
-	// This field helps users understand which humanInTheLoop settings are
-	// actually in effect, especially when the Agent has default settings.
-	// +optional
-	EffectiveHumanInTheLoop *HumanInTheLoop `json:"effectiveHumanInTheLoop,omitempty"`
 
 	// Kubernetes standard conditions
 	// +optional
@@ -599,27 +579,46 @@ type AgentList struct {
 }
 
 // HumanInTheLoop configures human participation requirements for an agent.
-// When enabled, the agent container remains running after task completion,
-// allowing users to kubectl exec into the container for debugging or review.
+// When enabled, a keep-alive sidecar container is added to the Pod, allowing
+// users to kubectl exec into it for debugging, review, or manual intervention
+// after the main agent container completes.
+//
+// The sidecar container shares the same workspace volume and environment
+// variables as the agent container, so users can use the same tools
+// (e.g., gemini, claude CLI) to interact with the workspace.
+//
+// Note: This configuration is only available on Agent, not on Task.
+// Tasks inherit the humanInTheLoop settings from their referenced Agent.
 type HumanInTheLoop struct {
 	// Enabled indicates whether human-in-the-loop mode is active.
-	// When true, the agent container will sleep after task completion
-	// instead of exiting immediately.
+	// When true, a keep-alive sidecar container is added to the Pod.
 	// +required
 	Enabled bool `json:"enabled"`
 
-	// KeepAlive specifies how long the container should remain running
-	// after task completion, allowing time for human interaction.
-	// Users can kubectl exec into the container during this period.
+	// KeepAlive specifies how long the sidecar container should remain running,
+	// allowing time for human interaction.
+	// Users can kubectl exec into the sidecar during this period.
 	// Uses standard Go duration format (e.g., "1h", "30m", "1h30m").
 	// Defaults to "1h" (1 hour) if not specified when enabled is true.
 	// +optional
 	KeepAlive *metav1.Duration `json:"keepAlive,omitempty"`
 
-	// Ports specifies container ports to expose for port-forwarding.
+	// Image specifies the container image for the keep-alive sidecar.
+	// If not specified, defaults to the Agent's agentImage, which allows
+	// users to use the same tools (e.g., gemini, claude) in the sidecar.
+	//
+	// You can specify a lightweight image (e.g., "busybox:stable") to
+	// reduce resource usage, or a custom debug image with additional tools.
+	// +optional
+	Image string `json:"image,omitempty"`
+
+	// Ports specifies container ports to expose on the sidecar for port-forwarding.
 	// These ports can be accessed via `kubectl port-forward` during
 	// the human-in-the-loop session, enabling developers to test
 	// development servers, APIs, or other network services.
+	//
+	// Note: Since the main agent container exits after task completion,
+	// any services must be manually started in the sidecar container.
 	//
 	// Example:
 	//   ports:
@@ -628,8 +627,9 @@ type HumanInTheLoop struct {
 	//     - name: api
 	//       containerPort: 8080
 	//
-	// After the task runs, access ports with:
-	//   kubectl port-forward pod/<pod-name> 3000:3000 8080:8080
+	// After the task runs, start a service in the sidecar and access it:
+	//   kubectl exec -it <pod-name> -c keep-alive -- npm run dev
+	//   kubectl port-forward <pod-name> 3000:3000 8080:8080
 	// +optional
 	Ports []ContainerPort `json:"ports,omitempty"`
 }

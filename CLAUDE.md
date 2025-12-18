@@ -317,7 +317,6 @@ Key Agent spec fields:
 The `command` field is required and defines how the agent executes tasks. This design:
 - Decouples agent images from execution logic (images provide tools, command defines usage)
 - Allows users to customize execution behavior (e.g., output format, flags)
-- Enables `humanInTheLoop` to work by wrapping the command with sleep
 
 ```yaml
 apiVersion: kubetask.io/v1alpha1

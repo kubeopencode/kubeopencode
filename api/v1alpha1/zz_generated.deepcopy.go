@@ -773,11 +773,6 @@ func (in *TaskExecutionStatus) DeepCopyInto(out *TaskExecutionStatus) {
 		in, out := &in.CompletionTime, &out.CompletionTime
 		*out = (*in).DeepCopy()
 	}
-	if in.EffectiveHumanInTheLoop != nil {
-		in, out := &in.EffectiveHumanInTheLoop, &out.EffectiveHumanInTheLoop
-		*out = new(HumanInTheLoop)
-		(*in).DeepCopyInto(*out)
-	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make([]v1.Condition, len(*in))
@@ -861,11 +856,6 @@ func (in *TaskSpec) DeepCopyInto(out *TaskSpec) {
 		in, out := &in.Contexts, &out.Contexts
 		*out = make([]ContextMount, len(*in))
 		copy(*out, *in)
-	}
-	if in.HumanInTheLoop != nil {
-		in, out := &in.HumanInTheLoop, &out.HumanInTheLoop
-		*out = new(HumanInTheLoop)
-		(*in).DeepCopyInto(*out)
 	}
 }
 

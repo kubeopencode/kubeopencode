@@ -656,11 +656,12 @@ var _ = Describe("Task E2E Tests", func() {
 		})
 	})
 
-	Context("Task with humanInTheLoop enabled", func() {
-		It("should keep the pod running after task completion", func() {
+	Context("Task with humanInTheLoop enabled on Agent", func() {
+		It("should keep the pod running after task completion with sidecar", func() {
 			taskName := uniqueName("task-hitl")
+			keepAlive := metav1.Duration{Duration: 30 * time.Second} // Short keepAlive for testing
 
-			By("Creating an Agent for humanInTheLoop")
+			By("Creating an Agent with humanInTheLoop enabled")
 			hitlAgentName := uniqueName("hitl-agent")
 			hitlAgent := &kubetaskv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
@@ -672,14 +673,17 @@ var _ = Describe("Task E2E Tests", func() {
 					ServiceAccountName: testServiceAccount,
 					WorkspaceDir:       "/workspace",
 					Command:            []string{"sh", "-c", "echo 'Task executed' && cat ${WORKSPACE_DIR}/task.md"},
+					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+						Enabled:   true,
+						KeepAlive: &keepAlive,
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, hitlAgent)).Should(Succeed())
 
 			taskContent := "# HumanInTheLoop Test"
-			keepAlive := metav1.Duration{Duration: 30 * time.Second} // Short keepAlive for testing
 
-			By("Creating a Task with humanInTheLoop enabled")
+			By("Creating a Task referencing the humanInTheLoop Agent")
 			task := &kubetaskv1alpha1.Task{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      taskName,
@@ -688,10 +692,6 @@ var _ = Describe("Task E2E Tests", func() {
 				Spec: kubetaskv1alpha1.TaskSpec{
 					AgentRef:    hitlAgentName,
 					Description: &taskContent,
-					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-						Enabled:   true,
-						KeepAlive: &keepAlive,
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())

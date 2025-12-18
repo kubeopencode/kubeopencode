@@ -117,8 +117,7 @@ Task (single task execution)
 ├── TaskSpec
 │   ├── description: *string         (syntactic sugar for /workspace/task.md)
 │   ├── contexts: []ContextMount     (references to Context CRDs)
-│   ├── agentRef: string
-│   └── humanInTheLoop: *HumanInTheLoop
+│   └── agentRef: string
 └── TaskExecutionStatus
     ├── phase: TaskPhase
     ├── jobName: string
@@ -221,10 +220,9 @@ type Task struct {
 }
 
 type TaskSpec struct {
-    Description    *string         // Syntactic sugar for /workspace/task.md
-    Contexts       []ContextMount  // References to Context CRDs
-    AgentRef       string          // Reference to Agent
-    HumanInTheLoop *HumanInTheLoop // Keep container alive after task completion
+    Description *string        // Syntactic sugar for /workspace/task.md
+    Contexts    []ContextMount // References to Context CRDs
+    AgentRef    string         // Reference to Agent
 }
 
 // ContextMount references a Context and specifies how to mount it
@@ -365,22 +363,23 @@ type Agent struct {
 type AgentSpec struct {
     AgentImage         string
     WorkspaceDir       string           // Working directory (default: "/workspace")
-    Command            []string         // Custom entrypoint command (required for humanInTheLoop)
+    Command            []string         // Custom entrypoint command
     Contexts           []ContextMount   // References to Context CRDs
     Credentials        []Credential
     PodSpec            *AgentPodSpec    // Pod configuration (labels, scheduling, runtime)
     ServiceAccountName string
-    HumanInTheLoop     *HumanInTheLoop  // Default humanInTheLoop for all tasks (Task can override)
+    HumanInTheLoop     *HumanInTheLoop  // Enable keep-alive sidecar for debugging
 }
 
-// HumanInTheLoop keeps container running after task completion for debugging
+// HumanInTheLoop adds a keep-alive sidecar container for debugging
 type HumanInTheLoop struct {
     Enabled   bool              // Enable human-in-the-loop mode
-    KeepAlive *metav1.Duration  // How long to keep container alive (default: "1h")
-    Ports     []ContainerPort   // Ports to expose for port-forwarding
+    KeepAlive *metav1.Duration  // How long sidecar runs (default: "1h")
+    Image     string            // Custom sidecar image (default: agentImage)
+    Ports     []ContainerPort   // Ports to expose on sidecar for port-forwarding
 }
 
-// ContainerPort defines a port to expose on the agent container
+// ContainerPort defines a port to expose on the sidecar container
 type ContainerPort struct {
     Name          string          // Optional name for this port
     ContainerPort int32           // Port number to expose (1-65535)
@@ -930,7 +929,7 @@ spec:
 |-------|------|----------|-------------|
 | `spec.agentImage` | String | No | Agent container image |
 | `spec.workspaceDir` | String | No | Working directory (default: "/workspace") |
-| `spec.command` | []String | No | Custom entrypoint command (required when Task has humanInTheLoop enabled) |
+| `spec.command` | []String | No | Custom entrypoint command |
 | `spec.contexts` | []ContextMount | No | References to reusable Context CRDs (applied to all tasks) |
 | `spec.credentials` | []Credential | No | Secrets as env vars or file mounts |
 | `spec.podSpec` | *AgentPodSpec | No | Advanced Pod configuration (labels, scheduling, runtimeClass) |
@@ -959,12 +958,18 @@ This provides an additional layer of security beyond standard container isolatio
 
 **Human-in-the-Loop:**
 
-When `humanInTheLoop.enabled` is true, the controller wraps the Agent's `command` with a sleep to keep the container running after task completion. This allows users to `kubectl exec` into the container for debugging or review.
+When `humanInTheLoop.enabled` is true, the controller adds a **keep-alive sidecar container** to the Pod. This sidecar:
+- Uses the same image as the Agent (or a custom image if specified)
+- Shares the same workspace volume and environment variables
+- Runs a `sleep` command for the specified duration
+- Allows users to `kubectl exec` into it for debugging, review, or manual intervention
 
-`humanInTheLoop` can be configured at both the **Agent level** (as a default for all tasks) and the **Task level** (to override Agent defaults):
+This approach is **non-invasive** - the Agent's command is not modified.
+
+`humanInTheLoop` is configured only at the **Agent level**:
 
 ```yaml
-# Agent with default humanInTheLoop settings (applies to all tasks using this Agent)
+# Agent with humanInTheLoop settings
 apiVersion: kubetask.io/v1alpha1
 kind: Agent
 metadata:
@@ -977,44 +982,42 @@ spec:
   humanInTheLoop:
     enabled: true
     keepAlive: "2h"
+    image: ""  # Optional: defaults to agentImage
     ports:
       - name: dev-server
         containerPort: 3000
----
-# Task can override Agent's humanInTheLoop settings
-apiVersion: kubetask.io/v1alpha1
-kind: Task
-metadata:
-  name: my-task
-spec:
-  description: "Run development server"
-  agentRef: dev-agent
-  humanInTheLoop:
-    enabled: true
-    keepAlive: "30m"  # Override Agent's 2h with 30m
-    ports:
-      - name: api
-        containerPort: 8080  # Different port than Agent default
 ```
 
-**Override Behavior:**
-- If `Task.spec.humanInTheLoop` is set, it **completely overrides** `Agent.spec.humanInTheLoop`
-- If `Task.spec.humanInTheLoop` is nil, `Agent.spec.humanInTheLoop` is used
-- A Task can disable humanInTheLoop even when Agent has it enabled by setting `enabled: false`
+**Sidecar Container:**
 
-**Effective Configuration in Status:**
+When humanInTheLoop is enabled, the Pod will have two containers:
+1. `agent` - Executes the task with the original command (exits when done)
+2. `keep-alive` - Runs `sleep` for the specified duration, allowing user access
 
-The resolved `humanInTheLoop` configuration is shown in `Task.status.effectiveHumanInTheLoop`, making it easy to see which settings are actually in effect:
+Users can exec into the sidecar container to use the same tools as the agent:
 
 ```bash
-kubectl get task my-task -o jsonpath='{.status.effectiveHumanInTheLoop}'
+# Access the sidecar container
+kubectl exec -it <pod-name> -c keep-alive -- /bin/bash
+
+# Inside the container, you can use the same tools
+$ ls /workspace          # View agent's output files
+$ gemini --yolo "..."    # Use the same gemini CLI
 ```
 
-**Important:** When `humanInTheLoop` is enabled (either from Agent or Task), the Agent MUST specify `command`. The controller wraps the command to add the sleep behavior.
+**Custom Sidecar Image:**
+
+By default, the sidecar uses the same image as the Agent. You can specify a custom image:
+
+```yaml
+humanInTheLoop:
+  enabled: true
+  image: "busybox:stable"  # Lightweight image to save resources
+```
 
 **Port Forwarding:**
 
-For development tasks that need to expose network services (e.g., dev servers, APIs), you can configure ports in the `humanInTheLoop` section. These ports can then be accessed via `kubectl port-forward`:
+For development tasks that need to expose network services (e.g., dev servers, APIs), configure ports in the `humanInTheLoop` section. These ports are exposed on the **sidecar container**, so services must be started manually after exec-ing into the sidecar:
 
 ```yaml
 spec:
@@ -1029,9 +1032,13 @@ spec:
         protocol: TCP  # TCP (default) or UDP
 ```
 
-After the task starts, access the ports with:
+After the agent completes, start services and access ports:
 
 ```bash
+# Start a service in the sidecar
+kubectl exec -it <pod-name> -c keep-alive -- npm run dev
+
+# Forward ports in another terminal
 kubectl port-forward pod/<pod-name> 3000:3000 8080:8080
 ```
 

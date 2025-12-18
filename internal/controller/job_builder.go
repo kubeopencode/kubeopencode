@@ -162,12 +162,9 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 		corev1.EnvVar{Name: "WORKSPACE_DIR", Value: cfg.workspaceDir},
 	)
 
-	// Resolve effective humanInTheLoop configuration
-	// Task.spec.humanInTheLoop overrides Agent.spec.humanInTheLoop
+	// Get humanInTheLoop configuration from Agent only
+	// (Task-level humanInTheLoop was removed to simplify the API)
 	effectiveHumanInTheLoop := cfg.humanInTheLoop
-	if task.Spec.HumanInTheLoop != nil {
-		effectiveHumanInTheLoop = task.Spec.HumanInTheLoop
-	}
 
 	// Add human-in-the-loop keep-alive environment variable if enabled
 	if effectiveHumanInTheLoop != nil && effectiveHumanInTheLoop.Enabled {
@@ -371,25 +368,13 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 		VolumeMounts:    volumeMounts,
 	}
 
-	// Apply container ports from effectiveHumanInTheLoop configuration
-	if effectiveHumanInTheLoop != nil && len(effectiveHumanInTheLoop.Ports) > 0 {
-		var containerPorts []corev1.ContainerPort
-		for _, port := range effectiveHumanInTheLoop.Ports {
-			protocol := port.Protocol
-			if protocol == "" {
-				protocol = corev1.ProtocolTCP
-			}
-			containerPorts = append(containerPorts, corev1.ContainerPort{
-				Name:          port.Name,
-				ContainerPort: port.ContainerPort,
-				Protocol:      protocol,
-			})
-		}
-		agentContainer.Ports = containerPorts
-	}
+	// Apply command as-is (no wrapping needed - humanInTheLoop uses sidecar approach)
+	agentContainer.Command = cfg.command
 
-	// Apply command (required field in Agent spec)
-	// If humanInTheLoop is enabled (from Task or Agent), wrap the command with sleep
+	// Build containers list - start with agent container
+	containers := []corev1.Container{agentContainer}
+
+	// Add keep-alive sidecar container if humanInTheLoop is enabled
 	if effectiveHumanInTheLoop != nil && effectiveHumanInTheLoop.Enabled {
 		keepAlive := DefaultKeepAlive
 		if effectiveHumanInTheLoop.KeepAlive != nil {
@@ -397,49 +382,49 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 		}
 		keepAliveSeconds := int64(keepAlive.Seconds())
 
-		// Use a wrapper script approach that handles edge cases:
-		// 1. Commands containing 'exit' or 'exec' - we use a subshell to isolate them
-		// 2. Commands with special characters - we pass original command via env var
-		// 3. Non sh-c commands - we properly quote them
-		//
-		// The wrapper script:
-		// - Runs original command in a subshell to isolate exit/exec
-		// - Captures exit code regardless of how the command terminates
-		// - Always executes sleep after the command completes
-		//
-		// Note: If the original command uses 'exec', it will replace the subshell
-		// but the parent shell will still continue with the sleep.
-		if len(cfg.command) == 3 && cfg.command[0] == "sh" && cfg.command[1] == "-c" {
-			// Command is already "sh -c <script>" - run the script in a subshell
-			// Using ( ) creates a subshell, so exit/exec won't affect the wrapper
-			innerScript := cfg.command[2]
-			wrappedScript := fmt.Sprintf(
-				`( %s ); EXIT_CODE=$?; echo "Human-in-the-loop: keeping container alive for %d seconds. Use 'kubectl exec' to access."; sleep %d; exit $EXIT_CODE`,
-				innerScript, keepAliveSeconds, keepAliveSeconds,
-			)
-			agentContainer.Command = []string{"sh", "-c", wrappedScript}
-		} else {
-			// For other command formats, execute them directly (not via shell string parsing)
-			// This avoids issues with special characters in arguments
-			// We use "$@" to properly handle all arguments
-			wrappedScript := fmt.Sprintf(
-				`"$@"; EXIT_CODE=$?; echo "Human-in-the-loop: keeping container alive for %d seconds. Use 'kubectl exec' to access."; sleep %d; exit $EXIT_CODE`,
-				keepAliveSeconds, keepAliveSeconds,
-			)
-			// Prepend "sh -c" with "--" separator, then append original command as arguments
-			// This way the original command is executed directly, not parsed as a shell string
-			agentContainer.Command = append([]string{"sh", "-c", wrappedScript, "--"}, cfg.command...)
+		// Determine sidecar image: use custom image if specified, otherwise use agentImage
+		sidecarImage := cfg.agentImage
+		if effectiveHumanInTheLoop.Image != "" {
+			sidecarImage = effectiveHumanInTheLoop.Image
 		}
-	} else {
-		// No humanInTheLoop enabled, use command as-is
-		agentContainer.Command = cfg.command
+
+		// Build keep-alive sidecar container with same mounts and env as agent
+		sidecar := corev1.Container{
+			Name:            "keep-alive",
+			Image:           sidecarImage,
+			ImagePullPolicy: agentContainer.ImagePullPolicy,
+			Command:         []string{"sleep", fmt.Sprintf("%d", keepAliveSeconds)},
+			WorkingDir:      cfg.workspaceDir,
+			Env:             agentContainer.Env,
+			EnvFrom:         agentContainer.EnvFrom,
+			VolumeMounts:    agentContainer.VolumeMounts,
+		}
+
+		// Apply container ports to sidecar (for port-forwarding)
+		if len(effectiveHumanInTheLoop.Ports) > 0 {
+			var containerPorts []corev1.ContainerPort
+			for _, port := range effectiveHumanInTheLoop.Ports {
+				protocol := port.Protocol
+				if protocol == "" {
+					protocol = corev1.ProtocolTCP
+				}
+				containerPorts = append(containerPorts, corev1.ContainerPort{
+					Name:          port.Name,
+					ContainerPort: port.ContainerPort,
+					Protocol:      protocol,
+				})
+			}
+			sidecar.Ports = containerPorts
+		}
+
+		containers = append(containers, sidecar)
 	}
 
 	// Build PodSpec with scheduling configuration
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: cfg.serviceAccountName,
 		InitContainers:     initContainers,
-		Containers:         []corev1.Container{agentContainer},
+		Containers:         containers,
 		Volumes:            volumes,
 		RestartPolicy:      corev1.RestartPolicyNever,
 	}
