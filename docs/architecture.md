@@ -988,6 +988,17 @@ spec:
         containerPort: 3000
 ```
 
+**Task Annotation:**
+
+When a Task is created with an Agent that has `humanInTheLoop.enabled: true`, the controller automatically adds the following annotation to the Task:
+
+```yaml
+annotations:
+  kubetask.io/human-in-the-loop: "true"
+```
+
+This annotation allows users and tools to easily identify Tasks that have human-in-the-loop enabled, without needing to look up the Agent configuration.
+
 **Sidecar Container:**
 
 When humanInTheLoop is enabled, the Pod will have two containers:

@@ -48,6 +48,9 @@ const (
 
 	// AnnotationTerminate is the annotation key for user-initiated task termination
 	AnnotationTerminate = "kubetask.io/terminate"
+
+	// AnnotationHumanInTheLoop indicates that humanInTheLoop is enabled for the task
+	AnnotationHumanInTheLoop = "kubetask.io/human-in-the-loop"
 )
 
 // TaskReconciler reconciles a Task object
@@ -137,14 +140,30 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 		return ctrl.Result{}, nil // Don't requeue, user needs to fix Agent
 	}
 
-	// Add agent label to Task for capacity tracking
+	// Add agent label and humanInTheLoop annotation to Task
+	needsUpdate := false
 	if task.Labels == nil {
 		task.Labels = make(map[string]string)
 	}
 	if task.Labels[AgentLabelKey] != agentName {
 		task.Labels[AgentLabelKey] = agentName
+		needsUpdate = true
+	}
+
+	// Add humanInTheLoop annotation if enabled on Agent
+	if agentConfig.humanInTheLoop != nil && agentConfig.humanInTheLoop.Enabled {
+		if task.Annotations == nil {
+			task.Annotations = make(map[string]string)
+		}
+		if task.Annotations[AnnotationHumanInTheLoop] != "true" {
+			task.Annotations[AnnotationHumanInTheLoop] = "true"
+			needsUpdate = true
+		}
+	}
+
+	if needsUpdate {
 		if err := r.Update(ctx, task); err != nil {
-			log.Error(err, "unable to update Task labels")
+			log.Error(err, "unable to update Task")
 			return ctrl.Result{}, err
 		}
 		// Requeue to continue with updated task

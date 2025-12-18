@@ -879,6 +879,17 @@ var _ = Describe("TaskController", func() {
 			}
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
+			By("Checking Task has humanInTheLoop annotation")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			updatedTask := &kubetaskv1alpha1.Task{}
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, taskLookupKey, updatedTask); err != nil {
+					return false
+				}
+				return updatedTask.Annotations != nil &&
+					updatedTask.Annotations[AnnotationHumanInTheLoop] == "true"
+			}, timeout, interval).Should(BeTrue())
+
 			By("Checking Job has two containers (agent + sidecar)")
 			jobName := fmt.Sprintf("%s-job", taskName)
 			jobLookupKey := types.NamespacedName{Name: jobName, Namespace: taskNamespace}
@@ -968,6 +979,117 @@ var _ = Describe("TaskController", func() {
 
 			sidecarContainer := createdJob.Spec.Template.Spec.Containers[1]
 			Expect(sidecarContainer.Command[1]).Should(Equal("3600"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should not add humanInTheLoop annotation when disabled", func() {
+			taskName := "test-task-hitl-disabled"
+			agentName := "test-agent-hitl-disabled"
+			description := "# Human-in-the-loop disabled test"
+
+			By("Creating Agent with humanInTheLoop disabled")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"./run.sh"},
+					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+						Enabled: false,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task referencing the Agent")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Job is created with single container")
+			jobName := fmt.Sprintf("%s-job", taskName)
+			jobLookupKey := types.NamespacedName{Name: jobName, Namespace: taskNamespace}
+			createdJob := &batchv1.Job{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, jobLookupKey, createdJob) == nil
+			}, timeout, interval).Should(BeTrue())
+			Expect(createdJob.Spec.Template.Spec.Containers).Should(HaveLen(1))
+
+			By("Checking Task does not have humanInTheLoop annotation")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			updatedTask := &kubetaskv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskLookupKey, updatedTask)).Should(Succeed())
+			if updatedTask.Annotations != nil {
+				Expect(updatedTask.Annotations).ShouldNot(HaveKey(AnnotationHumanInTheLoop))
+			}
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should not add humanInTheLoop annotation when not configured", func() {
+			taskName := "test-task-no-hitl"
+			agentName := "test-agent-no-hitl"
+			description := "# No human-in-the-loop test"
+
+			By("Creating Agent without humanInTheLoop configuration")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"./run.sh"},
+					// HumanInTheLoop not specified
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task referencing the Agent")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Job is created")
+			jobName := fmt.Sprintf("%s-job", taskName)
+			jobLookupKey := types.NamespacedName{Name: jobName, Namespace: taskNamespace}
+			createdJob := &batchv1.Job{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, jobLookupKey, createdJob) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("Checking Task does not have humanInTheLoop annotation")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			updatedTask := &kubetaskv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskLookupKey, updatedTask)).Should(Succeed())
+			if updatedTask.Annotations != nil {
+				Expect(updatedTask.Annotations).ShouldNot(HaveKey(AnnotationHumanInTheLoop))
+			}
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
