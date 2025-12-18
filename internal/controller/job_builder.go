@@ -342,6 +342,24 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 		})
 	}
 
+	// If we have Git mounts, add GIT_CONFIG_GLOBAL to point to shared gitconfig
+	// This is needed because init containers run as different users and git will
+	// refuse to work without safe.directory configured
+	if len(gitMounts) > 0 {
+		// The first git-init container writes .gitconfig to /git/.gitconfig
+		// which is shared via git-context-0 volume
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "GIT_CONFIG_GLOBAL",
+			Value: "/git/.gitconfig",
+		})
+		// Mount the git volume root to access the .gitconfig
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "git-context-0",
+			MountPath: "/git/.gitconfig",
+			SubPath:   ".gitconfig",
+		})
+	}
+
 	// Build pod labels - start with base labels
 	podLabels := map[string]string{
 		"app":              "kubetask",
