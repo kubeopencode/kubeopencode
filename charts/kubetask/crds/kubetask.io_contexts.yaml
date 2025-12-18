@@ -136,12 +136,19 @@ spec:
                 required:
                 - content
                 type: object
+              runtime:
+                description: |-
+                  Runtime context (optional when Type == "Runtime")
+                  Enables KubeTask platform awareness. The controller injects a system prompt
+                  that explains the runtime environment to the agent.
+                type: object
               type:
-                description: 'Type of context source: Inline, ConfigMap, or Git'
+                description: 'Type of context source: Inline, ConfigMap, Git, or Runtime'
                 enum:
                 - Inline
                 - ConfigMap
                 - Git
+                - Runtime
                 type: string
             required:
             - type

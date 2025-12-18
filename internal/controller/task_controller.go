@@ -51,6 +51,39 @@ const (
 
 	// AnnotationHumanInTheLoop indicates that humanInTheLoop is enabled for the task
 	AnnotationHumanInTheLoop = "kubetask.io/human-in-the-loop"
+
+	// RuntimeSystemPrompt is the system prompt injected when Runtime context is enabled.
+	// It provides KubeTask platform awareness to the agent.
+	RuntimeSystemPrompt = `## KubeTask Runtime Context
+
+You are running as an AI agent inside a Kubernetes Pod, managed by KubeTask.
+
+### Environment Variables
+- TASK_NAME: Name of the current Task CR
+- TASK_NAMESPACE: Namespace of the current Task CR
+- WORKSPACE_DIR: Working directory where task.md and context files are mounted
+
+### Getting More Information
+To get full Task specification:
+  kubectl get task ${TASK_NAME} -n ${TASK_NAMESPACE} -o yaml
+
+To get Task status:
+  kubectl get task ${TASK_NAME} -n ${TASK_NAMESPACE} -o jsonpath='{.status}'
+
+To list related resources:
+  kubectl get tasks,workflows,workflowruns -n ${TASK_NAMESPACE}
+
+### File Structure
+- ${WORKSPACE_DIR}/task.md: Your task instructions (this file)
+- Additional contexts may be mounted as separate files or appended below
+
+### KubeTask Concepts
+- Task: Single AI task execution (what you're running now)
+- Agent: Configuration for how tasks are executed (image, credentials, etc.)
+- Workflow: Multi-stage task orchestration template
+- WorkflowRun: Execution instance of a Workflow
+- Context: Reusable content that can be shared across Tasks
+`
 )
 
 // TaskReconciler reconciles a Task object
@@ -683,13 +716,22 @@ func (r *TaskReconciler) resolveContextItem(ctx context.Context, item *kubetaskv
 		Inline:    item.Inline,
 		ConfigMap: item.ConfigMap,
 		Git:       item.Git,
+		Runtime:   item.Runtime,
 	}
 
 	// Use a generated name for inline contexts
+	// For Runtime context, use "runtime" as a more descriptive name
 	name := "inline"
+	if item.Type == kubetaskv1alpha1.ContextTypeRuntime {
+		name = "runtime"
+	}
 
 	// Resolve mountPath: relative paths are prefixed with workspaceDir
+	// Note: For Runtime context, mountPath is ignored - content is always appended to task.md
 	resolvedPath := resolveMountPath(item.MountPath, workspaceDir)
+	if item.Type == kubetaskv1alpha1.ContextTypeRuntime {
+		resolvedPath = "" // Force empty to ensure content is appended to task.md
+	}
 
 	// Resolve content based on context type
 	content, dm, gm, err := r.resolveContextSpec(ctx, defaultNS, name, workspaceDir, spec, resolvedPath)
@@ -806,6 +848,11 @@ func (r *TaskReconciler) resolveContextSpec(ctx context.Context, namespace, name
 			depth:       depth,
 			secretName:  secretName,
 		}, nil
+
+	case kubetaskv1alpha1.ContextTypeRuntime:
+		// Runtime context returns the hardcoded system prompt
+		// MountPath is ignored for Runtime context - content is always appended to task.md
+		return RuntimeSystemPrompt, nil, nil, nil
 
 	default:
 		return "", nil, nil, fmt.Errorf("unknown context type: %s", spec.Type)

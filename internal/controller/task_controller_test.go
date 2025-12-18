@@ -7,6 +7,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -1762,6 +1763,176 @@ var _ = Describe("TaskController", func() {
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
+
+	Context("Runtime Context", func() {
+		It("should inject RuntimeSystemPrompt when inline Runtime context is used", func() {
+			ctx := context.Background()
+			taskName := "task-runtime-context-inline"
+			taskNamespace := "default"
+			agentName := "agent-runtime-inline"
+			description := "Test task with Runtime context"
+
+			By("Creating Agent")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					AgentImage:         "test-agent:v1.0.0",
+					Command:            []string{"echo", "test"},
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task with inline Runtime context")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					Description: &description,
+					AgentRef:    agentName,
+					Contexts: []kubetaskv1alpha1.ContextSource{
+						{
+							Inline: &kubetaskv1alpha1.ContextItem{
+								Type:    kubetaskv1alpha1.ContextTypeRuntime,
+								Runtime: &kubetaskv1alpha1.RuntimeContext{},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task transitions to Running phase")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			createdTask := &kubetaskv1alpha1.Task{}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
+
+			By("Checking context ConfigMap contains RuntimeSystemPrompt")
+			cmName := taskName + "-context"
+			cmLookupKey := types.NamespacedName{Name: cmName, Namespace: taskNamespace}
+			cm := &corev1.ConfigMap{}
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, cmLookupKey, cm); err != nil {
+					return false
+				}
+				return cm.Data != nil
+			}, timeout, interval).Should(BeTrue())
+
+			// Verify ConfigMap contains RuntimeSystemPrompt content
+			// Key is "workspace-task.md" because workspaceDir is "/workspace" and it's sanitized
+			taskMdContent, exists := cm.Data["workspace-task.md"]
+			Expect(exists).To(BeTrue(), "workspace-task.md key should exist in ConfigMap")
+			Expect(taskMdContent).To(ContainSubstring("KubeTask Runtime Context"))
+			Expect(taskMdContent).To(ContainSubstring("TASK_NAME"))
+			Expect(taskMdContent).To(ContainSubstring("TASK_NAMESPACE"))
+			Expect(taskMdContent).To(ContainSubstring("kubectl get task"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("should inject RuntimeSystemPrompt when Runtime Context CRD is referenced", func() {
+			ctx := context.Background()
+			taskName := "task-runtime-context-ref"
+			taskNamespace := "default"
+			agentName := "agent-runtime-ref"
+			contextName := "runtime-context-crd"
+			description := "Test task with Runtime Context CRD"
+
+			By("Creating Agent")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					AgentImage:         "test-agent:v1.0.0",
+					Command:            []string{"echo", "test"},
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Runtime Context CRD")
+			runtimeContext := &kubetaskv1alpha1.Context{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      contextName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.ContextSpec{
+					Type:    kubetaskv1alpha1.ContextTypeRuntime,
+					Runtime: &kubetaskv1alpha1.RuntimeContext{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, runtimeContext)).Should(Succeed())
+
+			By("Creating Task referencing Runtime Context CRD")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					Description: &description,
+					AgentRef:    agentName,
+					Contexts: []kubetaskv1alpha1.ContextSource{
+						{
+							Ref: &kubetaskv1alpha1.ContextRef{
+								Name: contextName,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task transitions to Running phase")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			createdTask := &kubetaskv1alpha1.Task{}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
+
+			By("Checking context ConfigMap contains RuntimeSystemPrompt")
+			cmName := taskName + "-context"
+			cmLookupKey := types.NamespacedName{Name: cmName, Namespace: taskNamespace}
+			cm := &corev1.ConfigMap{}
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, cmLookupKey, cm); err != nil {
+					return false
+				}
+				return cm.Data != nil
+			}, timeout, interval).Should(BeTrue())
+
+			// Verify ConfigMap contains RuntimeSystemPrompt content with correct context name
+			// Key is "workspace-task.md" because workspaceDir is "/workspace" and it's sanitized
+			taskMdContent, exists := cm.Data["workspace-task.md"]
+			Expect(exists).To(BeTrue(), "workspace-task.md key should exist in ConfigMap")
+			Expect(taskMdContent).To(ContainSubstring("KubeTask Runtime Context"))
+			Expect(taskMdContent).To(ContainSubstring(contextName)) // Context name in XML tag
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, runtimeContext)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})
