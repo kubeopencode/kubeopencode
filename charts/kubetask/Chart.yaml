@@ -3,7 +3,7 @@ name: kubetask
 description: A Kubernetes-native system for executing AI agent tasks across multiple repositories
 type: application
 version: 0.1.0
-appVersion: "v0.1.0"
+appVersion: "latest"
 keywords:
   - automation
   - ai-agent

@@ -34,7 +34,7 @@ cat > my-values.yaml <<EOF
 controller:
   image:
     repository: quay.io/kubetask/kubetask-controller
-    tag: v0.1.0
+    tag: latest
 
   resources:
     limits:

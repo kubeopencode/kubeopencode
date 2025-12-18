@@ -56,8 +56,8 @@ make agent-build
 Load images into the Kind cluster (required because Kind cannot pull from local Docker):
 
 ```bash
-kind load docker-image quay.io/kubetask/kubetask-controller:v0.1.0 --name kubetask
-kind load docker-image quay.io/kubetask/kubetask-git-init:v0.1.0 --name kubetask
+kind load docker-image quay.io/kubetask/kubetask-controller:latest --name kubetask
+kind load docker-image quay.io/kubetask/kubetask-git-init:latest --name kubetask
 kind load docker-image quay.io/kubetask/kubetask-agent-gemini:latest --name kubetask
 ```
 
@@ -118,7 +118,7 @@ When you make changes to the controller code:
 make docker-build
 
 # Reload into Kind
-kind load docker-image quay.io/kubetask/kubetask-controller:v0.1.0 --name kubetask
+kind load docker-image quay.io/kubetask/kubetask-controller:latest --name kubetask
 
 # Restart the deployment to pick up the new image
 kubectl rollout restart deployment/kubetask-controller -n kubetask-system
