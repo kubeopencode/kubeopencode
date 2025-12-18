@@ -376,16 +376,25 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 
 	// Add keep-alive sidecar container if humanInTheLoop is enabled
 	if effectiveHumanInTheLoop != nil && effectiveHumanInTheLoop.Enabled {
-		keepAlive := DefaultKeepAlive
-		if effectiveHumanInTheLoop.KeepAlive != nil {
-			keepAlive = effectiveHumanInTheLoop.KeepAlive.Duration
-		}
-		keepAliveSeconds := int64(keepAlive.Seconds())
-
 		// Determine sidecar image: use custom image if specified, otherwise use agentImage
 		sidecarImage := cfg.agentImage
 		if effectiveHumanInTheLoop.Image != "" {
 			sidecarImage = effectiveHumanInTheLoop.Image
+		}
+
+		// Determine sidecar command: use Command if specified, otherwise use sleep with KeepAlive
+		var sidecarCommand []string
+		if len(effectiveHumanInTheLoop.Command) > 0 {
+			// Use custom command
+			sidecarCommand = effectiveHumanInTheLoop.Command
+		} else {
+			// Use sleep with keepAlive duration (default: 1h)
+			keepAlive := DefaultKeepAlive
+			if effectiveHumanInTheLoop.KeepAlive != nil {
+				keepAlive = effectiveHumanInTheLoop.KeepAlive.Duration
+			}
+			keepAliveSeconds := int64(keepAlive.Seconds())
+			sidecarCommand = []string{"sleep", fmt.Sprintf("%d", keepAliveSeconds)}
 		}
 
 		// Build keep-alive sidecar container with same mounts and env as agent
@@ -393,7 +402,7 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 			Name:            "keep-alive",
 			Image:           sidecarImage,
 			ImagePullPolicy: agentContainer.ImagePullPolicy,
-			Command:         []string{"sleep", fmt.Sprintf("%d", keepAliveSeconds)},
+			Command:         sidecarCommand,
 			WorkingDir:      cfg.workspaceDir,
 			Env:             agentContainer.Env,
 			EnvFrom:         agentContainer.EnvFrom,

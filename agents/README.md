@@ -68,10 +68,13 @@ The universal base image (`kubetask-agent-base`) includes:
 
 ## Agent Image Templates
 
-| Template | Base | AI CLI | Use Case |
-|----------|------|--------|----------|
+| Template | Base | Tools | Use Case |
+|----------|------|-------|----------|
 | `gemini` | base | Gemini CLI | Google AI tasks |
 | `goose` | base | Goose CLI | Multi-provider AI tasks |
+| `claude` | base | Claude CLI | Anthropic AI tasks |
+| `opencode` | base | OpenCode CLI | Open source AI coding |
+| `code-server` | base | code-server + Gemini CLI | Browser-based VSCode for humanInTheLoop |
 | `echo` | alpine | None | E2E testing |
 
 ## Building Images
@@ -282,6 +285,60 @@ If a tool is missing:
 | `base` | ~2-3 GB | Full development environment |
 | `gemini` | ~2-3 GB | Base + Gemini CLI |
 | `goose` | ~2-3 GB | Base + Goose CLI |
+| `code-server` | ~3-4 GB | Base + code-server + Gemini CLI |
 | `echo` | ~10 MB | Minimal Alpine (testing only) |
 
 The larger size is a trade-off for having a comprehensive development environment similar to GitHub Actions runners.
+
+## Using code-server for humanInTheLoop
+
+The `code-server` image provides a browser-based VSCode experience for human-in-the-loop debugging. It's designed to be used as a sidecar container.
+
+### Example Agent Configuration
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: Agent
+metadata:
+  name: gemini-dev
+spec:
+  agentImage: quay.io/kubetask/kubetask-agent-gemini:latest
+  command:
+    - sh
+    - -c
+    - gemini --output-format stream-json --yolo -p "$(cat ${WORKSPACE_DIR}/task.md)"
+  workspaceDir: /workspace
+  serviceAccountName: kubetask-agent
+  humanInTheLoop:
+    enabled: true
+    image: quay.io/kubetask/kubetask-agent-code-server:latest
+    command:
+      - sh
+      - -c
+      - code-server --bind-addr 0.0.0.0:8080 ${WORKSPACE_DIR} & sleep 7200
+    ports:
+      - name: code-server
+        containerPort: 8080
+```
+
+### Accessing code-server
+
+After the task starts:
+
+```bash
+# Get the pod name
+POD=$(kubectl get pods -l kubetask.io/task=my-task -o jsonpath='{.items[0].metadata.name}')
+
+# Port forward to code-server
+kubectl port-forward pod/$POD 8080:8080
+
+# Open browser at http://localhost:8080
+```
+
+### How It Works
+
+1. The agent container executes the AI task (gemini, claude, etc.) and exits
+2. The code-server sidecar runs in parallel, sharing the same workspace volume
+3. Users can access VSCode in the browser to view/edit files created by the AI
+4. Gemini CLI is available in the VSCode terminal for interactive AI assistance
+5. The sidecar exits after the specified sleep duration (e.g., 7200 seconds = 2 hours)

@@ -600,8 +600,23 @@ type HumanInTheLoop struct {
 	// Users can kubectl exec into the sidecar during this period.
 	// Uses standard Go duration format (e.g., "1h", "30m", "1h30m").
 	// Defaults to "1h" (1 hour) if not specified when enabled is true.
+	//
+	// Mutually exclusive with Command - only one can be specified.
+	// If neither is specified, defaults to "1h".
 	// +optional
 	KeepAlive *metav1.Duration `json:"keepAlive,omitempty"`
+
+	// Command specifies a custom command to run in the keep-alive sidecar container.
+	// Use this for advanced scenarios like running code-server or other services.
+	//
+	// Mutually exclusive with KeepAlive - only one can be specified.
+	// If both are specified, it is a configuration error.
+	//
+	// Example:
+	//   command: ["sh", "-c", "code-server --bind-addr 0.0.0.0:8080 ${WORKSPACE_DIR} & sleep 7200"]
+	//
+	// +optional
+	Command []string `json:"command,omitempty"`
 
 	// Image specifies the container image for the keep-alive sidecar.
 	// If not specified, defaults to the Agent's agentImage, which allows
@@ -617,18 +632,14 @@ type HumanInTheLoop struct {
 	// the human-in-the-loop session, enabling developers to test
 	// development servers, APIs, or other network services.
 	//
-	// Note: Since the main agent container exits after task completion,
-	// any services must be manually started in the sidecar container.
-	//
 	// Example:
 	//   ports:
 	//     - name: dev-server
 	//       containerPort: 3000
-	//     - name: api
+	//     - name: code-server
 	//       containerPort: 8080
 	//
-	// After the task runs, start a service in the sidecar and access it:
-	//   kubectl exec -it <pod-name> -c keep-alive -- npm run dev
+	// Access via:
 	//   kubectl port-forward <pod-name> 3000:3000 8080:8080
 	// +optional
 	Ports []ContainerPort `json:"ports,omitempty"`

@@ -1408,3 +1408,71 @@ func TestBuildJob_WithHumanInTheLoop_SidecarSharesAllMounts(t *testing.T) {
 			len(sidecar.EnvFrom), len(agentContainer.EnvFrom))
 	}
 }
+
+func TestBuildJob_WithHumanInTheLoop_CustomCommand(t *testing.T) {
+	// Test that humanInTheLoop with custom Command uses the command instead of sleep
+	task := &kubetaskv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubetaskv1alpha1.TaskSpec{},
+	}
+	task.APIVersion = "kubetask.io/v1alpha1"
+	task.Kind = "Task"
+
+	customCommand := []string{"sh", "-c", "code-server --bind-addr 0.0.0.0:8080 & sleep 7200"}
+	cfg := agentConfig{
+		agentImage:   "test-agent:v1",
+		command:      []string{"gemini", "--yolo", "-p", "$(cat /workspace/task.md)"},
+		workspaceDir: "/workspace",
+		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
+			Enabled: true,
+			Command: customCommand,
+			Image:   "code-server:latest",
+			Ports: []kubetaskv1alpha1.ContainerPort{
+				{Name: "code-server", ContainerPort: 8080},
+			},
+		},
+	}
+
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+
+	// Verify we have 2 containers (agent + sidecar)
+	if len(job.Spec.Template.Spec.Containers) != 2 {
+		t.Fatalf("Expected 2 containers, got %d", len(job.Spec.Template.Spec.Containers))
+	}
+
+	agentContainer := job.Spec.Template.Spec.Containers[0]
+	sidecar := job.Spec.Template.Spec.Containers[1]
+
+	// Verify agent container has original command (not modified)
+	if len(agentContainer.Command) != 4 || agentContainer.Command[0] != "gemini" {
+		t.Errorf("Agent command was unexpectedly modified: %v", agentContainer.Command)
+	}
+
+	// Verify sidecar uses custom command, not sleep
+	if len(sidecar.Command) != 3 {
+		t.Fatalf("Sidecar command length = %d, want 3", len(sidecar.Command))
+	}
+	if sidecar.Command[0] != "sh" || sidecar.Command[1] != "-c" {
+		t.Errorf("Sidecar command = %v, expected sh -c ...", sidecar.Command)
+	}
+	if sidecar.Command[2] != "code-server --bind-addr 0.0.0.0:8080 & sleep 7200" {
+		t.Errorf("Sidecar command = %v, expected custom command", sidecar.Command)
+	}
+
+	// Verify sidecar uses custom image
+	if sidecar.Image != "code-server:latest" {
+		t.Errorf("Sidecar Image = %q, want %q", sidecar.Image, "code-server:latest")
+	}
+
+	// Verify sidecar has the port exposed
+	if len(sidecar.Ports) != 1 {
+		t.Fatalf("Sidecar ports count = %d, want 1", len(sidecar.Ports))
+	}
+	if sidecar.Ports[0].ContainerPort != 8080 {
+		t.Errorf("Sidecar port = %d, want 8080", sidecar.Ports[0].ContainerPort)
+	}
+}

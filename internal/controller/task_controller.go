@@ -140,6 +140,27 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 		return ctrl.Result{}, nil // Don't requeue, user needs to fix Agent
 	}
 
+	// Validate humanInTheLoop configuration: KeepAlive and Command are mutually exclusive
+	if agentConfig.humanInTheLoop != nil && agentConfig.humanInTheLoop.Enabled {
+		if agentConfig.humanInTheLoop.KeepAlive != nil && len(agentConfig.humanInTheLoop.Command) > 0 {
+			err := fmt.Errorf("humanInTheLoop.keepAlive and humanInTheLoop.command are mutually exclusive")
+			log.Error(err, "invalid Agent configuration")
+			task.Status.ObservedGeneration = task.Generation
+			task.Status.Phase = kubetaskv1alpha1.TaskPhaseFailed
+			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+				Type:    "Ready",
+				Status:  metav1.ConditionFalse,
+				Reason:  "AgentConfigError",
+				Message: err.Error(),
+			})
+			if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+				log.Error(updateErr, "unable to update Task status")
+				return ctrl.Result{}, updateErr
+			}
+			return ctrl.Result{}, nil // Don't requeue, user needs to fix Agent
+		}
+	}
+
 	// Add agent label and humanInTheLoop annotation to Task
 	needsUpdate := false
 	if task.Labels == nil {

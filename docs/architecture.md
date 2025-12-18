@@ -374,7 +374,8 @@ type AgentSpec struct {
 // HumanInTheLoop adds a keep-alive sidecar container for debugging
 type HumanInTheLoop struct {
     Enabled   bool              // Enable human-in-the-loop mode
-    KeepAlive *metav1.Duration  // How long sidecar runs (default: "1h")
+    KeepAlive *metav1.Duration  // How long sidecar runs (default: "1h", mutually exclusive with Command)
+    Command   []string          // Custom sidecar command (mutually exclusive with KeepAlive)
     Image     string            // Custom sidecar image (default: agentImage)
     Ports     []ContainerPort   // Ports to expose on sidecar for port-forwarding
 }
@@ -1026,9 +1027,28 @@ humanInTheLoop:
   image: "busybox:stable"  # Lightweight image to save resources
 ```
 
+**Custom Sidecar Command:**
+
+For advanced scenarios like running code-server or other services, use the `command` field instead of `keepAlive`:
+
+```yaml
+humanInTheLoop:
+  enabled: true
+  image: quay.io/kubetask/kubetask-agent-code-server:latest
+  command:
+    - sh
+    - -c
+    - code-server --bind-addr 0.0.0.0:8080 ${WORKSPACE_DIR} & sleep 7200
+  ports:
+    - name: code-server
+      containerPort: 8080
+```
+
+Note: `keepAlive` and `command` are **mutually exclusive**. If both are specified, it is a configuration error.
+
 **Port Forwarding:**
 
-For development tasks that need to expose network services (e.g., dev servers, APIs), configure ports in the `humanInTheLoop` section. These ports are exposed on the **sidecar container**, so services must be started manually after exec-ing into the sidecar:
+For development tasks that need to expose network services (e.g., dev servers, APIs), configure ports in the `humanInTheLoop` section:
 
 ```yaml
 spec:
@@ -1043,13 +1063,9 @@ spec:
         protocol: TCP  # TCP (default) or UDP
 ```
 
-After the agent completes, start services and access ports:
+Access ports via:
 
 ```bash
-# Start a service in the sidecar
-kubectl exec -it <pod-name> -c keep-alive -- npm run dev
-
-# Forward ports in another terminal
 kubectl port-forward pod/<pod-name> 3000:3000 8080:8080
 ```
 

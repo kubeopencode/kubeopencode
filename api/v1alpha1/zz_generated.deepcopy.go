@@ -571,6 +571,11 @@ func (in *HumanInTheLoop) DeepCopyInto(out *HumanInTheLoop) {
 		*out = new(v1.Duration)
 		**out = **in
 	}
+	if in.Command != nil {
+		in, out := &in.Command, &out.Command
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.Ports != nil {
 		in, out := &in.Ports, &out.Ports
 		*out = make([]ContainerPort, len(*in))
