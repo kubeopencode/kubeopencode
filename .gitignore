@@ -8,6 +8,10 @@
 bin/
 cover.out
 
+# Built binaries
+controller
+git-init
+
 # Helm
 dist/
 
