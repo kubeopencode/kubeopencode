@@ -1532,4 +1532,237 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})
+
+	Context("Context validation", func() {
+		It("Should fail when inline Git context has no mountPath", func() {
+			taskName := "test-task-inline-git-no-mountpath"
+			description := "Test inline Git validation"
+
+			By("Creating Agent")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "agent-inline-git-validation",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					AgentImage:         "test-agent:v1.0.0",
+					Command:            []string{"echo", "test"},
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task with inline Git context without mountPath")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					Description: &description,
+					AgentRef:    agent.Name,
+					Contexts: []kubetaskv1alpha1.ContextSource{
+						{
+							Inline: &kubetaskv1alpha1.ContextItem{
+								Type: kubetaskv1alpha1.ContextTypeGit,
+								Git: &kubetaskv1alpha1.GitContext{
+									Repository: "https://github.com/example/repo",
+								},
+								// No MountPath - should fail validation
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task status is Failed with validation error")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			createdTask := &kubetaskv1alpha1.Task{}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseFailed))
+
+			By("Verifying error message mentions mountPath requirement")
+			var readyCondition *metav1.Condition
+			for i := range createdTask.Status.Conditions {
+				if createdTask.Status.Conditions[i].Type == "Ready" {
+					readyCondition = &createdTask.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(readyCondition).ShouldNot(BeNil())
+			Expect(readyCondition.Message).Should(ContainSubstring("inline Git context requires mountPath"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should fail when multiple contexts use same mountPath", func() {
+			taskName := "test-task-mountpath-conflict"
+			description := "Test mountPath conflict detection"
+			conflictPath := "/workspace/config.yaml"
+
+			By("Creating Agent")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "agent-mountpath-conflict",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					AgentImage:         "test-agent:v1.0.0",
+					Command:            []string{"echo", "test"},
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating two Context CRDs with same mountPath")
+			context1 := &kubetaskv1alpha1.Context{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "context-conflict-1",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.ContextSpec{
+					Type: kubetaskv1alpha1.ContextTypeInline,
+					Inline: &kubetaskv1alpha1.InlineContext{
+						Content: "content from context 1",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, context1)).Should(Succeed())
+
+			context2 := &kubetaskv1alpha1.Context{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "context-conflict-2",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.ContextSpec{
+					Type: kubetaskv1alpha1.ContextTypeInline,
+					Inline: &kubetaskv1alpha1.InlineContext{
+						Content: "content from context 2",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, context2)).Should(Succeed())
+
+			By("Creating Task referencing both contexts with same mountPath")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					Description: &description,
+					AgentRef:    agent.Name,
+					Contexts: []kubetaskv1alpha1.ContextSource{
+						{
+							Ref: &kubetaskv1alpha1.ContextRef{
+								Name:      context1.Name,
+								MountPath: conflictPath,
+							},
+						},
+						{
+							Ref: &kubetaskv1alpha1.ContextRef{
+								Name:      context2.Name,
+								MountPath: conflictPath, // Same path - should fail
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task status is Failed with conflict error")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			createdTask := &kubetaskv1alpha1.Task{}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseFailed))
+
+			By("Verifying error message mentions mount path conflict")
+			var readyCondition *metav1.Condition
+			for i := range createdTask.Status.Conditions {
+				if createdTask.Status.Conditions[i].Type == "Ready" {
+					readyCondition = &createdTask.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(readyCondition).ShouldNot(BeNil())
+			Expect(readyCondition.Message).Should(ContainSubstring("mount path conflict"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, context1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, context2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should succeed when inline Git context has mountPath specified", func() {
+			taskName := "test-task-inline-git-with-mountpath"
+			description := "Test inline Git with mountPath"
+
+			By("Creating Agent")
+			agent := &kubetaskv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "agent-inline-git-valid",
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.AgentSpec{
+					AgentImage:         "test-agent:v1.0.0",
+					Command:            []string{"echo", "test"},
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task with inline Git context with mountPath")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					Description: &description,
+					AgentRef:    agent.Name,
+					Contexts: []kubetaskv1alpha1.ContextSource{
+						{
+							Inline: &kubetaskv1alpha1.ContextItem{
+								Type: kubetaskv1alpha1.ContextTypeGit,
+								Git: &kubetaskv1alpha1.GitContext{
+									Repository: "https://github.com/example/repo",
+								},
+								MountPath: "/workspace/my-repo", // Has mountPath - should succeed
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task status is Running (not Failed)")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			createdTask := &kubetaskv1alpha1.Task{}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
 })

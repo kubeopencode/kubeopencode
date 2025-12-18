@@ -247,7 +247,20 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 	contextConfigMap, fileMounts, dirMounts, gitMounts, err := r.processAllContexts(ctx, task, agentConfig)
 	if err != nil {
 		log.Error(err, "unable to process contexts")
-		return ctrl.Result{}, err
+		// Update task status to Failed - context errors are user configuration issues
+		task.Status.ObservedGeneration = task.Generation
+		task.Status.Phase = kubetaskv1alpha1.TaskPhaseFailed
+		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+			Type:    "Ready",
+			Status:  metav1.ConditionFalse,
+			Reason:  "ContextError",
+			Message: err.Error(),
+		})
+		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			log.Error(updateErr, "unable to update Task status")
+			return ctrl.Result{}, updateErr
+		}
+		return ctrl.Result{}, nil // Don't requeue, user needs to fix context configuration
 	}
 
 	// Create ConfigMap if there's aggregated content
@@ -560,7 +573,43 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubetaskv
 		}
 	}
 
+	// Validate mount path conflicts
+	// Multiple contexts mounting to the same path would silently overwrite each other,
+	// so we detect and report conflicts explicitly.
+	if err := validateMountPathConflicts(fileMounts, dirMounts, gitMounts); err != nil {
+		return nil, nil, nil, nil, err
+	}
+
 	return configMap, fileMounts, dirMounts, gitMounts, nil
+}
+
+// validateMountPathConflicts checks for duplicate mount paths across all mount types.
+// Returns an error if any two mounts target the same path.
+func validateMountPathConflicts(fileMounts []fileMount, dirMounts []dirMount, gitMounts []gitMount) error {
+	mountPaths := make(map[string]string) // path -> source description
+
+	for _, fm := range fileMounts {
+		if existing, ok := mountPaths[fm.filePath]; ok {
+			return fmt.Errorf("mount path conflict: %q is used by both %s and a file mount", fm.filePath, existing)
+		}
+		mountPaths[fm.filePath] = "file mount"
+	}
+
+	for _, dm := range dirMounts {
+		if existing, ok := mountPaths[dm.dirPath]; ok {
+			return fmt.Errorf("mount path conflict: %q is used by both %s and directory mount (ConfigMap: %s)", dm.dirPath, existing, dm.configMapName)
+		}
+		mountPaths[dm.dirPath] = fmt.Sprintf("directory mount (ConfigMap: %s)", dm.configMapName)
+	}
+
+	for _, gm := range gitMounts {
+		if existing, ok := mountPaths[gm.mountPath]; ok {
+			return fmt.Errorf("mount path conflict: %q is used by both %s and git mount (%s)", gm.mountPath, existing, gm.contextName)
+		}
+		mountPaths[gm.mountPath] = fmt.Sprintf("git mount (%s)", gm.contextName)
+	}
+
+	return nil
 }
 
 // resolveContextSource resolves a ContextSource (either a reference to a Context CR or an inline definition)
@@ -620,6 +669,14 @@ func (r *TaskReconciler) resolveContextRef(ctx context.Context, ref *kubetaskv1a
 
 // resolveContextItem resolves an inline ContextItem
 func (r *TaskReconciler) resolveContextItem(ctx context.Context, item *kubetaskv1alpha1.ContextItem, defaultNS, workspaceDir string) (*resolvedContext, *dirMount, *gitMount, error) {
+	// Validate: inline Git context requires mountPath to be specified
+	// Unlike Context CRDs which have a name for automatic path generation (git-<name>),
+	// inline contexts use a hardcoded "inline" name which would cause conflicts
+	// if multiple inline Git contexts are used without explicit mountPath.
+	if item.Type == kubetaskv1alpha1.ContextTypeGit && item.MountPath == "" {
+		return nil, nil, nil, fmt.Errorf("inline Git context requires mountPath to be specified; use a Context CRD for automatic path generation")
+	}
+
 	// Create a temporary ContextSpec from the ContextItem
 	spec := &kubetaskv1alpha1.ContextSpec{
 		Type:      item.Type,

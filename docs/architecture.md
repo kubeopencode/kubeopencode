@@ -1166,6 +1166,32 @@ contexts:
       mountPath: guides/readme.md     # Relative path - becomes ${workspaceDir}/guides/readme.md
 ```
 
+**MountPath Behavior Summary:**
+
+The following table summarizes how different context types behave based on `mountPath` configuration:
+
+| Context Source | Context Type | mountPath | Behavior |
+|----------------|--------------|-----------|----------|
+| **Context CRD** (via `ref`) | Inline | Empty | Append to task.md with XML tags |
+| **Context CRD** (via `ref`) | Inline | Specified | Mount as file at path |
+| **Context CRD** (via `ref`) | ConfigMap (with key) | Empty | Append to task.md with XML tags |
+| **Context CRD** (via `ref`) | ConfigMap (with key) | Specified | Mount as file at path |
+| **Context CRD** (via `ref`) | ConfigMap (no key) | Empty | Append all keys to task.md |
+| **Context CRD** (via `ref`) | ConfigMap (no key) | Specified | Mount as directory at path |
+| **Context CRD** (via `ref`) | Git | Empty | Mount at `${WORKSPACE_DIR}/git-<context-name>` |
+| **Context CRD** (via `ref`) | Git | Specified | Mount at specified path |
+| **Inline** | Inline | Empty | Append to task.md with XML tags |
+| **Inline** | Inline | Specified | Mount as file at path |
+| **Inline** | ConfigMap | Empty/Specified | Same as Context CRD ConfigMap |
+| **Inline** | Git | Empty | **Error**: mountPath required |
+| **Inline** | Git | Specified | Mount at specified path |
+
+**Key Rules:**
+1. **Inline Git requires mountPath** - Unlike Context CRDs which have a name for auto-generation
+2. **No duplicate mountPaths** - Controller returns error if two contexts target the same path
+3. **Relative paths** - Prefixed with `${WORKSPACE_DIR}` (e.g., `guides/readme.md` → `/workspace/guides/readme.md`)
+4. **Absolute paths** - Used as-is (e.g., `/etc/config`)
+
 **Empty MountPath Behavior:**
 
 When `mountPath` is empty (in either `ContextRef` or `ContextItem`), the context content is appended to `/workspace/task.md` with XML tags:
@@ -1177,6 +1203,47 @@ When `mountPath` is empty (in either `ContextRef` or `ContextItem`), the context
 ```
 
 This enables multiple contexts to be aggregated into a single file that the agent reads.
+
+**Inline Git Context Validation:**
+
+Unlike Context CRDs (which have a `name` for automatic path generation like `git-<name>`), inline Git contexts require an explicit `mountPath`. This prevents conflicts when multiple inline Git contexts are used:
+
+```yaml
+# ❌ Invalid - inline Git without mountPath
+contexts:
+  - inline:
+      type: Git
+      git:
+        repository: https://github.com/org/repo
+      # Error: inline Git context requires mountPath
+
+# ✅ Valid - inline Git with explicit mountPath
+contexts:
+  - inline:
+      type: Git
+      git:
+        repository: https://github.com/org/repo
+      mountPath: /workspace/my-repo
+```
+
+**Mount Path Conflict Detection:**
+
+The controller validates that no two contexts mount to the same path. This prevents silent overwrites:
+
+```yaml
+# ❌ Invalid - duplicate mount paths
+contexts:
+  - ref:
+      name: context-a
+      mountPath: /workspace/config.yaml
+  - ref:
+      name: context-b
+      mountPath: /workspace/config.yaml  # Error: mount path conflict
+```
+
+**Context Priority (Agent vs Task):**
+
+When both Agent and Task define contexts, Task contexts are processed after Agent contexts. If they target the same `mountPath`, a conflict error is returned. To override Agent defaults, use different paths or omit the mountPath (append to task.md).
 
 ### Concurrency Control
 
