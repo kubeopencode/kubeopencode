@@ -52,6 +52,11 @@ func run() error {
 		return fmt.Errorf("%s environment variable is required", envRepo)
 	}
 
+	// Validate repository URL protocol to prevent SSRF attacks
+	if err := validateRepoURL(repo); err != nil {
+		return err
+	}
+
 	// Get optional environment variables with defaults
 	ref := getEnvOrDefault(envRef, defaultRef)
 	depth := getEnvIntOrDefault(envDepth, defaultDepth)
@@ -107,6 +112,12 @@ func run() error {
 	// Without this, git commands fail with "detected dubious ownership" error
 	// We write to a shared location so the main container can use it
 	sharedGitConfig := filepath.Join(root, ".gitconfig")
+	// Use directory = * because the repository may be mounted at a different path
+	// in the agent container (e.g., /workspace/project instead of /git/repo).
+	// This is safe because:
+	// - The .gitconfig is created inside the container and only affects this Pod
+	// - Container isolation is the security boundary
+	// - We cannot predict the final mount path from git-init
 	gitConfigContent := fmt.Sprintf("[safe]\n\tdirectory = %s\n\tdirectory = *\n", targetDir)
 	if err := os.WriteFile(sharedGitConfig, []byte(gitConfigContent), 0644); err != nil {
 		fmt.Printf("git-init: Warning: could not write shared .gitconfig: %v\n", err)
@@ -114,9 +125,14 @@ func run() error {
 		fmt.Printf("git-init: Created shared .gitconfig at %s\n", sharedGitConfig)
 	}
 
-	// Make the cloned repository writable by all users
-	// This is needed because the agent container may run as a different user
-	// Without this, file modifications fail with "permission denied" error
+	// Make the cloned repository writable by all users in the container.
+	// This is needed because the agent container may run as a different user.
+	// Without this, file modifications fail with "permission denied" error.
+	//
+	// Security Note: This is acceptable because:
+	// - Container provides process isolation (pod is the security boundary)
+	// - Agent needs write access to develop/modify cloned code
+	// - Alternative approaches (shared UID/fsGroup) reduce image flexibility
 	fmt.Println("git-init: Setting repository permissions...")
 	chmodCmd := exec.Command("chmod", "-R", "a+w", targetDir)
 	if err := chmodCmd.Run(); err != nil {
@@ -135,7 +151,30 @@ func run() error {
 		fmt.Printf("  Commit: %s\n", strings.TrimSpace(string(commitOutput)))
 	}
 
+	// Clean up credentials file after successful clone (security best practice)
+	cleanupCredentials()
+
 	return nil
+}
+
+// cleanupCredentials removes the git credentials file after a successful clone.
+// This reduces the window of exposure for credentials on disk.
+func cleanupCredentials() {
+	username := os.Getenv(envUsername)
+	password := os.Getenv(envPassword)
+
+	// Only clean up if HTTPS credentials were used
+	if username != "" && password != "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = "/tmp"
+		}
+		credFile := filepath.Join(home, ".git-credentials")
+		if err := os.Remove(credFile); err == nil {
+			fmt.Println("git-init: Cleaned up credentials file")
+		}
+		// Ignore error - best effort cleanup, file may not exist
+	}
 }
 
 func setupAuth() error {
@@ -208,6 +247,10 @@ func setupAuth() error {
 
 		// If known hosts are provided, use them instead
 		knownHosts := os.Getenv(envSSHHostKeys)
+		if knownHosts == "" {
+			fmt.Println("git-init: WARNING: SSH host key verification disabled (no GIT_SSH_KNOWN_HOSTS provided)")
+			fmt.Println("git-init: This allows MITM attacks. Consider providing known_hosts for production.")
+		}
 		if knownHosts != "" {
 			knownHostsFile := filepath.Join(sshDir, "known_hosts")
 			if err := os.WriteFile(knownHostsFile, []byte(knownHosts), 0600); err != nil {
@@ -263,4 +306,20 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// validateRepoURL validates the repository URL protocol to prevent SSRF attacks.
+// Only allows https://, http://, and git@ (SSH) formats.
+func validateRepoURL(repo string) error {
+	// Allow https:// and git@ (SSH) formats
+	if strings.HasPrefix(repo, "https://") || strings.HasPrefix(repo, "git@") {
+		return nil
+	}
+	// Allow http:// (some internal repos use it), but warn
+	if strings.HasPrefix(repo, "http://") {
+		fmt.Println("git-init: WARNING: Using insecure HTTP protocol")
+		return nil
+	}
+	// Reject file://, ftp://, and other protocols
+	return fmt.Errorf("unsupported repository URL protocol: only https://, http://, and git@ (SSH) are allowed")
 }
