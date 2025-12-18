@@ -93,7 +93,7 @@ buildx: ## Build and push agent image for multiple architectures
 build-all: base-build ## Build base and all agent images
 	@for agent in $$(ls -d */ 2>/dev/null | sed 's/\///g' | grep -v '^base$$'); do \
 		echo "Building agent: $$agent"; \
-		$(MAKE) AGENT=$$agent build; \
+		$(MAKE) AGENT=$$agent NO_CACHE=$(NO_CACHE) build; \
 	done
 
 .PHONY: push-all
@@ -107,7 +107,7 @@ push-all: base-push ## Push base and all agent images
 buildx-all: base-buildx ## Build and push base and all agent images (multi-arch)
 	@for agent in $$(ls -d */ 2>/dev/null | sed 's/\///g' | grep -v '^base$$'); do \
 		echo "Building agent (multi-arch): $$agent"; \
-		$(MAKE) AGENT=$$agent buildx; \
+		$(MAKE) AGENT=$$agent NO_CACHE=$(NO_CACHE) buildx; \
 	done
 
 ##@ Utilities
