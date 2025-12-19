@@ -18,7 +18,7 @@ This Helm chart deploys KubeTask, a Kubernetes-native system for executing AI-po
 kubectl create namespace kubetask-system
 
 # Install from OCI registry
-helm install kubetask oci://quay.io/kubetask/kubetask \
+helm install kubetask oci://quay.io/kubetask/helm-charts/kubetask \
   --namespace kubetask-system
 
 # Or install from local chart (for development)
@@ -33,7 +33,7 @@ helm install kubetask ./charts/kubetask \
 cat > my-values.yaml <<EOF
 controller:
   image:
-    repository: quay.io/kubetask/kubetask-controller
+    repository: quay.io/kubetask/kubetask
     tag: latest
 
   resources:
@@ -64,7 +64,7 @@ The following table lists the configurable parameters of the KubeTask chart and 
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `controller.image.repository` | Controller image repository | `quay.io/kubetask/kubetask-controller` |
+| `controller.image.repository` | Controller image repository | `quay.io/kubetask/kubetask` |
 | `controller.image.tag` | Controller image tag | `""` (uses chart appVersion) |
 | `controller.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `controller.replicas` | Number of controller replicas | `1` |

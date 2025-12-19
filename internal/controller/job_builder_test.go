@@ -846,8 +846,8 @@ func TestBuildJob_WithGitMounts(t *testing.T) {
 	if initContainer.Name != "git-init-0" {
 		t.Errorf("Init container name = %q, want %q", initContainer.Name, "git-init-0")
 	}
-	if initContainer.Image != DefaultToolsImage {
-		t.Errorf("Init container image = %q, want %q", initContainer.Image, DefaultToolsImage)
+	if initContainer.Image != DefaultKubeTaskImage {
+		t.Errorf("Init container image = %q, want %q", initContainer.Image, DefaultKubeTaskImage)
 	}
 
 	// Verify environment variables
@@ -982,8 +982,8 @@ func TestBuildGitInitContainer(t *testing.T) {
 		t.Errorf("Container name = %q, want %q", container.Name, "git-init-0")
 	}
 
-	if container.Image != DefaultToolsImage {
-		t.Errorf("Container image = %q, want %q", container.Image, DefaultToolsImage)
+	if container.Image != DefaultKubeTaskImage {
+		t.Errorf("Container image = %q, want %q", container.Image, DefaultKubeTaskImage)
 	}
 
 	// Check env vars

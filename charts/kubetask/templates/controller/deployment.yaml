@@ -33,7 +33,8 @@ spec:
         image: {{ include "kubetask.controller.image" . }}
         imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
         command:
-        - /controller
+        - /kubetask
+        - controller
         args:
         - --leader-elect
         - --metrics-bind-address=:8080

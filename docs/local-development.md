@@ -42,26 +42,21 @@ Build all required images:
 # Build the controller image
 make docker-build
 
-# Build the kubetask-tools image (provides git-init, save-session, etc.)
-make tools-build
-
 # Build the agent image (gemini is the default)
 make agent-build
 ```
 
-**Note:** The kubetask-tools image provides multiple utilities:
-- `git-init`: Git repository cloning for Git Context
-- `save-session`: Workspace persistence for session resume
-
-If you only use Inline or ConfigMap contexts and don't need session persistence, you can skip building it.
+**Note:** The unified kubetask image provides both controller and infrastructure utilities:
+- `kubetask controller`: Kubernetes controller
+- `kubetask git-init`: Git repository cloning for Git Context
+- `kubetask save-session`: Workspace persistence for session resume
 
 ### 3. Load Images to Kind
 
 Load images into the Kind cluster (required because Kind cannot pull from local Docker):
 
 ```bash
-kind load docker-image quay.io/kubetask/kubetask-controller:latest --name kubetask
-kind load docker-image quay.io/kubetask/kubetask-tools:latest --name kubetask
+kind load docker-image quay.io/kubetask/kubetask:latest --name kubetask
 kind load docker-image quay.io/kubetask/kubetask-agent-gemini:latest --name kubetask
 ```
 
@@ -122,7 +117,7 @@ When you make changes to the controller code:
 make docker-build
 
 # Reload into Kind
-kind load docker-image quay.io/kubetask/kubetask-controller:latest --name kubetask
+kind load docker-image quay.io/kubetask/kubetask:latest --name kubetask
 
 # Restart the deployment to pick up the new image
 kubectl rollout restart deployment/kubetask-controller -n kubetask-system

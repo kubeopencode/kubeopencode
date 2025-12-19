@@ -4,9 +4,9 @@
 
 # Controller configuration
 controller:
-  # Container image for the controller
+  # Container image for kubetask (unified image with controller, git-init, save-session)
   image:
-    repository: quay.io/kubetask/kubetask-controller
+    repository: quay.io/kubetask/kubetask
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""

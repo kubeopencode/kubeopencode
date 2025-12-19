@@ -580,7 +580,7 @@ git commit -s -m "feat: add new context type for API endpoints"
 
 ```bash
 # Run controller with verbose logging
-go run ./cmd/controller/main.go --zap-log-level=debug
+go run ./cmd/kubetask controller --zap-log-level=debug
 
 # Check controller logs in cluster
 kubectl logs -n kubetask-system deployment/kubetask-controller -f

@@ -12,7 +12,7 @@ BUILD_DATE := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 # Image URL to use for building/pushing image targets
 IMG_REGISTRY ?= quay.io
 IMG_ORG ?= kubetask
-IMG_NAME ?= kubetask-controller
+IMG_NAME ?= kubetask
 IMG ?= $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(VERSION)
 
 # PLATFORMS defines the target platforms for multi-arch build
@@ -86,9 +86,9 @@ update-crds: controller-gen
 	@echo "CRDs updated successfully in both locations"
 .PHONY: update-crds
 
-# Build
+# Build unified kubetask binary
 build:
-	go build -o bin/kubetask-controller ./cmd/controller
+	go build -o bin/kubetask ./cmd/kubetask
 .PHONY: build
 
 # Test runs unit tests only.
@@ -156,33 +156,6 @@ docker-buildx:
 		.
 .PHONY: docker-buildx
 
-##@ KubeTask Tools Image
-
-# Tools image settings (unified image for git-init, save-session, etc.)
-TOOLS_IMG_NAME ?= kubetask-tools
-TOOLS_IMG ?= $(IMG_REGISTRY)/$(IMG_ORG)/$(TOOLS_IMG_NAME):$(VERSION)
-
-# Build kubetask-tools image
-tools-build: ## Build kubetask-tools image (git-init, save-session, etc.)
-	docker build -t $(TOOLS_IMG) -f cmd/tools/Dockerfile .
-.PHONY: tools-build
-
-# Push kubetask-tools image
-tools-push: ## Push kubetask-tools image
-	docker push $(TOOLS_IMG)
-.PHONY: tools-push
-
-# Build and push kubetask-tools image for multiple architectures
-tools-buildx: ## Multi-arch build and push kubetask-tools image
-	docker buildx create --use --name=kubetask-builder || true
-	docker buildx build \
-		--platform=$(PLATFORMS) \
-		--tag $(TOOLS_IMG) \
-		--push \
-		-f cmd/tools/Dockerfile \
-		.
-.PHONY: tools-buildx
-
 ##@ Helm
 
 # Package helm chart
@@ -221,7 +194,7 @@ helm-template:
 .PHONY: helm-template
 
 # Chart registry settings
-CHART_REGISTRY ?= oci://$(IMG_REGISTRY)/$(IMG_ORG)
+CHART_REGISTRY ?= oci://$(IMG_REGISTRY)/$(IMG_ORG)/helm-charts
 CHART_NAME ?= kubetask
 
 # Login to helm registry
@@ -238,7 +211,7 @@ helm-push: helm-package ## Push helm chart to OCI registry
 
 # Run controller locally
 run:
-	go run ./cmd/controller/main.go
+	go run ./cmd/kubetask controller
 .PHONY: run
 
 # Format code
@@ -309,7 +282,7 @@ e2e-undeploy: ## Undeploy controller and CRDs from kind cluster
 .PHONY: e2e-undeploy
 
 # Setup e2e environment (create cluster, build images, load images, and deploy)
-e2e-setup: e2e-kind-create e2e-docker-build e2e-agent-build e2e-tools-build e2e-kind-load e2e-agent-load e2e-tools-load e2e-verify-image e2e-deploy ## Setup complete e2e environment
+e2e-setup: e2e-kind-create e2e-docker-build e2e-agent-build e2e-kind-load e2e-agent-load e2e-verify-image e2e-deploy ## Setup complete e2e environment
 	@echo "E2E environment setup complete"
 .PHONY: e2e-setup
 
@@ -335,15 +308,6 @@ e2e-agent-load: ## Load echo agent image into kind cluster
 	kind load docker-image quay.io/kubetask/kubetask-agent-echo:latest --name $(E2E_CLUSTER_NAME)
 .PHONY: e2e-agent-load
 
-# Build kubetask-tools image for e2e testing
-e2e-tools-build: ## Build kubetask-tools image for e2e testing
-	docker build -t quay.io/kubetask/kubetask-tools:latest -f cmd/tools/Dockerfile .
-.PHONY: e2e-tools-build
-
-# Load kubetask-tools image into kind cluster
-e2e-tools-load: ## Load kubetask-tools image into kind cluster
-	kind load docker-image quay.io/kubetask/kubetask-tools:latest --name $(E2E_CLUSTER_NAME)
-.PHONY: e2e-tools-load
 
 # Run e2e tests
 e2e-test: ## Run e2e tests

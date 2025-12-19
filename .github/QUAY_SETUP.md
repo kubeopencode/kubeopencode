@@ -6,7 +6,7 @@
 2. Go to **Organizations** → **kubetask** → **Robot Accounts** → **Create Robot Account**
 3. Name it (e.g., `github_actions`)
 4. Grant **Write** permission to all repositories:
-   - `kubetask/kubetask-controller`
+   - `kubetask/kubetask`
    - `kubetask/kubetask-agent-base`
    - `kubetask/kubetask-agent-gemini`
    - `kubetask/kubetask-agent-echo`

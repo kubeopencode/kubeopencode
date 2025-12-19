@@ -1,11 +1,12 @@
 // Copyright Contributors to the KubeTask project
+
 package main
 
 import (
 	"crypto/tls"
-	"flag"
 	"os"
 
+	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -28,30 +29,50 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(kubetaskv1alpha1.AddToScheme(scheme))
+
+	rootCmd.AddCommand(controllerCmd)
 }
 
-func main() {
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
-	var secureMetrics bool
-	var enableHTTP2 bool
+var controllerCmd = &cobra.Command{
+	Use:   "controller",
+	Short: "Start the KubeTask controller",
+	Long: `Start the KubeTask Kubernetes controller.
 
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+The controller watches for Task, Workflow, WorkflowRun, and CronWorkflow
+resources and manages their execution as Kubernetes Jobs.
+
+Example:
+  kubetask controller --metrics-bind-address=:8080 --health-probe-bind-address=:8081`,
+	RunE: runController,
+}
+
+// Controller flags
+var (
+	metricsAddr          string
+	probeAddr            string
+	enableLeaderElection bool
+	secureMetrics        bool
+	enableHTTP2          bool
+)
+
+func init() {
+	controllerCmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", ":8080",
+		"The address the metric endpoint binds to.")
+	controllerCmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":8081",
+		"The address the probe endpoint binds to.")
+	controllerCmd.Flags().BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", false,
+	controllerCmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false,
 		"If set the metrics endpoint is served securely")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
+	controllerCmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+}
+
+func runController(cmd *cobra.Command, args []string) error {
 	opts := zap.Options{
 		Development: true,
 	}
-	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
@@ -148,4 +169,6 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+
+	return nil
 }

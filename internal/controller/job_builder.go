@@ -85,9 +85,9 @@ func int32Ptr(i int32) *int32 {
 }
 
 const (
-	// DefaultToolsImage is the default kubetask-tools container image for infrastructure utilities.
-	// This image provides: git-init (Git clone), save-session (workspace persistence), etc.
-	DefaultToolsImage = "quay.io/kubetask/kubetask-tools:latest"
+	// DefaultKubeTaskImage is the default kubetask container image.
+	// This unified image provides: controller, git-init (Git clone), save-session (workspace persistence), etc.
+	DefaultKubeTaskImage = "quay.io/kubetask/kubetask:latest"
 )
 
 // buildGitInitContainer creates an init container that clones a Git repository.
@@ -145,9 +145,9 @@ func buildGitInitContainer(gm gitMount, volumeName string, index int) corev1.Con
 
 	return corev1.Container{
 		Name:            fmt.Sprintf("git-init-%d", index),
-		Image:           DefaultToolsImage,
+		Image:           DefaultKubeTaskImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command:         []string{"/kubetask-tools", "git-init"},
+		Command:         []string{"/kubetask", "git-init"},
 		Env:             envVars,
 		VolumeMounts:    volumeMounts,
 	}
@@ -481,12 +481,12 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 		})
 
 		// Build save-session sidecar container
-		// Uses kubetask-tools save-session command to wait for agent and save workspace
+		// Uses kubetask save-session command to wait for agent and save workspace
 		saveSessionSidecar := corev1.Container{
 			Name:            "save-session",
-			Image:           DefaultToolsImage,
+			Image:           DefaultKubeTaskImage,
 			ImagePullPolicy: corev1.PullIfNotPresent,
-			Command:         []string{"/kubetask-tools", "save-session"},
+			Command:         []string{"/kubetask", "save-session"},
 			Env: []corev1.EnvVar{
 				{Name: "TASK_NAME", Value: task.Name},
 				{Name: "TASK_NAMESPACE", Value: task.Namespace},

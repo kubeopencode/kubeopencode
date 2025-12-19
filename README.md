@@ -77,7 +77,7 @@ KubeTask enables you to execute AI agent tasks (like Claude, Gemini) using Kuber
 kubectl create namespace kubetask-system
 
 # Install from OCI registry
-helm install kubetask oci://quay.io/kubetask/kubetask \
+helm install kubetask oci://quay.io/kubetask/helm-charts/kubetask \
   --namespace kubetask-system
 
 # Or install from local chart (for development)
@@ -496,7 +496,7 @@ Key configurations:
 ```yaml
 controller:
   image:
-    repository: quay.io/kubetask/kubetask-controller
+    repository: quay.io/kubetask/kubetask
     tag: latest
   resources:
     limits:
