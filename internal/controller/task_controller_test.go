@@ -862,8 +862,10 @@ var _ = Describe("TaskController", func() {
 					WorkspaceDir:       "/workspace",
 					Command:            []string{"sh", "-c", "echo hello"},
 					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-						Enabled:  true,
-						Duration: &duration,
+						Sidecar: &kubetaskv1alpha1.SessionSidecar{
+							Enabled:  true,
+							Duration: &duration,
+						},
 					},
 				},
 			}
@@ -949,8 +951,10 @@ var _ = Describe("TaskController", func() {
 					WorkspaceDir:       "/workspace",
 					Command:            []string{"./run.sh"},
 					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-						Enabled: true,
-						// Duration not specified, should use default (1 hour)
+						Sidecar: &kubetaskv1alpha1.SessionSidecar{
+							Enabled: true,
+							// Duration not specified, should use default (1 hour)
+						},
 					},
 				},
 			}
@@ -1004,7 +1008,9 @@ var _ = Describe("TaskController", func() {
 					WorkspaceDir:       "/workspace",
 					Command:            []string{"./run.sh"},
 					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-						Enabled: false,
+						Sidecar: &kubetaskv1alpha1.SessionSidecar{
+							Enabled: false,
+						},
 					},
 				},
 			}

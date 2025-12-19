@@ -52,6 +52,12 @@ const (
 	// AnnotationHumanInTheLoop indicates that humanInTheLoop is enabled for the task
 	AnnotationHumanInTheLoop = "kubetask.io/human-in-the-loop"
 
+	// AnnotationResumeSession triggers session Pod creation when set to "true"
+	AnnotationResumeSession = "kubetask.io/resume-session"
+
+	// DefaultSessionPVCName is the default name for the session persistence PVC
+	DefaultSessionPVCName = "kubetask-session-data"
+
 	// RuntimeSystemPrompt is the system prompt injected when Runtime context is enabled.
 	// It provides KubeTask platform awareness to the agent.
 	RuntimeSystemPrompt = `## KubeTask Runtime Context
@@ -101,6 +107,7 @@ type TaskReconciler struct {
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -127,9 +134,13 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return r.handleQueuedTask(ctx, task)
 	}
 
-	// If completed/failed, check TTL for cleanup
+	// If completed/failed, check for session resume or TTL cleanup
 	if task.Status.Phase == kubetaskv1alpha1.TaskPhaseCompleted ||
 		task.Status.Phase == kubetaskv1alpha1.TaskPhaseFailed {
+		// Check for session resume request
+		if task.Annotations != nil && task.Annotations[AnnotationResumeSession] == "true" {
+			return r.handleSessionResume(ctx, task)
+		}
 		return r.handleTaskCleanup(ctx, task)
 	}
 
@@ -173,26 +184,9 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 		return ctrl.Result{}, nil // Don't requeue, user needs to fix Agent
 	}
 
-	// Validate humanInTheLoop configuration: Duration and Command are mutually exclusive
-	if agentConfig.humanInTheLoop != nil && agentConfig.humanInTheLoop.Enabled {
-		if agentConfig.humanInTheLoop.Duration != nil && len(agentConfig.humanInTheLoop.Command) > 0 {
-			err := fmt.Errorf("humanInTheLoop.duration and humanInTheLoop.command are mutually exclusive")
-			log.Error(err, "invalid Agent configuration")
-			task.Status.ObservedGeneration = task.Generation
-			task.Status.Phase = kubetaskv1alpha1.TaskPhaseFailed
-			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
-				Type:    "Ready",
-				Status:  metav1.ConditionFalse,
-				Reason:  "AgentConfigError",
-				Message: err.Error(),
-			})
-			if updateErr := r.Status().Update(ctx, task); updateErr != nil {
-				log.Error(updateErr, "unable to update Task status")
-				return ctrl.Result{}, updateErr
-			}
-			return ctrl.Result{}, nil // Don't requeue, user needs to fix Agent
-		}
-	}
+	// Validate humanInTheLoop configuration:
+	// - If Command is specified, it takes precedence and Sidecar.Duration is ignored
+	// - No explicit validation needed - the design allows Command to override Duration
 
 	// Add agent label and humanInTheLoop annotation to Task
 	needsUpdate := false
@@ -204,8 +198,11 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 		needsUpdate = true
 	}
 
-	// Add humanInTheLoop annotation if enabled on Agent
-	if agentConfig.humanInTheLoop != nil && agentConfig.humanInTheLoop.Enabled {
+	// Add humanInTheLoop annotation if either sidecar or persistence is enabled on Agent
+	humanInTheLoopEnabled := agentConfig.humanInTheLoop != nil &&
+		((agentConfig.humanInTheLoop.Sidecar != nil && agentConfig.humanInTheLoop.Sidecar.Enabled) ||
+			(agentConfig.humanInTheLoop.Persistence != nil && agentConfig.humanInTheLoop.Persistence.Enabled))
+	if humanInTheLoopEnabled {
 		if task.Annotations == nil {
 			task.Annotations = make(map[string]string)
 		}
@@ -306,8 +303,11 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubetaskv1alp
 		}
 	}
 
+	// Get session persistence configuration
+	sessionCfg := r.getSessionPVCConfig(ctx, task.Namespace)
+
 	// Create Job with agent configuration and context mounts
-	job := buildJob(task, jobName, agentConfig, contextConfigMap, fileMounts, dirMounts, gitMounts)
+	job := buildJob(task, jobName, agentConfig, contextConfigMap, fileMounts, dirMounts, gitMounts, sessionCfg)
 
 	if err := r.Create(ctx, job); err != nil {
 		log.Error(err, "unable to create Job", "job", jobName)
@@ -1051,6 +1051,197 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubetaskv1alpha1.
 	if err := r.Status().Update(ctx, task); err != nil {
 		log.Error(err, "failed to update task status")
 		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// getSessionPVCConfig retrieves the session PVC configuration from KubeTaskConfig.
+// It looks for config in KubeTaskConfig named "default" in the task's namespace.
+// Returns nil if session PVC is not configured.
+// Note: This only provides the PVC infrastructure config. Whether persistence is enabled
+// is controlled per-Agent via humanInTheLoop.persistence.enabled.
+func (r *TaskReconciler) getSessionPVCConfig(ctx context.Context, namespace string) *sessionPVCConfig {
+	log := log.FromContext(ctx)
+
+	// Try to get KubeTaskConfig from the task's namespace
+	config := &kubetaskv1alpha1.KubeTaskConfig{}
+	configKey := types.NamespacedName{Name: "default", Namespace: namespace}
+
+	if err := r.Get(ctx, configKey, config); err != nil {
+		if !errors.IsNotFound(err) {
+			log.Error(err, "unable to get KubeTaskConfig for session PVC")
+		}
+		// Config not found, session PVC is not configured
+		return nil
+	}
+
+	// Check if session PVC is configured
+	if config.Spec.SessionPVC == nil {
+		return nil
+	}
+
+	// Get PVC name (use default if not specified)
+	pvcName := DefaultSessionPVCName
+	if config.Spec.SessionPVC.Name != "" {
+		pvcName = config.Spec.SessionPVC.Name
+	}
+
+	return &sessionPVCConfig{
+		pvcName: pvcName,
+	}
+}
+
+// handleSessionResume creates a session Pod for resuming work on a completed Task.
+func (r *TaskReconciler) handleSessionResume(ctx context.Context, task *kubetaskv1alpha1.Task) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	// Check if session Pod already exists
+	sessionPodName := fmt.Sprintf("%s-session", task.Name)
+	existingPod := &corev1.Pod{}
+	podKey := types.NamespacedName{Name: sessionPodName, Namespace: task.Namespace}
+
+	if err := r.Get(ctx, podKey, existingPod); err == nil {
+		// Session Pod exists, update status based on Pod phase
+		return r.updateSessionStatus(ctx, task, existingPod)
+	} else if !errors.IsNotFound(err) {
+		log.Error(err, "failed to get session pod")
+		return ctrl.Result{}, err
+	}
+
+	// Get agent configuration
+	agentCfg, _, err := r.getAgentConfigWithName(ctx, task)
+	if err != nil {
+		log.Error(err, "failed to get agent config for session resume")
+		// Set error condition on task
+		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+			Type:    "SessionError",
+			Status:  metav1.ConditionTrue,
+			Reason:  "AgentNotFound",
+			Message: err.Error(),
+		})
+		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			return ctrl.Result{}, updateErr
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Check if session persistence is enabled on the Agent
+	if agentCfg.humanInTheLoop == nil ||
+		agentCfg.humanInTheLoop.Persistence == nil ||
+		!agentCfg.humanInTheLoop.Persistence.Enabled {
+		log.Info("session resume requested but humanInTheLoop.persistence is not enabled on agent")
+		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+			Type:    "SessionError",
+			Status:  metav1.ConditionTrue,
+			Reason:  "SessionPersistenceDisabled",
+			Message: "Agent does not have humanInTheLoop.persistence enabled",
+		})
+		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			return ctrl.Result{}, updateErr
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Get session PVC configuration from KubeTaskConfig
+	sessionCfg := r.getSessionPVCConfig(ctx, task.Namespace)
+	if sessionCfg == nil {
+		log.Info("session resume requested but session PVC is not configured")
+		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+			Type:    "SessionError",
+			Status:  metav1.ConditionTrue,
+			Reason:  "SessionPVCNotConfigured",
+			Message: "Session PVC is not configured in KubeTaskConfig",
+		})
+		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			return ctrl.Result{}, updateErr
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Create session Pod
+	log.Info("creating session pod", "task", task.Name)
+	sessionPod := buildSessionPod(task, agentCfg, sessionCfg)
+
+	if err := r.Create(ctx, sessionPod); err != nil {
+		log.Error(err, "failed to create session pod")
+		return ctrl.Result{}, err
+	}
+
+	// Update Task status with session information
+	task.Status.SessionPodName = sessionPodName
+	task.Status.SessionStatus = &kubetaskv1alpha1.SessionStatus{
+		Phase:         kubetaskv1alpha1.SessionPhasePending,
+		WorkspacePath: fmt.Sprintf("/%s/%s", task.Namespace, task.Name),
+	}
+
+	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+		Type:    "SessionReady",
+		Status:  metav1.ConditionFalse,
+		Reason:  "SessionPending",
+		Message: "Session Pod is being created",
+	})
+
+	if err := r.Status().Update(ctx, task); err != nil {
+		log.Error(err, "failed to update task status")
+		return ctrl.Result{}, err
+	}
+
+	log.Info("session pod created", "pod", sessionPodName)
+	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+}
+
+// updateSessionStatus updates the Task's session status based on the session Pod's phase.
+func (r *TaskReconciler) updateSessionStatus(ctx context.Context, task *kubetaskv1alpha1.Task, pod *corev1.Pod) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	var sessionPhase kubetaskv1alpha1.SessionPhase
+	var conditionStatus metav1.ConditionStatus
+	var conditionReason, conditionMessage string
+
+	switch pod.Status.Phase {
+	case corev1.PodRunning:
+		sessionPhase = kubetaskv1alpha1.SessionPhaseActive
+		conditionStatus = metav1.ConditionTrue
+		conditionReason = "SessionActive"
+		conditionMessage = fmt.Sprintf("Session Pod %s is running. Use 'kubectl exec -it %s -c session -- /bin/sh' to connect.", pod.Name, pod.Name)
+	case corev1.PodSucceeded, corev1.PodFailed:
+		sessionPhase = kubetaskv1alpha1.SessionPhaseTerminated
+		conditionStatus = metav1.ConditionFalse
+		conditionReason = "SessionTerminated"
+		conditionMessage = fmt.Sprintf("Session Pod %s has terminated", pod.Name)
+	default:
+		sessionPhase = kubetaskv1alpha1.SessionPhasePending
+		conditionStatus = metav1.ConditionFalse
+		conditionReason = "SessionPending"
+		conditionMessage = fmt.Sprintf("Session Pod %s is pending", pod.Name)
+	}
+
+	// Update session status
+	if task.Status.SessionStatus == nil {
+		task.Status.SessionStatus = &kubetaskv1alpha1.SessionStatus{}
+	}
+	task.Status.SessionStatus.Phase = sessionPhase
+
+	if pod.Status.StartTime != nil && task.Status.SessionStatus.StartTime == nil {
+		task.Status.SessionStatus.StartTime = pod.Status.StartTime
+	}
+
+	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+		Type:    "SessionReady",
+		Status:  conditionStatus,
+		Reason:  conditionReason,
+		Message: conditionMessage,
+	})
+
+	if err := r.Status().Update(ctx, task); err != nil {
+		log.Error(err, "failed to update task session status")
+		return ctrl.Result{}, err
+	}
+
+	// If still pending or running, requeue to monitor
+	if sessionPhase != kubetaskv1alpha1.SessionPhaseTerminated {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
 	return ctrl.Result{}, nil

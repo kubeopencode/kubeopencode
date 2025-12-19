@@ -570,10 +570,10 @@ var _ = Describe("Task E2E Tests", func() {
 			if runningTask.Annotations == nil {
 				runningTask.Annotations = make(map[string]string)
 			}
-			runningTask.Annotations["kubetask.io/terminate"] = "true"
+			runningTask.Annotations["kubetask.io/stop"] = "true"
 			Expect(k8sClient.Update(ctx, runningTask)).Should(Succeed())
 
-			By("Verifying Task transitions to Completed with Terminated condition")
+			By("Verifying Task transitions to Completed with Stopped condition")
 			Eventually(func() kubetaskv1alpha1.TaskPhase {
 				t := &kubetaskv1alpha1.Task{}
 				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
@@ -582,19 +582,19 @@ var _ = Describe("Task E2E Tests", func() {
 				return t.Status.Phase
 			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseCompleted))
 
-			By("Verifying Terminated condition exists")
-			terminatedTask := &kubetaskv1alpha1.Task{}
-			Expect(k8sClient.Get(ctx, taskKey, terminatedTask)).Should(Succeed())
+			By("Verifying Stopped condition exists")
+			stoppedTask := &kubetaskv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskKey, stoppedTask)).Should(Succeed())
 
-			var hasTerminatedCondition bool
-			for _, cond := range terminatedTask.Status.Conditions {
-				if cond.Type == "Terminated" && cond.Status == "True" {
-					hasTerminatedCondition = true
-					Expect(cond.Reason).Should(Equal("UserTerminated"))
+			var hasStoppedCondition bool
+			for _, cond := range stoppedTask.Status.Conditions {
+				if cond.Type == "Stopped" && cond.Status == "True" {
+					hasStoppedCondition = true
+					Expect(cond.Reason).Should(Equal("UserStopped"))
 					break
 				}
 			}
-			Expect(hasTerminatedCondition).Should(BeTrue(), "Task should have Terminated condition")
+			Expect(hasStoppedCondition).Should(BeTrue(), "Task should have Stopped condition")
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
@@ -676,8 +676,10 @@ var _ = Describe("Task E2E Tests", func() {
 					WorkspaceDir:       "/workspace",
 					Command:            []string{"sh", "-c", "echo 'Task executed' && cat ${WORKSPACE_DIR}/task.md"},
 					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-						Enabled:  true,
-						Duration: &duration,
+						Sidecar: &kubetaskv1alpha1.SessionSidecar{
+							Enabled:  true,
+							Duration: &duration,
+						},
 					},
 				},
 			}
@@ -731,17 +733,17 @@ var _ = Describe("Task E2E Tests", func() {
 				return pods.Items[0].Status.Phase == corev1.PodRunning
 			}, timeout, interval).Should(BeTrue(), "Pod should still be running due to humanInTheLoop")
 
-			By("Verifying task can be terminated early")
-			// Add terminate annotation to exit early
+			By("Verifying task can be stopped early")
+			// Add stop annotation to exit early
 			runningTask := &kubetaskv1alpha1.Task{}
 			Expect(k8sClient.Get(ctx, taskKey, runningTask)).Should(Succeed())
 			if runningTask.Annotations == nil {
 				runningTask.Annotations = make(map[string]string)
 			}
-			runningTask.Annotations["kubetask.io/terminate"] = "true"
+			runningTask.Annotations["kubetask.io/stop"] = "true"
 			Expect(k8sClient.Update(ctx, runningTask)).Should(Succeed())
 
-			By("Waiting for Task to complete after termination")
+			By("Waiting for Task to complete after stop")
 			Eventually(func() kubetaskv1alpha1.TaskPhase {
 				t := &kubetaskv1alpha1.Task{}
 				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
@@ -753,6 +755,139 @@ var _ = Describe("Task E2E Tests", func() {
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, hitlAgent)).Should(Succeed())
+		})
+	})
+
+	Context("Task with Git Context", func() {
+		It("should clone a public Git repository and mount content", func() {
+			taskName := uniqueName("task-git")
+			contextName := uniqueName("git-context")
+			description := "Verify git content is available"
+
+			By("Creating Git Context CRD referencing a public repository")
+			// Using a well-known public repo that is stable
+			depth := 1
+			gitContext := &kubetaskv1alpha1.Context{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      contextName,
+					Namespace: testNS,
+				},
+				Spec: kubetaskv1alpha1.ContextSpec{
+					Type: kubetaskv1alpha1.ContextTypeGit,
+					Git: &kubetaskv1alpha1.GitContext{
+						Repository: "https://github.com/octocat/Hello-World.git",
+						Ref:        "master",
+						Depth:      &depth,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitContext)).Should(Succeed())
+
+			By("Creating Task referencing Git Context")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description,
+					Contexts: []kubetaskv1alpha1.ContextSource{
+						{
+							Ref: &kubetaskv1alpha1.ContextRef{
+								Name:      contextName,
+								MountPath: "/workspace/repo",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				createdTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying Git repository content is available in logs")
+			jobName := fmt.Sprintf("%s-job", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			// The Hello-World repo contains a README file
+			Expect(logs).Should(ContainSubstring("README"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, gitContext)).Should(Succeed())
+		})
+
+		It("should clone a specific path from Git repository", func() {
+			taskName := uniqueName("task-git-path")
+			contextName := uniqueName("git-path-context")
+			description := "Verify git subpath content"
+
+			By("Creating Git Context CRD with specific path")
+			depth := 1
+			gitContext := &kubetaskv1alpha1.Context{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      contextName,
+					Namespace: testNS,
+				},
+				Spec: kubetaskv1alpha1.ContextSpec{
+					Type: kubetaskv1alpha1.ContextTypeGit,
+					Git: &kubetaskv1alpha1.GitContext{
+						Repository: "https://github.com/octocat/Hello-World.git",
+						Ref:        "master",
+						Path:       "README",
+						Depth:      &depth,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitContext)).Should(Succeed())
+
+			By("Creating Task referencing Git Context with path")
+			task := &kubetaskv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubetaskv1alpha1.TaskSpec{
+					AgentRef:    agentName,
+					Description: &description,
+					Contexts: []kubetaskv1alpha1.ContextSource{
+						{
+							Ref: &kubetaskv1alpha1.ContextRef{
+								Name:      contextName,
+								MountPath: "/workspace/readme-file",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubetaskv1alpha1.TaskPhase {
+				createdTask := &kubetaskv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying specific file content is available")
+			jobName := fmt.Sprintf("%s-job", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			Expect(logs).Should(ContainSubstring("readme-file"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, gitContext)).Should(Succeed())
 		})
 	})
 })

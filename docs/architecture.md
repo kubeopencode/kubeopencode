@@ -180,8 +180,14 @@ Agent (execution configuration)
 
 KubeTaskConfig (system configuration)
 └── KubeTaskConfigSpec
-    └── taskLifecycle: *TaskLifecycleConfig
-        └── ttlSecondsAfterFinished: *int32
+    ├── taskLifecycle: *TaskLifecycleConfig
+    │   └── ttlSecondsAfterFinished: *int32
+    └── sessionPVC: *SessionPVCConfig
+        ├── name: string
+        ├── storageClassName: *string
+        ├── storageSize: string
+        └── retentionPolicy: *SessionRetentionPolicy
+            └── ttlSecondsAfterTaskDeletion: *int32
 ```
 
 ### Workflow Template/Instance Pattern
@@ -254,8 +260,24 @@ type TaskExecutionStatus struct {
     JobName        string
     StartTime      *metav1.Time
     CompletionTime *metav1.Time
+    SessionPodName string         // Name of session Pod (when resume triggered)
+    SessionStatus  *SessionStatus // Session state (when persistence enabled)
     Conditions     []metav1.Condition
 }
+
+// SessionStatus tracks session Pod state
+type SessionStatus struct {
+    Phase         SessionPhase // Pending | Active | Terminated
+    StartTime     *metav1.Time
+    WorkspacePath string       // Path on PVC: /<namespace>/<task-name>/
+}
+
+type SessionPhase string
+const (
+    SessionPhasePending    SessionPhase = "Pending"
+    SessionPhaseActive     SessionPhase = "Active"
+    SessionPhaseTerminated SessionPhase = "Terminated"
+)
 
 // Workflow represents a reusable workflow template (no execution, no Status)
 type Workflow struct {
@@ -395,13 +417,27 @@ type AgentSpec struct {
     HumanInTheLoop     *HumanInTheLoop  // Enable session sidecar for debugging
 }
 
-// HumanInTheLoop adds a session sidecar container for debugging
+// HumanInTheLoop configures session strategies for human interaction
 type HumanInTheLoop struct {
-    Enabled  bool              // Enable human-in-the-loop mode
-    Duration *metav1.Duration  // How long sidecar runs (default: "1h", mutually exclusive with Command)
-    Command  []string          // Custom sidecar command (mutually exclusive with Duration)
-    Image    string            // Custom sidecar image (default: agentImage)
-    Ports    []ContainerPort   // Ports to expose on sidecar for port-forwarding
+    // Shared configuration for both session strategies
+    Image   string          // Custom image for session containers (default: agentImage)
+    Command []string        // Custom command for session containers (overrides sidecar.duration)
+    Ports   []ContainerPort // Ports to expose for port-forwarding
+
+    // Strategy-specific configuration
+    Sidecar     *SessionSidecar     // Ephemeral session sidecar
+    Persistence *SessionPersistence // Durable workspace persistence
+}
+
+// SessionSidecar configures ephemeral session sidecar
+type SessionSidecar struct {
+    Enabled  bool             // Enable session sidecar
+    Duration *metav1.Duration // How long sidecar runs (default: "1h", ignored if command is set)
+}
+
+// SessionPersistence configures durable workspace persistence
+type SessionPersistence struct {
+    Enabled bool // Enable workspace persistence to PVC
 }
 
 // ContainerPort defines a port to expose on the sidecar container
@@ -418,10 +454,24 @@ type KubeTaskConfig struct {
 
 type KubeTaskConfigSpec struct {
     TaskLifecycle *TaskLifecycleConfig
+    SessionPVC    *SessionPVCConfig    // PVC infrastructure for session persistence
 }
 
 type TaskLifecycleConfig struct {
     TTLSecondsAfterFinished *int32  // TTL for completed/failed tasks (default: 604800 = 7 days)
+}
+
+// SessionPVCConfig provides PVC infrastructure for session persistence.
+// Whether persistence is enabled is controlled per-Agent via humanInTheLoop.persistence.enabled.
+type SessionPVCConfig struct {
+    Name             string                  // PVC name (default: "kubetask-session-data")
+    StorageClassName *string                 // StorageClass for PVC
+    StorageSize      string                  // PVC size (default: "10Gi")
+    RetentionPolicy  *SessionRetentionPolicy // Cleanup policy
+}
+
+type SessionRetentionPolicy struct {
+    TTLSecondsAfterTaskDeletion *int32 // How long to keep session data (default: 604800 = 7 days)
 }
 ```
 
@@ -1007,15 +1057,13 @@ This provides an additional layer of security beyond standard container isolatio
 
 **Human-in-the-Loop:**
 
-When `humanInTheLoop.enabled` is true, the controller adds a **session sidecar container** to the Pod. This sidecar:
-- Uses the same image as the Agent (or a custom image if specified)
-- Shares the same workspace volume and environment variables
-- Runs a `sleep` command for the specified duration
-- Allows users to `kubectl exec` into it for debugging, review, or manual intervention
+KubeTask supports two complementary session strategies for human interaction:
 
-This approach is **non-invasive** - the Agent's command is not modified.
+1. **Session Sidecar (Ephemeral)**: A sidecar container that runs alongside the agent, providing **immediate but temporary** access after task completion.
 
-`humanInTheLoop` is configured only at the **Agent level**:
+2. **Session Persistence (Durable)**: Workspace content is saved to a PVC, enabling **resume from a new Pod** after the original Pod terminates.
+
+Both strategies can be enabled independently or together via `humanInTheLoop`:
 
 ```yaml
 # Agent with humanInTheLoop settings
@@ -1029,17 +1077,25 @@ spec:
   workspaceDir: /workspace
   serviceAccountName: kubetask-agent
   humanInTheLoop:
-    enabled: true
-    duration: "2h"
+    # Shared configuration (used by both strategies)
     image: ""  # Optional: defaults to agentImage
     ports:
       - name: dev-server
         containerPort: 3000
+
+    # Session Sidecar (ephemeral)
+    sidecar:
+      enabled: true
+      duration: "2h"
+
+    # Session Persistence (durable)
+    persistence:
+      enabled: true  # Requires sessionPVC configured in KubeTaskConfig
 ```
 
 **Task Annotation:**
 
-When a Task is created with an Agent that has `humanInTheLoop.enabled: true`, the controller automatically adds the following annotation to the Task:
+When a Task is created with an Agent that has either `humanInTheLoop.sidecar.enabled: true` or `humanInTheLoop.persistence.enabled: true`, the controller automatically adds the following annotation to the Task:
 
 ```yaml
 annotations:
@@ -1050,7 +1106,7 @@ This annotation allows users and tools to easily identify Tasks that have human-
 
 **Sidecar Container:**
 
-When humanInTheLoop is enabled, the Pod will have two containers:
+When `sidecar.enabled` is true, the Pod will have two containers:
 1. `agent` - Executes the task with the original command (exits when done)
 2. `session` - Runs `sleep` for the specified duration, allowing user access
 
@@ -1071,17 +1127,17 @@ By default, the sidecar uses the same image as the Agent. You can specify a cust
 
 ```yaml
 humanInTheLoop:
-  enabled: true
   image: "busybox:stable"  # Lightweight image to save resources
+  sidecar:
+    enabled: true
 ```
 
 **Custom Sidecar Command:**
 
-For advanced scenarios like running code-server or other services, use the `command` field instead of `duration`:
+For advanced scenarios like running code-server or other services, use the `command` field instead of `sidecar.duration`:
 
 ```yaml
 humanInTheLoop:
-  enabled: true
   image: quay.io/kubetask/kubetask-agent-code-server:latest
   command:
     - sh
@@ -1090,9 +1146,12 @@ humanInTheLoop:
   ports:
     - name: code-server
       containerPort: 8080
+  sidecar:
+    enabled: true
+    # duration is ignored when command is specified
 ```
 
-Note: `duration` and `command` are **mutually exclusive**. If both are specified, it is a configuration error.
+Note: When `command` is specified, `sidecar.duration` is ignored.
 
 **Port Forwarding:**
 
@@ -1101,14 +1160,15 @@ For development tasks that need to expose network services (e.g., dev servers, A
 ```yaml
 spec:
   humanInTheLoop:
-    enabled: true
-    duration: "2h"
     ports:
       - name: dev-server
         containerPort: 3000
       - name: api
         containerPort: 8080
         protocol: TCP  # TCP (default) or UDP
+    sidecar:
+      enabled: true
+      duration: "2h"
 ```
 
 Access ports via:
@@ -1144,6 +1204,63 @@ This approach ensures:
 - **Resources remain for inspection**: Job and Pod exist until TTL-based cleanup (default 7 days)
 
 Reference: [Kubernetes Jobs - Suspending a Job](https://kubernetes.io/docs/concepts/workloads/controllers/job/#suspending-a-job)
+
+**Session Persistence:**
+
+When `humanInTheLoop.persistence.enabled` is true on the Agent and `sessionPVC` is configured in KubeTaskConfig, workspace content is automatically saved to a shared PVC after Task completion. This enables users to resume work later via a session Pod.
+
+**How Session Persistence Works:**
+
+1. A `save-session` sidecar is added to the Task Pod
+2. After the agent container completes, save-session copies workspace to PVC
+3. Workspace is saved at `/<namespace>/<task-name>/` on the PVC
+4. User can trigger resume by adding annotation: `kubetask.io/resume-session=true`
+5. Controller creates a session Pod with the same image, credentials, and environment
+
+**Comparison of Session Strategies:**
+
+| Aspect | Session Sidecar | Session Persistence |
+|--------|-----------------|---------------------|
+| Availability | Immediate | After annotation trigger |
+| Duration | Fixed (e.g., 1h) | Unlimited (within retention) |
+| Workspace after timeout | Lost | Preserved |
+| Resource when idle | Pod running | Only PVC storage |
+| Resume capability | No | Yes |
+| Setup complexity | Low | Medium (requires RWX PVC) |
+
+**Combined Usage:**
+
+When both strategies are enabled, users get the best of both:
+- Session sidecar provides immediate access after Task completion
+- Workspace is saved to PVC in parallel
+- If sidecar times out, user can resume via annotation later
+
+**Resume Session:**
+
+```bash
+# Trigger session resume
+kubectl annotate task my-task kubetask.io/resume-session=true
+
+# Check session status
+kubectl get task my-task -o jsonpath='{.status.sessionStatus}'
+
+# Access session Pod
+kubectl exec -it my-task-session -c session -- /bin/bash
+
+# Stop session when done
+kubectl annotate task my-task kubetask.io/stop=true
+```
+
+**Session Pod Labels:**
+
+Session Pods have specific labels for easy identification:
+
+```yaml
+labels:
+  kubetask.io/task: <task-name>
+  kubetask.io/session-task: <task-name>
+  kubetask.io/component: session
+```
 
 ---
 
@@ -1326,7 +1443,7 @@ Task Created
 
 ### KubeTaskConfig (System-level Configuration)
 
-KubeTaskConfig provides cluster or namespace-level settings for task lifecycle management.
+KubeTaskConfig provides cluster or namespace-level settings for task lifecycle management and session PVC infrastructure.
 
 ```yaml
 apiVersion: kubetask.io/v1alpha1
@@ -1340,6 +1457,16 @@ spec:
     # Default: 604800 (7 days)
     # Set to 0 to disable automatic cleanup
     ttlSecondsAfterFinished: 604800
+
+  # Session PVC infrastructure for human-in-the-loop persistence
+  # This only provides the PVC - whether persistence is enabled is
+  # controlled per-Agent via humanInTheLoop.persistence.enabled
+  sessionPVC:
+    name: kubetask-session-data
+    storageClassName: ""  # Empty = use cluster default
+    storageSize: "50Gi"
+    retentionPolicy:
+      ttlSecondsAfterTaskDeletion: 604800  # 7 days
 ```
 
 **Field Description:**
@@ -1347,6 +1474,17 @@ spec:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `spec.taskLifecycle.ttlSecondsAfterFinished` | int32 | No | TTL in seconds for completed/failed tasks (default: 604800 = 7 days) |
+| `spec.sessionPVC.name` | string | No | Shared PVC name (default: "kubetask-session-data") |
+| `spec.sessionPVC.storageClassName` | string | No | StorageClass for PVC (empty = cluster default) |
+| `spec.sessionPVC.storageSize` | string | No | PVC size (default: "10Gi") |
+| `spec.sessionPVC.retentionPolicy.ttlSecondsAfterTaskDeletion` | int32 | No | How long to keep session data after Task deletion (default: 604800 = 7 days) |
+
+**Session Persistence Requirements:**
+
+- Agent must have `humanInTheLoop.persistence.enabled = true`
+- KubeTaskConfig must have `sessionPVC` configured
+- PVC must support ReadWriteMany (RWX) access mode for concurrent session access
+- Workspace is saved at `/<namespace>/<task-name>/` on the PVC
 
 ### TTL-based Cleanup
 
@@ -1506,6 +1644,18 @@ kubectl logs job/$(kubectl get task update-service-a -o jsonpath='{.status.jobNa
 # Stop a running task (gracefully stops and marks as Completed with logs preserved)
 kubectl annotate task update-service-a kubetask.io/stop=true
 
+# Resume a session (when sessionPersistence is enabled)
+kubectl annotate task update-service-a kubetask.io/resume-session=true
+
+# Access session Pod
+kubectl exec -it update-service-a-session -c session -- /bin/bash
+
+# Check session status
+kubectl get task update-service-a -o jsonpath='{.status.sessionStatus}'
+
+# List all session Pods
+kubectl get pods -l kubetask.io/component=session -n kubetask-system
+
 # Delete task
 kubectl delete task update-service-a -n kubetask-system
 ```
@@ -1641,8 +1791,10 @@ kubectl get agent default -o yaml
 **Task Lifecycle**:
 - No retry on failure (AI tasks are non-idempotent)
 - TTL-based automatic cleanup (default: 7 days)
-- Human-in-the-loop debugging support
+- Human-in-the-loop debugging support (session sidecar)
+- Session persistence for long-running work (save to PVC, resume via annotation)
 - User-initiated stop via `kubetask.io/stop=true` annotation (graceful, logs preserved)
+- Session resume via `kubetask.io/resume-session=true` annotation
 - OwnerReference cascade deletion
 
 **Batch Operations**:
@@ -1659,6 +1811,6 @@ kubectl get agent default -o yaml
 ---
 
 **Status**: FINAL
-**Date**: 2025-12-17
-**Version**: v4.0 (Workflow API Redesign)
+**Date**: 2025-12-19
+**Version**: v4.2 (Session Strategies Refactoring)
 **Maintainer**: KubeTask Team

@@ -1,0 +1,19 @@
+{{- if and .Values.kubetaskConfig.sessionPVC .Values.kubetaskConfig.sessionPVC.createPVC }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.kubetaskConfig.sessionPVC.name }}
+  namespace: {{ include "kubetask.namespace" . }}
+  labels:
+    {{- include "kubetask.labels" . | nindent 4 }}
+    app.kubernetes.io/component: session-storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  {{- if .Values.kubetaskConfig.sessionPVC.storageClassName }}
+  storageClassName: {{ .Values.kubetaskConfig.sessionPVC.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.kubetaskConfig.sessionPVC.storageSize }}
+{{- end }}

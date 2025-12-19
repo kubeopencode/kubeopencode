@@ -405,6 +405,64 @@ This is useful for:
 - Stopping long-running Tasks without waiting for timeout
 - Preserving logs for debugging or auditing after stopping
 
+**Session Strategies:**
+
+KubeTask supports two complementary session strategies for human interaction:
+
+1. **Session Sidecar (Ephemeral)**: A sidecar container runs alongside the agent for immediate access
+2. **Session Persistence (Durable)**: Workspace is saved to PVC for later resume
+
+Both are configured via `humanInTheLoop` and can be enabled independently:
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: Agent
+metadata:
+  name: dev-agent
+spec:
+  agentImage: quay.io/kubetask/kubetask-agent-gemini:latest
+  serviceAccountName: kubetask-agent
+  humanInTheLoop:
+    # Shared config (used by both strategies)
+    image: ""      # Optional: defaults to agentImage
+    command: []    # Optional: custom command for session containers
+    ports: []      # Optional: for port-forwarding
+
+    # Ephemeral session sidecar
+    sidecar:
+      enabled: true
+      duration: "2h"
+
+    # Durable workspace persistence
+    persistence:
+      enabled: true  # Requires sessionPVC in KubeTaskConfig
+```
+
+To provide PVC infrastructure for session persistence, configure `sessionPVC` in KubeTaskConfig:
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: KubeTaskConfig
+metadata:
+  name: default
+spec:
+  sessionPVC:
+    name: kubetask-session-data  # Shared PVC for all HITL tasks
+    storageSize: 50Gi
+```
+
+When `persistence.enabled` is true and `sessionPVC` is configured:
+- A `save-session` sidecar is added to Task Pods
+- After agent completion, workspace is copied to PVC at `/<namespace>/<task-name>/`
+- Users can resume work by adding annotation: `kubectl annotate task my-task kubetask.io/resume-session=true`
+- A session Pod is created with the same image, credentials, and environment as the original agent
+- Session Pod mounts the persisted workspace from PVC
+
+Requirements:
+- Agent must have `humanInTheLoop.persistence.enabled = true`
+- KubeTaskConfig must have `sessionPVC` configured
+- PVC must support ReadWriteMany (RWX) access mode for concurrent session access
+
 **Credentials Mounting:**
 
 Credentials can be mounted in two ways:

@@ -93,7 +93,7 @@ func TestBuildJob_BasicTask(t *testing.T) {
 		command:            []string{"sh", "-c", "echo test"},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	// Verify job metadata
 	if job.Name != "test-task-job" {
@@ -210,7 +210,7 @@ func TestBuildJob_WithCredentials(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	container := job.Spec.Template.Spec.Containers[0]
 
@@ -286,7 +286,7 @@ func TestBuildJob_WithEntireSecretCredential(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	container := job.Spec.Template.Spec.Containers[0]
 
@@ -341,7 +341,7 @@ func TestBuildJob_WithMixedCredentials(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	container := job.Spec.Template.Spec.Containers[0]
 
@@ -408,7 +408,7 @@ func TestBuildJob_WithEntireSecretAsDirectory(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	container := job.Spec.Template.Spec.Containers[0]
 	podSpec := job.Spec.Template.Spec
@@ -482,12 +482,14 @@ func TestBuildJob_WithHumanInTheLoop_Sidecar(t *testing.T) {
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "echo hello"},
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled:  true,
-			Duration: &duration,
+			Sidecar: &kubetaskv1alpha1.SessionSidecar{
+				Enabled:  true,
+				Duration: &duration,
+			},
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	// Verify there are 2 containers: agent and session sidecar
 	containers := job.Spec.Template.Spec.Containers
@@ -576,13 +578,15 @@ func TestBuildJob_WithHumanInTheLoop_CustomImage(t *testing.T) {
 		serviceAccountName: "test-sa",
 		command:            []string{"python", "-c", "print('hello; world')"},
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled:  true,
-			Duration: &duration,
-			Image:    "busybox:stable", // Custom lightweight image
+			Image: "busybox:stable", // Custom lightweight image
+			Sidecar: &kubetaskv1alpha1.SessionSidecar{
+				Enabled:  true,
+				Duration: &duration,
+			},
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	// Verify there are 2 containers
 	containers := job.Spec.Template.Spec.Containers
@@ -644,7 +648,7 @@ func TestBuildJob_WithPodScheduling(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	podSpec := job.Spec.Template.Spec
 
@@ -709,7 +713,7 @@ func TestBuildJob_WithContextConfigMap(t *testing.T) {
 		{filePath: "/workspace/task.md"},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, nil, nil, nil)
 
 	// Verify context-files volume exists
 	var foundContextVolume bool
@@ -767,7 +771,7 @@ func TestBuildJob_WithDirMounts(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, dirMounts, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, dirMounts, nil, nil)
 
 	// Verify dir-mount volume exists
 	var foundDirVolume bool
@@ -831,7 +835,7 @@ func TestBuildJob_WithGitMounts(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, gitMounts)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, gitMounts, nil)
 
 	// Verify init container exists
 	if len(job.Spec.Template.Spec.InitContainers) != 1 {
@@ -921,7 +925,7 @@ func TestBuildJob_WithGitMountsAndAuth(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, gitMounts)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, gitMounts, nil)
 
 	// Verify init container has auth env vars
 	initContainer := job.Spec.Template.Spec.InitContainers[0]
@@ -1032,8 +1036,6 @@ func TestBuildJob_WithHumanInTheLoop_Ports(t *testing.T) {
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "npm run dev"},
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled:  true,
-			Duration: &duration,
 			Ports: []kubetaskv1alpha1.ContainerPort{
 				{
 					Name:          "dev-server",
@@ -1046,10 +1048,14 @@ func TestBuildJob_WithHumanInTheLoop_Ports(t *testing.T) {
 					// Protocol not specified, should default to TCP
 				},
 			},
+			Sidecar: &kubetaskv1alpha1.SessionSidecar{
+				Enabled:  true,
+				Duration: &duration,
+			},
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	containers := job.Spec.Template.Spec.Containers
 	if len(containers) != 2 {
@@ -1110,17 +1116,19 @@ func TestBuildJob_WithHumanInTheLoop_Disabled(t *testing.T) {
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "echo test"},
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled: false,
 			Ports: []kubetaskv1alpha1.ContainerPort{
 				{
 					Name:          "http",
 					ContainerPort: 80,
 				},
 			},
+			Sidecar: &kubetaskv1alpha1.SessionSidecar{
+				Enabled: false,
+			},
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	containers := job.Spec.Template.Spec.Containers
 
@@ -1154,7 +1162,6 @@ func TestBuildJob_WithHumanInTheLoop_UDPPort(t *testing.T) {
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "echo test"},
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled: true,
 			Ports: []kubetaskv1alpha1.ContainerPort{
 				{
 					Name:          "dns",
@@ -1162,10 +1169,13 @@ func TestBuildJob_WithHumanInTheLoop_UDPPort(t *testing.T) {
 					Protocol:      corev1.ProtocolUDP,
 				},
 			},
+			Sidecar: &kubetaskv1alpha1.SessionSidecar{
+				Enabled: true,
+			},
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	containers := job.Spec.Template.Spec.Containers
 	if len(containers) != 2 {
@@ -1202,18 +1212,20 @@ func TestBuildJob_WithHumanInTheLoop_FromAgent(t *testing.T) {
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "echo test"},
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled:  true,
-			Duration: &duration,
 			Ports: []kubetaskv1alpha1.ContainerPort{
 				{
 					Name:          "agent-port",
 					ContainerPort: 9000,
 				},
 			},
+			Sidecar: &kubetaskv1alpha1.SessionSidecar{
+				Enabled:  true,
+				Duration: &duration,
+			},
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	containers := job.Spec.Template.Spec.Containers
 	if len(containers) != 2 {
@@ -1257,12 +1269,14 @@ func TestBuildJob_WithHumanInTheLoop_DefaultDuration(t *testing.T) {
 		serviceAccountName: "test-sa",
 		command:            []string{"sh", "-c", "echo test"},
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled: true,
-			// Duration not specified, should use default (1 hour)
+			Sidecar: &kubetaskv1alpha1.SessionSidecar{
+				Enabled: true,
+				// Duration not specified, should use default (1 hour)
+			},
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	containers := job.Spec.Template.Spec.Containers
 	if len(containers) != 2 {
@@ -1316,8 +1330,10 @@ func TestBuildJob_WithHumanInTheLoop_SidecarSharesAllMounts(t *testing.T) {
 			},
 		},
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled:  true,
-			Duration: &duration,
+			Sidecar: &kubetaskv1alpha1.SessionSidecar{
+				Enabled:  true,
+				Duration: &duration,
+			},
 		},
 	}
 
@@ -1349,7 +1365,7 @@ func TestBuildJob_WithHumanInTheLoop_SidecarSharesAllMounts(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, dirMounts, gitMounts)
+	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, dirMounts, gitMounts, nil)
 
 	containers := job.Spec.Template.Spec.Containers
 	if len(containers) != 2 {
@@ -1425,16 +1441,18 @@ func TestBuildJob_WithHumanInTheLoop_CustomCommand(t *testing.T) {
 		command:      []string{"gemini", "--yolo", "-p", "$(cat /workspace/task.md)"},
 		workspaceDir: "/workspace",
 		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Enabled: true,
 			Command: customCommand,
 			Image:   "code-server:latest",
 			Ports: []kubetaskv1alpha1.ContainerPort{
 				{Name: "code-server", ContainerPort: 8080},
 			},
+			Sidecar: &kubetaskv1alpha1.SessionSidecar{
+				Enabled: true,
+			},
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil)
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil)
 
 	// Verify we have 2 containers (agent + sidecar)
 	if len(job.Spec.Template.Spec.Containers) != 2 {

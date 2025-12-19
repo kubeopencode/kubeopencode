@@ -9,4 +9,14 @@ metadata:
 spec:
   taskLifecycle:
     ttlSecondsAfterFinished: {{ .Values.kubetaskConfig.taskLifecycle.ttlSecondsAfterFinished }}
+  {{- if .Values.kubetaskConfig.sessionPVC }}
+  sessionPVC:
+    name: {{ .Values.kubetaskConfig.sessionPVC.name | quote }}
+    {{- if .Values.kubetaskConfig.sessionPVC.storageClassName }}
+    storageClassName: {{ .Values.kubetaskConfig.sessionPVC.storageClassName | quote }}
+    {{- end }}
+    storageSize: {{ .Values.kubetaskConfig.sessionPVC.storageSize | quote }}
+    retentionPolicy:
+      ttlSecondsAfterTaskDeletion: {{ .Values.kubetaskConfig.sessionPVC.retentionPolicy.ttlSecondsAfterTaskDeletion }}
+  {{- end }}
 {{- end }}

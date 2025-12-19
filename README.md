@@ -26,6 +26,7 @@ KubeTask enables you to execute AI agent tasks (like Claude, Gemini) using Kuber
 - **GitOps Ready**: Fully declarative resource definitions
 - **Flexible Context System**: Support for inline content, ConfigMaps, and Git repositories
 - **Scheduled Workflows**: CronWorkflow for recurring AI-powered operations
+- **Human-in-the-Loop**: Session sidecar for debugging + session persistence for resumable work
 - **Batch Operations**: Use Helm/Kustomize for multiple Tasks (Kubernetes-native approach)
 
 ## Architecture
@@ -287,7 +288,82 @@ spec:
     scheduling:
       nodeSelector:
         workload-type: ai-agent
+
+  # Human-in-the-loop: session sidecar for debugging
+  humanInTheLoop:
+    enabled: true
+    duration: "2h"  # How long session remains available
+    ports:
+      - name: dev-server
+        containerPort: 3000
 ```
+
+### Human-in-the-Loop
+
+KubeTask supports two complementary session strategies for human interaction:
+
+**1. Session Sidecar (Ephemeral)**: Runs alongside the agent, providing immediate access after task completion.
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: Agent
+metadata:
+  name: dev-agent
+spec:
+  agentImage: quay.io/kubetask/kubetask-agent-gemini:latest
+  serviceAccountName: kubetask-agent
+  humanInTheLoop:
+    enabled: true
+    duration: "2h"        # Session available for 2 hours
+    # Or use custom command:
+    # command: ["sh", "-c", "code-server --bind-addr 0.0.0.0:8080"]
+    ports:
+      - name: dev-server
+        containerPort: 3000
+```
+
+Access the session:
+```bash
+# Exec into session container
+kubectl exec -it <pod-name> -c session -- /bin/bash
+
+# Port-forward for web access
+kubectl port-forward <pod-name> 3000:3000
+```
+
+**2. Session Persistence (Durable)**: Saves workspace to PVC, allowing resume later.
+
+Configure in KubeTaskConfig:
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: KubeTaskConfig
+metadata:
+  name: default
+spec:
+  sessionPersistence:
+    enabled: true
+    pvcName: kubetask-session-data
+    storageSize: "50Gi"
+```
+
+Resume a completed task:
+```bash
+# Trigger session resume
+kubectl annotate task my-task kubetask.io/resume-session=true
+
+# Access session Pod
+kubectl exec -it my-task-session -c session -- /bin/bash
+
+# Stop when done
+kubectl annotate task my-task kubetask.io/stop=true
+```
+
+| Feature | Session Sidecar | Session Persistence |
+|---------|-----------------|---------------------|
+| Availability | Immediate | After annotation |
+| Duration | Fixed | Unlimited |
+| Workspace after timeout | Lost | Preserved |
+| Resume capability | No | Yes |
 
 ### Multi-AI Support
 
@@ -515,6 +591,8 @@ See [CLAUDE.md](CLAUDE.md) for detailed development guidelines.
 - [x] CronWorkflow for scheduled workflow execution
 - [x] Context CRD for reusable contexts
 - [x] GitContext for Git repository support
+- [x] Human-in-the-Loop with session sidecar
+- [x] Session persistence for resumable work
 - [ ] Enhanced status reporting and observability
 - [ ] Support for additional context types (MCP)
 - [ ] Advanced retry and failure handling

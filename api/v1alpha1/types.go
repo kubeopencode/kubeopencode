@@ -334,6 +334,16 @@ type TaskExecutionStatus struct {
 	// +optional
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
 
+	// SessionPodName is the name of the session Pod created for resume.
+	// Only set when a session is active (triggered by kubetask.io/resume-session annotation).
+	// +optional
+	SessionPodName string `json:"sessionPodName,omitempty"`
+
+	// SessionStatus indicates the current state of the session.
+	// Only set when session persistence is enabled and a session has been created.
+	// +optional
+	SessionStatus *SessionStatus `json:"sessionStatus,omitempty"`
+
 	// Kubernetes standard conditions
 	// +optional
 	// +listType=map
@@ -699,38 +709,37 @@ type AgentList struct {
 }
 
 // HumanInTheLoop configures human participation requirements for an agent.
-// When enabled, a session sidecar container is added to the Pod, allowing
-// users to kubectl exec into it for debugging, review, or manual intervention
-// after the main agent container completes.
+// It supports two complementary session strategies:
 //
-// The sidecar container shares the same workspace volume and environment
-// variables as the agent container, so users can use the same tools
-// (e.g., gemini, claude CLI) to interact with the workspace.
+// 1. Session Sidecar (ephemeral): A sidecar container runs alongside the agent,
+//    providing immediate but temporary access after task completion.
+//
+// 2. Session Persistence (durable): Workspace content is saved to a PVC,
+//    enabling resume from a new Pod after the original Pod terminates.
+//
+// The Image, Command, and Ports fields are shared by both strategies - they
+// apply to the session sidecar and any resumed session Pod.
 //
 // Note: This configuration is only available on Agent, not on Task.
 // Tasks inherit the humanInTheLoop settings from their referenced Agent.
 type HumanInTheLoop struct {
-	// Enabled indicates whether human-in-the-loop mode is active.
-	// When true, a session sidecar container is added to the Pod.
-	// +required
-	Enabled bool `json:"enabled"`
-
-	// Duration specifies how long the session sidecar container should remain running,
-	// allowing time for human interaction.
-	// Users can kubectl exec into the sidecar during this period.
-	// Uses standard Go duration format (e.g., "1h", "30m", "1h30m").
-	// Defaults to "1h" (1 hour) if not specified when enabled is true.
+	// Image specifies the container image for session containers.
+	// This applies to both the session sidecar and resumed session Pods.
+	// If not specified, defaults to the Agent's agentImage, which allows
+	// users to use the same tools (e.g., gemini, claude) in the session.
 	//
-	// Mutually exclusive with Command - only one can be specified.
-	// If neither is specified, defaults to "1h".
+	// You can specify a lightweight image (e.g., "busybox:stable") to
+	// reduce resource usage, or a custom debug image with additional tools.
 	// +optional
-	Duration *metav1.Duration `json:"duration,omitempty"`
+	Image string `json:"image,omitempty"`
 
-	// Command specifies a custom command to run in the session sidecar container.
+	// Command specifies a custom command to run in session containers.
+	// This applies to both the session sidecar and resumed session Pods.
 	// Use this for advanced scenarios like running code-server or other services.
 	//
-	// Mutually exclusive with Duration - only one can be specified.
-	// If both are specified, it is a configuration error.
+	// If not specified:
+	//   - Sidecar uses: sleep <duration>
+	//   - Resumed session uses: sleep 3600 (1 hour default)
 	//
 	// Example:
 	//   command: ["sh", "-c", "code-server --bind-addr 0.0.0.0:8080 ${WORKSPACE_DIR} & sleep 7200"]
@@ -738,16 +747,8 @@ type HumanInTheLoop struct {
 	// +optional
 	Command []string `json:"command,omitempty"`
 
-	// Image specifies the container image for the session sidecar.
-	// If not specified, defaults to the Agent's agentImage, which allows
-	// users to use the same tools (e.g., gemini, claude) in the sidecar.
-	//
-	// You can specify a lightweight image (e.g., "busybox:stable") to
-	// reduce resource usage, or a custom debug image with additional tools.
-	// +optional
-	Image string `json:"image,omitempty"`
-
-	// Ports specifies container ports to expose on the sidecar for port-forwarding.
+	// Ports specifies container ports to expose on session containers.
+	// This applies to both the session sidecar and resumed session Pods.
 	// These ports can be accessed via `kubectl port-forward` during
 	// the human-in-the-loop session, enabling developers to test
 	// development servers, APIs, or other network services.
@@ -763,6 +764,57 @@ type HumanInTheLoop struct {
 	//   kubectl port-forward <pod-name> 3000:3000 8080:8080
 	// +optional
 	Ports []ContainerPort `json:"ports,omitempty"`
+
+	// Sidecar configures the ephemeral session sidecar strategy.
+	// When enabled, a sidecar container is added to the Pod that runs alongside
+	// the agent, providing immediate access after task completion.
+	// The sidecar shares the same workspace volume and environment variables.
+	// +optional
+	Sidecar *SessionSidecar `json:"sidecar,omitempty"`
+
+	// Persistence configures the durable session persistence strategy.
+	// When enabled, workspace content is saved to a PVC after task completion,
+	// allowing users to resume work later via a session Pod.
+	// Requires SessionPVC to be configured in KubeTaskConfig.
+	// +optional
+	Persistence *SessionPersistence `json:"persistence,omitempty"`
+}
+
+// SessionSidecar configures the ephemeral session sidecar strategy.
+// When enabled, a sidecar container runs alongside the agent container,
+// providing immediate access for debugging or manual intervention.
+type SessionSidecar struct {
+	// Enabled indicates whether the session sidecar is active.
+	// When true, a session sidecar container is added to the Pod.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Duration specifies how long the session sidecar container should remain running,
+	// allowing time for human interaction.
+	// Users can kubectl exec into the sidecar during this period.
+	// Uses standard Go duration format (e.g., "1h", "30m", "1h30m").
+	// Defaults to "1h" (1 hour) if not specified when enabled is true.
+	//
+	// Note: If HumanInTheLoop.Command is specified, this field is ignored
+	// as the custom command controls the container lifecycle.
+	// +optional
+	Duration *metav1.Duration `json:"duration,omitempty"`
+}
+
+// SessionPersistence configures the durable session persistence strategy.
+// When enabled, workspace content is saved to a PVC after agent completion,
+// allowing users to resume work via a session Pod.
+type SessionPersistence struct {
+	// Enabled indicates whether session persistence is active.
+	// When true, workspace content is saved to the PVC configured in
+	// KubeTaskConfig.spec.sessionPVC after the agent container completes.
+	//
+	// Users can resume work by adding the annotation:
+	//   kubetask.io/resume-session=true
+	//
+	// Requires KubeTaskConfig.spec.sessionPVC to be configured.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 // ContainerPort defines a port to expose on the agent container.
@@ -811,6 +863,18 @@ type KubeTaskConfigSpec struct {
 	// TaskLifecycle configures task lifecycle management including cleanup policies.
 	// +optional
 	TaskLifecycle *TaskLifecycleConfig `json:"taskLifecycle,omitempty"`
+
+	// SessionPVC configures the PVC infrastructure for session persistence.
+	// This defines WHERE session data is stored, not WHETHER it's enabled.
+	// Session persistence is enabled per-Agent via humanInTheLoop.persistence.enabled.
+	//
+	// Requirements:
+	//   - PVC must support ReadWriteMany access mode (for concurrent session access)
+	//   - Agent must have humanInTheLoop.persistence.enabled = true
+	//
+	// Workspace is saved to: /<namespace>/<task-name>/ on the PVC.
+	// +optional
+	SessionPVC *SessionPVCConfig `json:"sessionPVC,omitempty"`
 }
 
 // TaskLifecycleConfig defines task lifecycle management settings
@@ -824,6 +888,84 @@ type TaskLifecycleConfig struct {
 	// +optional
 	// +kubebuilder:default=604800
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
+}
+
+// SessionPVCConfig defines PVC infrastructure configuration for session persistence.
+// This is a system-level configuration that defines WHERE session data is stored.
+// Whether session persistence is enabled is controlled per-Agent via
+// humanInTheLoop.persistence.enabled.
+//
+// When an Agent has persistence enabled, a save-session sidecar is added to
+// Task Pods that copies the workspace to this PVC after the agent completes.
+// Users can then resume work by adding the annotation:
+//
+//	kubetask.io/resume-session=true
+//
+// This creates a session Pod with the same environment as the original agent.
+type SessionPVCConfig struct {
+	// Name specifies the name of the PersistentVolumeClaim to use.
+	// The PVC must exist in the same namespace as the Task and support
+	// ReadWriteMany access mode for concurrent session access.
+	// If not specified, defaults to "kubetask-session-data".
+	// +optional
+	// +kubebuilder:default="kubetask-session-data"
+	Name string `json:"name,omitempty"`
+
+	// StorageClassName specifies the StorageClass for auto-provisioning.
+	// Only used if the PVC does not exist and needs to be created.
+	// If not specified, uses the cluster's default StorageClass.
+	// +optional
+	StorageClassName *string `json:"storageClassName,omitempty"`
+
+	// StorageSize specifies the size of the PVC if auto-provisioned.
+	// Example: "10Gi", "50Gi"
+	// +optional
+	// +kubebuilder:default="10Gi"
+	StorageSize string `json:"storageSize,omitempty"`
+
+	// RetentionPolicy defines when persisted workspace data should be cleaned up.
+	// +optional
+	RetentionPolicy *SessionRetentionPolicy `json:"retentionPolicy,omitempty"`
+}
+
+// SessionRetentionPolicy defines retention rules for persisted session data.
+type SessionRetentionPolicy struct {
+	// TTLSecondsAfterTaskDeletion specifies how long to retain session data
+	// after the Task is deleted. The timer starts when the Task CR is deleted.
+	// Set to 0 to retain forever (manual cleanup required).
+	// Defaults to 604800 (7 days).
+	// +optional
+	// +kubebuilder:default=604800
+	TTLSecondsAfterTaskDeletion *int32 `json:"ttlSecondsAfterTaskDeletion,omitempty"`
+}
+
+// SessionPhase represents the current phase of a session
+// +kubebuilder:validation:Enum=Pending;Active;Terminated
+type SessionPhase string
+
+const (
+	// SessionPhasePending means the session Pod is being created
+	SessionPhasePending SessionPhase = "Pending"
+	// SessionPhaseActive means the session Pod is running and ready for interaction
+	SessionPhaseActive SessionPhase = "Active"
+	// SessionPhaseTerminated means the session Pod has finished
+	SessionPhaseTerminated SessionPhase = "Terminated"
+)
+
+// SessionStatus defines the status of a session Pod created for resume.
+type SessionStatus struct {
+	// Phase is the current phase of the session.
+	// +optional
+	Phase SessionPhase `json:"phase,omitempty"`
+
+	// StartTime is when the session Pod started.
+	// +optional
+	StartTime *metav1.Time `json:"startTime,omitempty"`
+
+	// WorkspacePath is the path where the persisted workspace is stored on the PVC.
+	// Format: /<namespace>/<task-name>/
+	// +optional
+	WorkspacePath string `json:"workspacePath,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
