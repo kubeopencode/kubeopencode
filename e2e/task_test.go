@@ -21,7 +21,7 @@ import (
 	kubetaskv1alpha1 "github.com/kubetask/kubetask/api/v1alpha1"
 )
 
-var _ = Describe("Task E2E Tests", func() {
+var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 	var (
 		agent     *kubetaskv1alpha1.Agent
 		agentName string

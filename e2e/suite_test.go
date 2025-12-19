@@ -52,6 +52,16 @@ const (
 	testServiceAccount = "kubetask-e2e-agent"
 )
 
+// Test labels for selective execution
+// Usage: make e2e-test-label LABEL="workflow"
+const (
+	LabelTask         = "task"
+	LabelWorkflow     = "workflow"
+	LabelAgent        = "agent"
+	LabelCronWorkflow = "cronworkflow"
+	LabelSession      = "session"
+)
+
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "KubeTask E2E Suite")

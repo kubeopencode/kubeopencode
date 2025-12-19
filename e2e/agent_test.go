@@ -20,7 +20,7 @@ func stringPtr(s string) *string {
 	return &s
 }
 
-var _ = Describe("Agent E2E Tests", func() {
+var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 
 	Context("Agent with custom podSpec.labels", func() {
 		It("should apply labels to generated Jobs", func() {

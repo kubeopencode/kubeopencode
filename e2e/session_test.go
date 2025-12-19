@@ -17,7 +17,7 @@ import (
 	kubetaskv1alpha1 "github.com/kubetask/kubetask/api/v1alpha1"
 )
 
-var _ = Describe("Session Persistence E2E Tests", func() {
+var _ = Describe("Session Persistence E2E Tests", Label(LabelSession), func() {
 	var (
 		kubeTaskConfig *kubetaskv1alpha1.KubeTaskConfig
 		sessionPVC     *corev1.PersistentVolumeClaim

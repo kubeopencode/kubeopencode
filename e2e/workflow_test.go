@@ -24,7 +24,7 @@ const (
 	WorkflowDependsOnAnnotation = "kubetask.io/depends-on"
 )
 
-var _ = Describe("WorkflowRun E2E Tests", func() {
+var _ = Describe("WorkflowRun E2E Tests", Label(LabelWorkflow), func() {
 	var (
 		agent     *kubetaskv1alpha1.Agent
 		agentName string

@@ -14,7 +14,7 @@ import (
 	kubetaskv1alpha1 "github.com/kubetask/kubetask/api/v1alpha1"
 )
 
-var _ = Describe("CronWorkflow E2E Tests", func() {
+var _ = Describe("CronWorkflow E2E Tests", Label(LabelCronWorkflow), func() {
 	var (
 		agent     *kubetaskv1alpha1.Agent
 		agentName string
