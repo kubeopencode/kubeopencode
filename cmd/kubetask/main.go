@@ -5,6 +5,7 @@
 //
 // Available commands:
 //   - controller:    Start the Kubernetes controller
+//   - webhook:       Start the webhook server for WebhookTrigger
 //   - git-init:      Clone Git repositories for Git Context
 //   - save-session:  Save workspace to PVC for session persistence
 package main
@@ -23,12 +24,16 @@ var rootCmd = &cobra.Command{
 
 This unified binary provides:
   controller      Start the Kubernetes controller
+  webhook         Start the webhook server for WebhookTrigger
   git-init        Clone Git repositories for Git Context
   save-session    Save workspace to PVC for session persistence
 
 Examples:
   # Start the controller
   kubetask controller --metrics-bind-address=:8080
+
+  # Start the webhook server
+  kubetask webhook --port=8080
 
   # Clone a Git repository (used in init containers)
   kubetask git-init

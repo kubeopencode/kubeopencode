@@ -39,8 +39,9 @@ The git-init source is in `cmd/git-init/`. The image constant is defined in `int
 2. **Workflow** - Reusable multi-stage task template
 3. **WorkflowRun** - Workflow execution instance
 4. **CronWorkflow** - Scheduled WorkflowRun triggering
-5. **Agent** - AI agent configuration (HOW to execute)
-6. **Context** - Reusable context resources (Inline, ConfigMap, or Git)
+5. **WebhookTrigger** - Event-driven Task creation from webhooks
+6. **Agent** - AI agent configuration (HOW to execute)
+7. **Context** - Reusable context resources (Inline, ConfigMap, or Git)
 
 ### Important Design Decisions
 
@@ -89,7 +90,7 @@ All Go files must include the copyright header:
 3. **Kubernetes Resources**:
    - CRD Group: `kubetask.io`
    - API Version: `v1alpha1`
-   - Kinds: `Task`, `Workflow`, `WorkflowRun`, `CronWorkflow`, `Agent`, `Context`, `KubeTaskConfig`
+   - Kinds: `Task`, `Workflow`, `WorkflowRun`, `CronWorkflow`, `WebhookTrigger`, `Agent`, `Context`, `KubeTaskConfig`
 
 ### Code Comments
 
@@ -196,18 +197,32 @@ kubetask/
 │   └── tools/           # Tools image for shared CLI tools
 ├── api/v1alpha1/          # CRD type definitions
 │   ├── types.go           # Main API types (Task, Workflow, WorkflowRun, CronWorkflow, Agent, Context, KubeTaskConfig)
+│   ├── webhooktrigger_types.go  # WebhookTrigger CRD types
 │   ├── register.go        # Scheme registration
 │   └── zz_generated.deepcopy.go  # Generated deepcopy
-├── cmd/controller/        # Controller main entry point
-│   └── main.go
+├── cmd/kubetask/          # Unified binary entry point
+│   ├── main.go            # Root command
+│   ├── controller.go      # Controller subcommand
+│   ├── webhook.go         # Webhook server subcommand
+│   ├── git_init.go        # Git init container subcommand
+│   └── save_session.go    # Session persistence subcommand
 ├── internal/controller/   # Controller reconcilers
 │   ├── task_controller.go
 │   ├── workflow_controller.go
 │   ├── workflowrun_controller.go
-│   └── cronworkflow_controller.go
+│   ├── cronworkflow_controller.go
+│   └── webhooktrigger_controller.go
+├── internal/webhook/      # Webhook server
+│   ├── server.go          # HTTP server for receiving webhooks
+│   ├── auth.go            # Authentication (HMAC, Bearer, Header)
+│   ├── filter.go          # CEL filter evaluation
+│   └── template.go        # Go template rendering
 ├── deploy/               # Kubernetes manifests
-│   └── crds/            # Generated CRD YAMLs (Task, Workflow, WorkflowRun, CronWorkflow, Agent, Context, KubeTaskConfig)
+│   └── crds/            # Generated CRD YAMLs
 ├── charts/kubetask/     # Helm chart
+│   └── templates/
+│       ├── controller/   # Controller deployment
+│       └── webhook/      # Webhook server deployment (optional)
 ├── hack/                # Build and codegen scripts
 ├── docs/                # Documentation
 │   ├── architecture.md  # Architecture documentation

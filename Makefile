@@ -214,6 +214,11 @@ run:
 	go run ./cmd/kubetask controller
 .PHONY: run
 
+# Run webhook server locally
+run-webhook:
+	go run ./cmd/kubetask webhook
+.PHONY: run-webhook
+
 # Format code
 fmt:
 	go fmt ./...
@@ -231,11 +236,12 @@ E2E_CLUSTER_NAME ?= kubetask-e2e
 E2E_IMG_TAG ?= dev
 
 # Create kind cluster for e2e testing
+# Uses e2e/kind-config.yaml to expose NodePort 30082 for webhook server
 e2e-kind-create: ## Create kind cluster for e2e testing
 	@if kind get clusters | grep -q "^$(E2E_CLUSTER_NAME)$$"; then \
 		echo "Kind cluster '$(E2E_CLUSTER_NAME)' already exists"; \
 	else \
-		kind create cluster --name $(E2E_CLUSTER_NAME); \
+		kind create cluster --name $(E2E_CLUSTER_NAME) --config e2e/kind-config.yaml; \
 	fi
 .PHONY: e2e-kind-create
 
@@ -264,6 +270,7 @@ e2e-verify-image: ## Verify image is loaded in kind cluster
 
 # Deploy controller to kind cluster using Helm (CRDs are in crds/ directory)
 # Using uninstall + install instead of upgrade to ensure CRDs are properly installed
+# Webhook is exposed as NodePort for E2E testing
 e2e-deploy: ## Deploy controller and CRDs to kind cluster using Helm
 	@helm uninstall kubetask --namespace kubetask-system 2>/dev/null || true
 	helm install kubetask charts/kubetask \
@@ -272,6 +279,9 @@ e2e-deploy: ## Deploy controller and CRDs to kind cluster using Helm
 		--set controller.image.repository=$(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME) \
 		--set controller.image.tag=$(E2E_IMG_TAG) \
 		--set controller.image.pullPolicy=Never \
+		--set webhook.enabled=true \
+		--set webhook.service.type=NodePort \
+		--set webhook.service.nodePort=30082 \
 		--wait
 .PHONY: e2e-deploy
 

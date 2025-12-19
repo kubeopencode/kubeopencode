@@ -46,6 +46,7 @@ KubeTask is a Kubernetes-native system that executes AI-powered tasks using Cust
 | **Workflow** | Multi-stage task template (no execution) | Stable - reusable template |
 | **WorkflowRun** | Workflow execution instance | Stable - DAG-like execution |
 | **CronWorkflow** | Scheduled WorkflowRun triggering | Stable - follows K8s CronJob pattern |
+| **WebhookTrigger** | Webhook-driven Task creation | Stable - event-driven triggering |
 | **Context** | Reusable context for AI agents (KNOW) | Stable - Context Engineering support |
 | **Agent** | AI agent configuration (HOW to execute) | Stable - independent of project name |
 | **KubeTaskConfig** | System-level configuration (TTL, lifecycle) | Stable - system settings |
@@ -165,6 +166,22 @@ CronWorkflow (scheduled WorkflowRun triggering)
     ├── active: []ObjectReference
     ├── lastScheduleTime: *Time
     ├── lastSuccessfulTime: *Time
+    └── conditions: []Condition
+
+WebhookTrigger (webhook-driven Task creation)
+├── WebhookTriggerSpec
+│   ├── auth: *WebhookAuth           (HMAC, BearerToken, or Header)
+│   ├── filter: string               (CEL expression for filtering)
+│   ├── concurrencyPolicy: string    (Allow, Forbid, Replace)
+│   └── taskTemplate: WebhookTaskTemplate
+│       ├── agentRef: string
+│       ├── description: string      (Go template with payload data)
+│       └── contexts: []ContextSource
+└── WebhookTriggerStatus
+    ├── lastTriggeredTime: *Time
+    ├── totalTriggered: int64
+    ├── activeTasks: []string
+    ├── webhookURL: string
     └── conditions: []Condition
 
 Agent (execution configuration)
@@ -355,6 +372,52 @@ type CronWorkflowStatus struct {
     LastScheduleTime   *metav1.Time             // Last scheduled time
     LastSuccessfulTime *metav1.Time             // Last successful completion
     Conditions         []metav1.Condition
+}
+
+// WebhookTrigger represents a webhook-to-Task mapping rule
+type WebhookTrigger struct {
+    Spec   WebhookTriggerSpec
+    Status WebhookTriggerStatus
+}
+
+type WebhookTriggerSpec struct {
+    Auth              *WebhookAuth        // Authentication configuration
+    Filter            string              // CEL expression for filtering
+    ConcurrencyPolicy ConcurrencyPolicy   // Allow, Forbid, or Replace
+    TaskTemplate      WebhookTaskTemplate // Task to create when triggered
+}
+
+type WebhookAuth struct {
+    HMAC        *HMACAuth        // HMAC signature validation
+    BearerToken *BearerTokenAuth // Bearer token validation
+    Header      *HeaderAuth      // Custom header validation
+}
+
+type HMACAuth struct {
+    SecretRef       SecretKeyReference // Secret containing HMAC key
+    SignatureHeader string             // Header containing signature (e.g., "X-Hub-Signature-256")
+    Algorithm       string             // sha1, sha256, or sha512 (default: sha256)
+}
+
+type WebhookTaskTemplate struct {
+    AgentRef    string          // Reference to Agent (optional)
+    Description string          // Go template with webhook payload data
+    Contexts    []ContextSource // Additional contexts
+}
+
+type ConcurrencyPolicy string
+const (
+    ConcurrencyPolicyAllow   ConcurrencyPolicy = "Allow"   // Create new Task regardless of existing
+    ConcurrencyPolicyForbid  ConcurrencyPolicy = "Forbid"  // Skip if Task already running
+    ConcurrencyPolicyReplace ConcurrencyPolicy = "Replace" // Stop existing, create new
+)
+
+type WebhookTriggerStatus struct {
+    LastTriggeredTime *metav1.Time       // When last triggered
+    TotalTriggered    int64              // Total trigger count
+    ActiveTasks       []string           // Currently running Task names
+    WebhookURL        string             // Full webhook URL path
+    Conditions        []metav1.Condition
 }
 
 // Context represents a reusable context resource
@@ -880,6 +943,135 @@ Created WorkflowRuns are named `{cronworkflow-name}-{unix-timestamp}` (e.g., `da
 **Concurrency Policy:**
 
 CronWorkflow uses a **Forbid** policy - if a WorkflowRun is still active when the next schedule triggers, the new run is skipped.
+
+### WebhookTrigger (Event-Driven Triggering)
+
+WebhookTrigger enables event-driven Task creation from external webhooks (GitHub, GitLab, custom systems, etc.). When a webhook matches the configured authentication and filter, a Task is created based on the template.
+
+**GitHub PR Review Example:**
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: WebhookTrigger
+metadata:
+  name: github-pr-review
+  namespace: kubetask-system
+spec:
+  # Authentication (optional)
+  auth:
+    hmac:
+      secretRef:
+        name: github-webhook-secret
+        key: secret
+      signatureHeader: X-Hub-Signature-256
+      algorithm: sha256
+
+  # CEL filter expression (optional)
+  filter: |
+    body.action in ["opened", "synchronize"] &&
+    !body.pull_request.draft &&
+    body.repository.full_name == "myorg/myrepo"
+
+  # Concurrency policy
+  concurrencyPolicy: Replace  # Stop existing task, create new one
+
+  # Task template with Go templating
+  taskTemplate:
+    agentRef: code-review-agent
+    description: |
+      Review Pull Request #{{ .pull_request.number }}
+
+      Repository: {{ .repository.full_name }}
+      Title: {{ .pull_request.title }}
+      Author: {{ .pull_request.user.login }}
+      URL: {{ .pull_request.html_url }}
+status:
+  webhookURL: /webhooks/kubetask-system/github-pr-review
+  lastTriggeredTime: "2025-01-18T10:00:00Z"
+  totalTriggered: 42
+  activeTasks:
+    - github-pr-review-abc123
+```
+
+**GitLab MR Example:**
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: WebhookTrigger
+metadata:
+  name: gitlab-mr-review
+spec:
+  auth:
+    header:
+      name: X-Gitlab-Token
+      secretRef:
+        name: gitlab-webhook-secret
+        key: token
+  filter: 'body.object_kind == "merge_request" && body.object_attributes.action in ["open", "update"]'
+  taskTemplate:
+    agentRef: code-review-agent
+    description: |
+      Review MR !{{ .object_attributes.iid }}
+      Project: {{ .project.path_with_namespace }}
+```
+
+**Field Description:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `spec.auth` | WebhookAuth | No | Authentication configuration (HMAC, Bearer, or Header) |
+| `spec.filter` | String | No | CEL expression that must evaluate to true |
+| `spec.concurrencyPolicy` | String | No | Allow (default), Forbid, or Replace |
+| `spec.taskTemplate` | WebhookTaskTemplate | Yes | Task template with Go templating support |
+
+**Authentication Methods:**
+
+| Method | Use Case | Example |
+|--------|----------|---------|
+| `auth.hmac` | GitHub, HMAC-based systems | `X-Hub-Signature-256` header |
+| `auth.bearerToken` | OAuth systems | `Authorization: Bearer <token>` |
+| `auth.header` | GitLab, custom systems | `X-Gitlab-Token` header |
+
+**CEL Filter Variables:**
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `body` | dynamic | Webhook JSON payload |
+| `headers` | map[string]string | HTTP headers (lowercase keys) |
+
+**CEL Filter Examples:**
+
+```yaml
+# Simple equality
+filter: 'body.action == "opened"'
+
+# Multiple conditions
+filter: 'body.action in ["opened", "synchronize"] && body.repository.full_name == "myorg/myrepo"'
+
+# String functions
+filter: '!body.pull_request.title.startsWith("[WIP]")'
+
+# Existence checks
+filter: 'has(body.pull_request) && body.pull_request.draft == false'
+
+# List predicates
+filter: 'body.pull_request.labels.exists(l, l.name == "needs-review")'
+
+# Header-based filtering
+filter: 'headers["x-github-event"] == "pull_request"'
+```
+
+**Concurrency Policies:**
+
+| Policy | Behavior |
+|--------|----------|
+| `Allow` | Create new Task regardless of existing running Tasks (default) |
+| `Forbid` | Skip webhook if there's already a running Task |
+| `Replace` | Stop running Task(s) and create new one |
+
+**Webhook URL:**
+
+Each WebhookTrigger has a unique endpoint at `/webhooks/<namespace>/<trigger-name>`. Configure this URL in your webhook source (GitHub, GitLab, etc.).
 
 ### Context (Reusable Context)
 
@@ -1729,6 +1921,33 @@ kubectl get workflowruns -l kubetask.io/cronworkflow=daily-ci -n kubetask-system
 kubectl delete cronworkflow daily-ci -n kubetask-system
 ```
 
+### WebhookTrigger Operations
+
+```bash
+# Create a webhook trigger
+kubectl apply -f webhooktrigger.yaml
+
+# List webhook triggers
+kubectl get webhooktriggers -n kubetask-system
+# Or use short name
+kubectl get wht -n kubetask-system
+
+# Check webhook trigger details
+kubectl get webhooktrigger github-pr-review -o yaml
+
+# View webhook URL
+kubectl get webhooktrigger github-pr-review -o jsonpath='{.status.webhookURL}'
+
+# View trigger statistics
+kubectl get webhooktrigger github-pr-review -o jsonpath='{.status.totalTriggered}'
+
+# List tasks created by webhook trigger
+kubectl get tasks -l kubetask.io/webhook-trigger=github-pr-review -n kubetask-system
+
+# Delete webhook trigger
+kubectl delete webhooktrigger github-pr-review -n kubetask-system
+```
+
 ### Agent Operations
 
 ```bash
@@ -1748,10 +1967,10 @@ kubectl get agent default -o yaml
 
 ### 1. Simplicity
 
-- **Core CRDs**: Task, Workflow, WorkflowRun, CronWorkflow, and Agent
-- **Clear separation**: WHAT (Task) vs WHEN (CronWorkflow) vs HOW (Agent)
+- **Core CRDs**: Task, Workflow, WorkflowRun, CronWorkflow, WebhookTrigger, and Agent
+- **Clear separation**: WHAT (Task) vs WHEN (CronWorkflow/WebhookTrigger) vs HOW (Agent)
 - **Kubernetes-native batch**: Use Helm/Kustomize for multiple Tasks
-- **Follows K8s patterns**: CronWorkflow mirrors CronJob behavior
+- **Follows K8s patterns**: CronWorkflow mirrors CronJob, WebhookTrigger mirrors event-driven patterns
 
 ### 2. Stability
 
@@ -1779,6 +1998,7 @@ kubectl get agent default -o yaml
 - **Workflow** - reusable multi-stage task template (no execution)
 - **WorkflowRun** - workflow execution instance (stage-based DAG execution)
 - **CronWorkflow** - scheduled WorkflowRun triggering (creates WorkflowRuns on cron schedule)
+- **WebhookTrigger** - event-driven Task creation from webhooks (GitHub, GitLab, custom)
 - **Agent** - stable, project-independent configuration
 - **KubeTaskConfig** - system-level settings (TTL, lifecycle)
 
@@ -1812,5 +2032,5 @@ kubectl get agent default -o yaml
 
 **Status**: FINAL
 **Date**: 2025-12-19
-**Version**: v4.2 (Session Strategies Refactoring)
+**Version**: v4.3 (WebhookTrigger Support)
 **Maintainer**: KubeTask Team

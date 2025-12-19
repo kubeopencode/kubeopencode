@@ -14,6 +14,7 @@ rules:
   - cronworkflows
   - kubetaskconfigs
   - tasks
+  - webhooktriggers
   - workflows
   - workflowruns
   verbs:
@@ -33,6 +34,7 @@ rules:
   - cronworkflows/status
   - kubetaskconfigs/status
   - tasks/status
+  - webhooktriggers/status
   - workflows/status
   - workflowruns/status
   verbs:

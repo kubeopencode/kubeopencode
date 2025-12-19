@@ -1,0 +1,479 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
+  name: webhooktriggers.kubetask.io
+spec:
+  group: kubetask.io
+  names:
+    kind: WebhookTrigger
+    listKind: WebhookTriggerList
+    plural: webhooktriggers
+    shortNames:
+    - wht
+    singular: webhooktrigger
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.totalTriggered
+      name: Triggered
+      type: integer
+    - jsonPath: .status.lastTriggeredTime
+      name: Last Trigger
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: "WebhookTrigger represents a webhook-to-Task mapping rule.\nWhen
+          the webhook endpoint receives a request that matches the configured filters,\nit
+          creates a Task based on the taskTemplate.\n\nEach WebhookTrigger has a unique
+          endpoint at:\n\n\t/webhooks/<namespace>/<trigger-name>\n\nWebhookTrigger
+          is platform-agnostic and supports any webhook source\n(GitHub, GitLab, custom
+          systems, etc.) through configurable authentication\nand filtering."
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the desired state of WebhookTrigger
+            properties:
+              auth:
+                description: |-
+                  Auth defines authentication for webhook validation.
+                  If not specified, webhooks are accepted without authentication.
+                properties:
+                  bearerToken:
+                    description: BearerToken configures Bearer token validation from
+                      Authorization header.
+                    properties:
+                      secretRef:
+                        description: SecretRef references a Secret containing the
+                          expected token.
+                        properties:
+                          key:
+                            description: Key of the Secret to select.
+                            type: string
+                          name:
+                            description: Name of the Secret.
+                            type: string
+                        required:
+                        - key
+                        - name
+                        type: object
+                    required:
+                    - secretRef
+                    type: object
+                  header:
+                    description: |-
+                      Header configures simple header value matching.
+                      Common for GitLab (X-Gitlab-Token) and custom webhooks.
+                    properties:
+                      name:
+                        description: |-
+                          Name is the HTTP header name to check.
+                          Example: "X-Gitlab-Token", "X-Custom-Auth"
+                        type: string
+                      secretRef:
+                        description: SecretRef references a Secret containing the
+                          expected header value.
+                        properties:
+                          key:
+                            description: Key of the Secret to select.
+                            type: string
+                          name:
+                            description: Name of the Secret.
+                            type: string
+                        required:
+                        - key
+                        - name
+                        type: object
+                    required:
+                    - name
+                    - secretRef
+                    type: object
+                  hmac:
+                    description: |-
+                      HMAC configures HMAC signature validation.
+                      Common for GitHub (X-Hub-Signature-256) and similar platforms.
+                    properties:
+                      algorithm:
+                        default: sha256
+                        description: Algorithm specifies the HMAC algorithm to use.
+                        enum:
+                        - sha1
+                        - sha256
+                        - sha512
+                        type: string
+                      secretRef:
+                        description: SecretRef references a Secret containing the
+                          HMAC secret key.
+                        properties:
+                          key:
+                            description: Key of the Secret to select.
+                            type: string
+                          name:
+                            description: Name of the Secret.
+                            type: string
+                        required:
+                        - key
+                        - name
+                        type: object
+                      signatureHeader:
+                        description: |-
+                          SignatureHeader is the HTTP header name containing the signature.
+                          Example: "X-Hub-Signature-256" for GitHub, "X-Signature" for custom systems.
+                        type: string
+                    required:
+                    - secretRef
+                    - signatureHeader
+                    type: object
+                type: object
+              concurrencyPolicy:
+                allOf:
+                - enum:
+                  - Allow
+                  - Forbid
+                  - Replace
+                - enum:
+                  - Allow
+                  - Forbid
+                  - Replace
+                default: Allow
+                description: |-
+                  ConcurrencyPolicy specifies how to treat concurrent tasks triggered by this webhook.
+                  - Allow: Create a new task regardless of existing running tasks (default)
+                  - Forbid: Skip this webhook if there's already a running task
+                  - Replace: Stop the running task and create a new one
+                type: string
+              filter:
+                description: |-
+                  Filter is a CEL expression that must evaluate to true for the webhook to trigger.
+                  If not specified, all webhooks are accepted.
+
+                  The webhook payload is available as the variable "body".
+                  HTTP headers are available as the variable "headers" (map[string]string, lowercase keys).
+
+                  CEL provides powerful filtering capabilities:
+                    - Field access: body.action, body.repository.full_name
+                    - Comparisons: body.action == "opened", body.pull_request.additions < 500
+                    - List operations: body.action in ["opened", "synchronize"]
+                    - String functions: body.title.startsWith("[WIP]"), body.branch.matches("^feature/.*")
+                    - Existence checks: has(body.pull_request) && body.pull_request.draft == false
+                    - List predicates: body.labels.exists(l, l.name == "needs-review")
+
+                  Examples:
+                    # Simple equality
+                    filter: 'body.action == "opened"'
+
+                    # Multiple conditions
+                    filter: 'body.action in ["opened", "synchronize"] && body.repository.full_name == "myorg/myrepo"'
+
+                    # Complex logic
+                    filter: |
+                      !body.pull_request.title.startsWith("[WIP]") &&
+                      body.pull_request.additions + body.pull_request.deletions < 500 &&
+                      body.pull_request.labels.exists(l, l.name == "needs-review")
+                type: string
+              taskTemplate:
+                description: |-
+                  TaskTemplate defines the Task to create when a webhook matches.
+                  The template supports Go template syntax with webhook payload data.
+                properties:
+                  agentRef:
+                    description: |-
+                      AgentRef references an Agent for task execution.
+                      If not specified, uses the "default" Agent in the same namespace.
+                    type: string
+                  contexts:
+                    description: |-
+                      Contexts provides additional context for the task.
+                      Each context can be a reference to a Context CRD (via Ref) or inline definition.
+                    items:
+                      description: |-
+                        ContextSource represents a context that can be either a reference to a Context CRD
+                        or an inline definition. Exactly one of Ref or Inline must be specified.
+
+                        This follows the same pattern as WorkflowRunSpec (workflowRef vs inline),
+                        allowing users to choose between reusable Context CRDs or one-off inline definitions.
+                      properties:
+                        inline:
+                          description: |-
+                            Inline defines context content directly in the Task/Agent.
+                            Use this for one-off contexts that don't need to be reused.
+                          properties:
+                            configMap:
+                              description: ConfigMap context (required when Type ==
+                                "ConfigMap")
+                              properties:
+                                key:
+                                  description: |-
+                                    Key specifies a single key to mount as a file.
+                                    If not specified, all keys are mounted as files in the directory.
+                                  type: string
+                                name:
+                                  description: Name of the ConfigMap
+                                  type: string
+                                optional:
+                                  description: Optional specifies whether the ConfigMap
+                                    must exist.
+                                  type: boolean
+                              required:
+                              - name
+                              type: object
+                            git:
+                              description: Git context (required when Type == "Git")
+                              properties:
+                                depth:
+                                  default: 1
+                                  description: |-
+                                    Depth specifies the clone depth for shallow cloning.
+                                    1 means shallow clone (fastest), 0 means full clone.
+                                    Defaults to 1 for efficiency.
+                                  type: integer
+                                path:
+                                  description: |-
+                                    Path is the path within the repository to mount.
+                                    Can be a file or directory. If empty, the entire repository is mounted.
+
+                                    Note on .git directory:
+                                      - If Path is empty (entire repo): The mounted directory WILL contain .git/
+                                      - If Path is specified (subdirectory): The mounted directory will NOT contain .git/
+
+                                    Example: ".claude/", "docs/guide.md"
+                                  type: string
+                                ref:
+                                  default: HEAD
+                                  description: |-
+                                    Ref is the Git reference (branch, tag, or commit SHA).
+                                    Defaults to "HEAD" if not specified.
+                                  type: string
+                                repository:
+                                  description: |-
+                                    Repository is the Git repository URL.
+                                    Example: "https://github.com/org/contexts"
+                                  type: string
+                                secretRef:
+                                  description: |-
+                                    SecretRef references a Secret containing Git credentials.
+                                    The Secret should contain one of:
+                                      - "username" + "password": For HTTPS token-based auth (password can be a PAT)
+                                      - "ssh-privatekey": For SSH key-based auth
+                                    If not specified, anonymous clone is attempted.
+                                  properties:
+                                    name:
+                                      description: Name of the Secret containing Git
+                                        credentials.
+                                      type: string
+                                  required:
+                                  - name
+                                  type: object
+                              required:
+                              - repository
+                              type: object
+                            mountPath:
+                              description: |-
+                                MountPath specifies where this context should be mounted in the agent pod.
+
+                                Path resolution follows Tekton conventions:
+                                - Absolute paths (starting with "/") are used as-is
+                                - Relative paths (NOT starting with "/") are prefixed with the agent's workspaceDir
+
+                                See ContextRef.MountPath for detailed examples.
+
+                                Note: For Runtime context type, MountPath is ignored - content is always
+                                appended to task.md.
+                              type: string
+                            runtime:
+                              description: |-
+                                Runtime context (optional when Type == "Runtime")
+                                Enables KubeTask platform awareness. The controller injects a system prompt
+                                that explains the runtime environment to the agent.
+                              type: object
+                            text:
+                              description: |-
+                                Text is the text content (required when Type == "Text").
+                                Contains text content defined directly in YAML.
+                              type: string
+                            type:
+                              description: 'Type of context source: Text, ConfigMap,
+                                Git, or Runtime'
+                              enum:
+                              - Text
+                              - ConfigMap
+                              - Git
+                              - Runtime
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        ref:
+                          description: |-
+                            Ref references an existing Context CRD by name.
+                            Use this for reusable contexts that are managed independently.
+                          properties:
+                            mountPath:
+                              description: |-
+                                MountPath specifies where this context should be mounted in the agent pod.
+
+                                Path resolution follows Tekton conventions:
+                                - Absolute paths (starting with "/") are used as-is
+                                - Relative paths (NOT starting with "/") are prefixed with the agent's workspaceDir
+
+                                Examples:
+                                - "/etc/config/app.conf" -> mounts at /etc/config/app.conf (absolute)
+                                - "guides/readme.md" -> mounts at ${workspaceDir}/guides/readme.md (relative)
+
+                                If NOT specified (empty), the context content is appended to ${WORKSPACE_DIR}/task.md
+                                in a structured XML format.
+                              type: string
+                            name:
+                              description: Name of the Context resource
+                              type: string
+                            namespace:
+                              description: Namespace of the Context (optional, defaults
+                                to the referencing resource's namespace)
+                              type: string
+                          required:
+                          - name
+                          type: object
+                      type: object
+                    type: array
+                  description:
+                    description: |-
+                      Description is the task instruction/prompt.
+                      Supports Go template syntax with webhook payload data.
+
+                      Available template data:
+                        - The entire webhook JSON payload is available as the root object
+                        - Example: {{ .pull_request.number }}, {{ .repository.full_name }}
+
+                      Example:
+                        description: |
+                          Review Pull Request #{{ .pull_request.number }}
+                          Repository: {{ .repository.full_name }}
+                          Author: {{ .pull_request.user.login }}
+                    type: string
+                required:
+                - description
+                type: object
+            required:
+            - taskTemplate
+            type: object
+          status:
+            description: Status represents the current status of the WebhookTrigger
+            properties:
+              activeTasks:
+                description: |-
+                  ActiveTasks lists the names of currently running Tasks created by this trigger.
+                  Used for concurrency policy enforcement.
+                items:
+                  type: string
+                type: array
+              conditions:
+                description: Conditions represent the latest available observations
+                  of the WebhookTrigger's state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastTriggeredTime:
+                description: LastTriggeredTime is when the webhook was last triggered
+                  successfully.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: ObservedGeneration is the most recent generation observed
+                  by the controller.
+                format: int64
+                type: integer
+              totalTriggered:
+                description: TotalTriggered is the total number of times this trigger
+                  created a Task.
+                format: int64
+                type: integer
+              webhookURL:
+                description: |-
+                  WebhookURL is the full URL path for this webhook endpoint.
+                  Format: /webhooks/<namespace>/<trigger-name>
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

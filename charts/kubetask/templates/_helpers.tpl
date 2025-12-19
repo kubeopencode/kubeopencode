@@ -99,3 +99,19 @@ Namespace
 {{- define "kubetask.namespace" -}}
 {{- default .Release.Namespace .Values.namespaceOverride }}
 {{- end }}
+
+{{/*
+Webhook labels
+*/}}
+{{- define "kubetask.webhook.labels" -}}
+{{ include "kubetask.labels" . }}
+app.kubernetes.io/component: webhook
+{{- end }}
+
+{{/*
+Webhook selector labels
+*/}}
+{{- define "kubetask.webhook.selectorLabels" -}}
+{{ include "kubetask.selectorLabels" . }}
+app.kubernetes.io/component: webhook
+{{- end }}

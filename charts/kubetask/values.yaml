@@ -51,6 +51,63 @@ controller:
   # Affinity for controller pods
   affinity: {}
 
+# Webhook server configuration
+# The webhook server receives HTTP webhooks and creates Tasks based on WebhookTrigger CRDs
+webhook:
+  # Whether to enable the webhook server
+  enabled: false
+
+  # Number of webhook server replicas
+  replicas: 1
+
+  # Webhook server port (receives webhook requests)
+  port: 8082
+
+  # Metrics port
+  metricsPort: 8083
+
+  # Health probe port
+  healthPort: 8084
+
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  # Security context for webhook pods
+  podSecurityContext:
+    runAsNonRoot: true
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+
+  # Node selector for webhook pods
+  nodeSelector: {}
+
+  # Tolerations for webhook pods
+  tolerations: []
+
+  # Affinity for webhook pods
+  affinity: {}
+
+  # Service configuration
+  service:
+    # Service type (ClusterIP, NodePort, LoadBalancer)
+    type: ClusterIP
+    # Service port
+    port: 80
+    # NodePort (only used when type is NodePort, valid range: 30000-32767)
+    nodePort: null
+    # Optional: expose metrics port on service
+    metricsPort: null
+
 # Agent configuration
 # NOTE: Agent ServiceAccount is NOT created by this chart.
 # Users must create their own ServiceAccount and RBAC in each namespace where tasks run,

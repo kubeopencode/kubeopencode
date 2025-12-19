@@ -20,12 +20,13 @@ KubeTask enables you to execute AI agent tasks (like Claude, Gemini) using Kuber
 **Key Features:**
 
 - **Kubernetes-Native**: Built on CRDs and the Operator pattern
-- **Simple API**: Core CRDs - Task, Workflow, WorkflowRun, CronWorkflow, Agent, and Context
+- **Simple API**: Core CRDs - Task, Workflow, WorkflowRun, CronWorkflow, WebhookTrigger, Agent, and Context
 - **AI-Agnostic**: Works with any AI agent (Claude, Gemini, Goose, etc.)
 - **No External Dependencies**: Uses etcd for state, Jobs for execution
 - **GitOps Ready**: Fully declarative resource definitions
 - **Flexible Context System**: Support for inline content, ConfigMaps, and Git repositories
 - **Scheduled Workflows**: CronWorkflow for recurring AI-powered operations
+- **Webhook Triggers**: WebhookTrigger for event-driven Tasks from GitHub, GitLab, or custom systems
 - **Human-in-the-Loop**: Session sidecar for debugging + session persistence for resumable work
 - **Batch Operations**: Use Helm/Kustomize for multiple Tasks (Kubernetes-native approach)
 
@@ -60,6 +61,7 @@ KubeTask enables you to execute AI agent tasks (like Claude, Gemini) using Kuber
 - **Workflow**: Reusable multi-stage task template
 - **WorkflowRun**: Workflow execution instance
 - **CronWorkflow**: Scheduled WorkflowRun triggering
+- **WebhookTrigger**: Event-driven Task creation from webhooks
 - **Agent**: AI agent configuration (HOW to execute)
 - **Context**: Reusable context resources (inline, ConfigMap, or Git)
 
@@ -365,6 +367,41 @@ kubectl annotate task my-task kubetask.io/stop=true
 | Workspace after timeout | Lost | Preserved |
 | Resume capability | No | Yes |
 
+### Webhook Triggers
+
+Create Tasks automatically from external webhooks (GitHub, GitLab, custom systems):
+
+```yaml
+apiVersion: kubetask.io/v1alpha1
+kind: WebhookTrigger
+metadata:
+  name: github-pr-review
+spec:
+  # Authentication (optional)
+  auth:
+    hmac:
+      secretRef:
+        name: github-webhook-secret
+        key: secret
+      signatureHeader: X-Hub-Signature-256
+
+  # CEL filter expression (optional)
+  filter: 'body.action in ["opened", "synchronize"] && !body.pull_request.draft'
+
+  # Concurrency policy: Allow (default), Forbid, Replace
+  concurrencyPolicy: Replace
+
+  # Task template with Go templating
+  taskTemplate:
+    agentRef: code-review-agent
+    description: |
+      Review Pull Request #{{ .pull_request.number }}
+      Repository: {{ .repository.full_name }}
+      Author: {{ .pull_request.user.login }}
+```
+
+Configure your webhook source to send requests to `/webhooks/<namespace>/<trigger-name>`.
+
 ### Multi-AI Support
 
 Use different Agents for different AI agents:
@@ -593,6 +630,7 @@ See [CLAUDE.md](CLAUDE.md) for detailed development guidelines.
 - [x] GitContext for Git repository support
 - [x] Human-in-the-Loop with session sidecar
 - [x] Session persistence for resumable work
+- [x] WebhookTrigger for event-driven Task creation
 - [ ] Enhanced status reporting and observability
 - [ ] Support for additional context types (MCP)
 - [ ] Advanced retry and failure handling

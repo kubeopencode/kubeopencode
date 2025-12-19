@@ -711,11 +711,11 @@ type AgentList struct {
 // HumanInTheLoop configures human participation requirements for an agent.
 // It supports two complementary session strategies:
 //
-// 1. Session Sidecar (ephemeral): A sidecar container runs alongside the agent,
-//    providing immediate but temporary access after task completion.
+//  1. Session Sidecar (ephemeral): A sidecar container runs alongside the agent,
+//     providing immediate but temporary access after task completion.
 //
-// 2. Session Persistence (durable): Workspace content is saved to a PVC,
-//    enabling resume from a new Pod after the original Pod terminates.
+//  2. Session Persistence (durable): Workspace content is saved to a PVC,
+//     enabling resume from a new Pod after the original Pod terminates.
 //
 // The Image, Command, and Ports fields are shared by both strategies - they
 // apply to the session sidecar and any resumed session Pod.

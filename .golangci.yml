@@ -75,8 +75,8 @@ issues:
         - errcheck
         - gosec
 
-    # Exclude e2e test files from errcheck (cleanup code intentionally ignores errors)
-    - path: "e2e/.*\\.go"
+    # Exclude e2e test files from errcheck and gosec (cleanup code intentionally ignores errors)
+    - path: ^e2e/
       linters:
         - errcheck
         - gosec

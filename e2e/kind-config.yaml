@@ -1,0 +1,11 @@
+# Copyright Contributors to the KubeTask project
+# Kind cluster configuration for E2E testing
+# Exposes NodePort 30082 for webhook server access
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30082
+    hostPort: 30082
+    protocol: TCP
