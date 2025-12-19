@@ -21,15 +21,18 @@ KubeTask is a Kubernetes-native system that executes AI-powered tasks using Cust
 - Simple API: Task (WHAT to do) + Agent (HOW to execute)
 - Use Helm/Kustomize for batch operations (multiple Tasks)
 
-**Git Init Container:**
+**Unified Binary:**
 
-When using Git Context, KubeTask uses its own `git-init` image as an init container to clone Git repositories:
+KubeTask uses a single container image (`quay.io/kubetask/kubetask`) with multiple subcommands:
 
-| Image | Used For |
-|-------|----------|
-| `quay.io/kubetask/kubetask-git-init` | Git Context cloning |
+| Subcommand | Used For |
+|------------|----------|
+| `controller` | Main controller reconciliation |
+| `git-init` | Git Context cloning (init container) |
+| `save-session` | Session persistence (sidecar) |
+| `webhook` | Webhook server for WebhookTrigger |
 
-The git-init source is in `cmd/git-init/`. The image constant is defined in `internal/controller/job_builder.go` as `DefaultGitInitImage`.
+The image constant is defined in `internal/controller/job_builder.go` as `DefaultKubeTaskImage`.
 
 ## Core Concepts
 

@@ -6,11 +6,15 @@
 2. Go to **Organizations** → **kubetask** → **Robot Accounts** → **Create Robot Account**
 3. Name it (e.g., `github_actions`)
 4. Grant **Write** permission to all repositories:
-   - `kubetask/kubetask`
+   - `kubetask/kubetask` (unified binary: controller, git-init, save-session, webhook)
    - `kubetask/kubetask-agent-base`
    - `kubetask/kubetask-agent-gemini`
-   - `kubetask/kubetask-agent-echo`
+   - `kubetask/kubetask-agent-claude`
    - `kubetask/kubetask-agent-goose`
+   - `kubetask/kubetask-agent-opencode`
+   - `kubetask/kubetask-agent-code-server`
+   - `kubetask/kubetask-agent-echo`
+   - `kubetask/helm-charts/kubetask` (Helm chart OCI)
 
 ## 2. Add GitHub Secrets
 
