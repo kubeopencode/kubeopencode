@@ -353,13 +353,26 @@ e2e-test: ## Run e2e tests
 	go test -v ./e2e/... -timeout 30m -ginkgo.v
 .PHONY: e2e-test
 
-# Run specific e2e test
+# Run specific e2e test by focus string
 e2e-test-focus: ## Run specific e2e test (usage: make e2e-test-focus FOCUS="Task")
 	@echo "Running focused e2e tests..."
 	E2E_TEST_NAMESPACE=kubetask-e2e-test \
 	E2E_ECHO_IMAGE=quay.io/kubetask/kubetask-agent-echo:latest \
 	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.focus="$(FOCUS)"
 .PHONY: e2e-test-focus
+
+# Run e2e tests by label (recommended)
+# Available labels: task, workflow, agent, cronworkflow, session
+# Examples:
+#   make e2e-test-label LABEL="workflow"
+#   make e2e-test-label LABEL="workflow || cronworkflow"
+#   make e2e-test-label LABEL="!cronworkflow"
+e2e-test-label: ## Run e2e tests by label (usage: make e2e-test-label LABEL="workflow")
+	@echo "Running e2e tests with label: $(LABEL)..."
+	E2E_TEST_NAMESPACE=kubetask-e2e-test \
+	E2E_ECHO_IMAGE=quay.io/kubetask/kubetask-agent-echo:latest \
+	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.label-filter="$(LABEL)"
+.PHONY: e2e-test-label
 
 # Full e2e test workflow (setup, test, teardown)
 e2e: e2e-setup e2e-test ## Run full e2e test workflow
