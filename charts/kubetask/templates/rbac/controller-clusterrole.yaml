@@ -74,6 +74,19 @@ rules:
   verbs:
   - create
   - patch
+# Pods (for session resume functionality)
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
 # Leader election
 - apiGroups:
   - coordination.k8s.io
