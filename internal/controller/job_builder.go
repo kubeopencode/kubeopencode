@@ -160,16 +160,15 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 	var envVars []corev1.EnvVar
 	var initContainers []corev1.Container
 
-	// Base environment variables
-	// HOME is set to /tmp to ensure tools like gemini-cli, claude-cli can write
-	// to ~/.gemini, ~/.claude etc. This is critical for environments with SCC
-	// (Security Context Constraints) or similar security policies where:
-	// 1. Containers run with random UIDs that have no /etc/passwd entry
-	// 2. The default HOME=/ is not writable
-	// 3. The workspaceDir may be owned by the image user (e.g., UID 1000)
-	// /tmp is always writable regardless of user and is a standard location.
+	// Base environment variables for SCC (Security Context Constraints) compatibility.
+	// In environments with SCC or similar security policies, containers run with
+	// random UIDs that have no /etc/passwd entry, causing:
+	// - HOME=/ (not writable) - tools like gemini-cli fail to create ~/.gemini
+	// - SHELL=/sbin/nologin - terminals in code-server fail to start
+	// Setting these explicitly ensures containers work regardless of UID.
 	envVars = append(envVars,
 		corev1.EnvVar{Name: "HOME", Value: "/tmp"},
+		corev1.EnvVar{Name: "SHELL", Value: "/bin/bash"},
 		corev1.EnvVar{Name: "TASK_NAME", Value: task.Name},
 		corev1.EnvVar{Name: "TASK_NAMESPACE", Value: task.Namespace},
 		corev1.EnvVar{Name: "WORKSPACE_DIR", Value: cfg.workspaceDir},
@@ -594,10 +593,10 @@ func buildSessionPod(task *kubetaskv1alpha1.Task, cfg agentConfig, sessionCfg *s
 	sessionPodName := fmt.Sprintf("%s-session", task.Name)
 	pvcSubPath := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
 
-	// Base environment variables
-	// HOME is set to /tmp for SCC compatibility (see buildJob comments)
+	// Base environment variables for SCC compatibility (see buildJob comments)
 	envVars := []corev1.EnvVar{
 		{Name: "HOME", Value: "/tmp"},
+		{Name: "SHELL", Value: "/bin/bash"},
 		{Name: "TASK_NAME", Value: task.Name},
 		{Name: "TASK_NAMESPACE", Value: task.Namespace},
 		{Name: "WORKSPACE_DIR", Value: cfg.workspaceDir},

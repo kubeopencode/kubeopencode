@@ -1,4 +1,4 @@
-# ADR 0006: HOME Directory Configuration for Agent Containers
+# ADR 0006: Environment Configuration for Agent Containers in SCC Environments
 
 ## Status
 
@@ -30,30 +30,49 @@ The workspace directory (`/workspace`) is created during image build and owned b
 - At runtime: owned by UID 1000 with permissions 755
 - Random UID cannot write to `/workspace` directly
 
+### Problem 4: SHELL defaults to /sbin/nologin
+
+Some SCC environments inject a passwd entry for the random UID with `/sbin/nologin` as the shell:
+```
+1000730000:x:1000730000:0:1000730000 user:/tmp:/sbin/nologin
+```
+
+This causes terminals in tools like code-server to fail with:
+```
+The terminal process "/sbin/nologin" terminated with exit code: 1.
+```
+
 ### Environment Comparison
 
-| Environment | Container UID | HOME | Writable? |
-|-------------|---------------|------|-----------|
-| Kind/vanilla K8s | 1000 (agent) | /home/agent | Yes |
-| SCC-enabled cluster | Random (e.g., 1000730000) | / | No |
+| Environment | Container UID | HOME | SHELL | Issues |
+|-------------|---------------|------|-------|--------|
+| Kind/vanilla K8s | 1000 (agent) | /home/agent | /bin/zsh | None |
+| SCC-enabled cluster | Random (e.g., 1000730000) | / | /sbin/nologin | HOME not writable, terminal fails |
 
 ## Decision
 
-We set `HOME=/tmp` for all agent containers via environment variable in the controller's `job_builder.go`.
+We set `HOME=/tmp` and `SHELL=/bin/bash` for all agent containers via environment variables in the controller's `job_builder.go`.
 
 ```go
 envVars = append(envVars,
     corev1.EnvVar{Name: "HOME", Value: "/tmp"},
+    corev1.EnvVar{Name: "SHELL", Value: "/bin/bash"},
     // ... other env vars
 )
 ```
 
-### Why `/tmp`?
+### Why `HOME=/tmp`?
 
 1. **Always writable**: `/tmp` has permissions `1777` (drwxrwxrwt), allowing any user to write
 2. **Standard location**: Well-known temporary directory on all Linux systems
 3. **No ownership issues**: Works regardless of container UID
 4. **Ephemeral by design**: Suitable for temporary config/cache files
+
+### Why `SHELL=/bin/bash`?
+
+1. **Overrides /sbin/nologin**: Ensures terminals work in tools like code-server
+2. **Available in all images**: `/bin/bash` is present in our agent base images
+3. **Standard shell**: Compatible with most scripts and tools
 
 ### Why controller-level vs Dockerfile-level?
 
@@ -73,6 +92,7 @@ We chose the controller approach because:
 
 - Agent containers work correctly on both vanilla Kubernetes and SCC-enabled clusters
 - AI CLI tools can create their config directories (`~/.gemini`, `~/.claude`, etc.)
+- Terminals in code-server and similar tools work correctly
 - No changes required to agent Dockerfiles
 - Third-party agent images work without modification
 

@@ -29,7 +29,7 @@ spec:
     command:
       - sh
       - -c
-      - code-server --bind-addr 0.0.0.0:8080 ${WORKSPACE_DIR} & sleep 7200
+      - code-server --bind-addr 0.0.0.0:8080 --auth none ${WORKSPACE_DIR} & sleep 7200
     ports:
       - name: code-server
         containerPort: 8080
