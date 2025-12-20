@@ -1,0 +1,63 @@
+# Copyright Contributors to the KubeTask project
+# RBAC resources for kubetask dogfooding environment
+#
+# This creates the required ServiceAccount and RoleBinding for running tasks.
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubetask-agent
+  labels:
+    app.kubernetes.io/name: kubetask
+    app.kubernetes.io/component: agent
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubetask-agent
+  labels:
+    app.kubernetes.io/name: kubetask
+    app.kubernetes.io/component: agent
+rules:
+  # Allow agent to read and update Task resources (e.g., add annotations)
+  - apiGroups: ["kubetask.io"]
+    resources: ["tasks"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  # Allow agent to update Task status
+  - apiGroups: ["kubetask.io"]
+    resources: ["tasks/status"]
+    verbs: ["get", "patch", "update"]
+  # Allow agent to read Context resources
+  - apiGroups: ["kubetask.io"]
+    resources: ["contexts"]
+    verbs: ["get", "list", "watch"]
+  # Allow agent to read Agent configuration (e.g., for self-discovery)
+  - apiGroups: ["kubetask.io"]
+    resources: ["agents"]
+    verbs: ["get", "list", "watch"]
+  # Allow agent to read Workflow, WorkflowRun, and CronWorkflow resources
+  - apiGroups: ["kubetask.io"]
+    resources: ["workflows", "workflowruns", "cronworkflows"]
+    verbs: ["get", "list", "watch"]
+  # Allow agent to read KubeTaskConfig (system configuration)
+  - apiGroups: ["kubetask.io"]
+    resources: ["kubetaskconfigs"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubetask-agent
+  labels:
+    app.kubernetes.io/name: kubetask
+    app.kubernetes.io/component: agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubetask-agent
+subjects:
+  - kind: ServiceAccount
+    name: kubetask-agent

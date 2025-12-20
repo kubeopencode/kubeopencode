@@ -2,12 +2,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: kubetask
+namespace: kubetask-dogfood
 
 commonLabels:
   app.kubernetes.io/part-of: kubetask-dogfooding
 
-resources: []
+resources:
+  - rbac.yaml
 # Add your resources here, e.g.:
 # - agent-claude.yaml
 # - context-project.yaml

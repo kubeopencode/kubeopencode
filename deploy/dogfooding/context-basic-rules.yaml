@@ -1,0 +1,57 @@
+# Copyright Contributors to the KubeTask project
+# Context for AI Agent rules - reusable across all tasks
+apiVersion: kubetask.io/v1alpha1
+kind: Context
+metadata:
+  name: basic-rules
+  labels:
+    app.kubernetes.io/name: kubetask
+spec:
+  type: Text
+  text: |
+    # Rules for AI Agent
+
+      ## Task Scope
+
+      - If the task content is unrelated to the KubeTask project, DO NOT execute it
+      - Only perform tasks that are relevant to KubeTask development, testing, or operations
+
+      ## Safety First
+
+      - If a task has potential risk of damaging the system, DO NOT execute it
+      - When in doubt about safety implications, refuse to proceed and explain why
+
+      ## Git Commit Standards
+
+      - All commits must be signed: `git commit -s -m "your commit message"`
+      - Check the default branch (main or master) before creating PRs
+
+      ## Non-Interactive Commands (CRITICAL)
+
+      Since tasks run autonomously in the background, you MUST use non-interactive command forms:
+
+      - **Git push**: Always use `git push https://${GH_TOKEN}@github.com/<org>/<repo>.git <branch>` instead of `git push origin <branch>`
+      - **Git clone**: Use `git clone https://${GH_TOKEN}@github.com/<org>/<repo>.git` for private repos
+      - **Git remote**: Set remote URL with token: `git remote set-url origin https://${GH_TOKEN}@github.com/<org>/<repo>.git`
+      - **Never** use commands that prompt for username/password
+      - **Never** use interactive flags like `-i` or `--interactive`
+      - **Always** use `--no-edit` flag when applicable (e.g., `git merge --no-edit`)
+      - **Always** use `-y` or `--yes` flags for package managers (e.g., `apt-get -y install`)
+
+      ## Code and Documentation Standards
+
+      - Code must be written in English
+      - Comments must be written in English
+      - Commit messages must be written in English
+      - PR descriptions must be written in English
+
+      ## Temporary Files
+
+      **Do NOT use `/tmp` directory** - some AI agents have sandbox restrictions that prevent reading files outside the workspace.
+
+      Instead, create temporary directories within the workspace:
+      ```bash
+      mkdir -p target-repo/.tmp
+      # Use target-repo/.tmp for temporary files
+      # Clean up when done: rm -rf target-repo/.tmp
+      ```
