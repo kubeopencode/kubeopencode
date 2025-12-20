@@ -4,9 +4,11 @@ kind: Kustomization
 
 namespace: kubetask-dogfood
 
-commonLabels:
-  app.kubernetes.io/part-of: kubetask-dogfooding
-
 resources:
-  - base
-  - resources
+  - namespace.yaml
+  - rbac.yaml
+  - secrets.yaml
+  - agent-default.yaml
+  - agent-dev.yaml
+  - agent-dev-realtime.yaml
+  - context-basic-rules.yaml
