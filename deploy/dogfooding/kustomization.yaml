@@ -1,0 +1,14 @@
+# Copyright Contributors to the KubeTask project
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: kubetask
+
+commonLabels:
+  app.kubernetes.io/part-of: kubetask-dogfooding
+
+resources: []
+# Add your resources here, e.g.:
+# - agent-claude.yaml
+# - context-project.yaml
+# - webhooktrigger-pr.yaml

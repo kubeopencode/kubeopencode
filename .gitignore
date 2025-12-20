@@ -16,3 +16,11 @@ dist/
 
 # Override global gitignore to track CLAUDE.md
 !CLAUDE.md
+
+# Secrets
+*.pem
+*.key
+.env
+.env.*
+*credentials*
+*secret*

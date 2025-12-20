@@ -1,0 +1,6 @@
+# Copyright Contributors to the KubeTask project
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
