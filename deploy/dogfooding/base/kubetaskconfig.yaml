@@ -1,0 +1,16 @@
+# Copyright Contributors to the KubeTask project
+# KubeTaskConfig for dogfooding environment
+apiVersion: kubetask.io/v1alpha1
+kind: KubeTaskConfig
+metadata:
+  name: default
+spec:
+  # Use Always to ensure fresh images are pulled, avoiding stale cached images on nodes
+  systemImage:
+    imagePullPolicy: Always
+  agentImagePullPolicy: Always
+
+  # Task lifecycle configuration
+  taskLifecycle:
+    # Keep completed/failed tasks for 1 day in dogfooding environment
+    ttlSecondsAfterFinished: 86400
