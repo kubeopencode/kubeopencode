@@ -3,7 +3,7 @@ apiVersion: kubetask.io/v1alpha1
 kind: Task
 metadata:
   generateName: say-hi-
-  namespace: kubetask-dogfood
+  namespace: kubetask-dogfooding
 spec:
   # Use description field for simple task instructions
   description: |
@@ -19,5 +19,5 @@ spec:
   # The dev-realtime agent has humanInTheLoop.sidecar enabled, which allows
   # you to port-forward into the agent pod after the task completes to make
   # further modifications or continue the conversation.
-  # Example: kubectl port-forward pod/<pod-name> 8080:8080 -n kubetask-dogfood
+  # Example: kubectl port-forward pod/<pod-name> 8080:8080 -n kubetask-dogfooding
   agentRef: dev-realtime
