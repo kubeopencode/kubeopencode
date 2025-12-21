@@ -15,6 +15,11 @@ FROM ${BASE_IMAGE}
 # Install Gemini CLI globally
 USER root
 RUN npm install -g @google/gemini-cli
+
+# Install stream-json-reader utility
+COPY stream-json-reader.sh /usr/local/bin/stream-json-reader
+RUN chmod +x /usr/local/bin/stream-json-reader
+
 USER agent
 
 # Pre-configure Gemini CLI settings (enable preview features)
