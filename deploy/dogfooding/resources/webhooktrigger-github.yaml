@@ -1,7 +1,7 @@
 apiVersion: kubetask.io/v1alpha1
 kind: WebhookTrigger
 metadata:
-  name: github-pr-review-only
+  name: github
 spec:
   auth:
     hmac:

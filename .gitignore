@@ -28,3 +28,6 @@ dist/
 *_secret*
 *_key*
 *_token*
+
+# Dogfooding environment config (contains smee.io URL)
+deploy/dogfooding/system/configmap-smee.yaml
