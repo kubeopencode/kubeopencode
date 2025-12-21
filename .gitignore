@@ -24,3 +24,7 @@ dist/
 .env.*
 *credentials*
 *secret*
+*_id*
+*_secret*
+*_key*
+*_token*
