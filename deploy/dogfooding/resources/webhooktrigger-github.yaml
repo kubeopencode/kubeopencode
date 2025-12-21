@@ -42,9 +42,10 @@ spec:
             4. Post your review as a PR comment.
 
     # Rule 2: @kubetask-bot mention from privileged users (OWNER, MEMBER, CONTRIBUTOR, COLLABORATOR)
+    # Supports: issue_comment, pull_request_review_comment, discussion_comment
     - name: comment-privileged
       filter: |
-        headers["x-github-event"] == "issue_comment" &&
+        headers["x-github-event"] in ["issue_comment", "pull_request_review_comment", "discussion_comment"] &&
         body.action == "created" &&
         body.comment.body.contains("@kubetask-bot") &&
         body.comment.author_association in ["OWNER", "MEMBER", "CONTRIBUTOR", "COLLABORATOR"]
@@ -58,15 +59,32 @@ spec:
 
             - Repository: {{ .repository.full_name }}
             - Clone URL: {{ .repository.clone_url }}
+            {{- if .issue }}
+            - Event Type: Issue/PR Comment
             - Issue/PR #{{ .issue.number }}: {{ .issue.title }}
             - Issue/PR URL: {{ .issue.html_url }}
             - Is PR: {{ if .issue.pull_request }}Yes{{ else }}No{{ end }}
+            {{- else if .pull_request }}
+            - Event Type: PR Review Comment
+            - PR #{{ .pull_request.number }}: {{ .pull_request.title }}
+            - PR URL: {{ .pull_request.html_url }}
+            - Is PR: Yes
+            {{- else if .discussion }}
+            - Event Type: Discussion Comment
+            - Discussion #{{ .discussion.number }}: {{ .discussion.title }}
+            - Discussion URL: {{ .discussion.html_url }}
+            - Category: {{ .discussion.category.name }}
+            {{- end }}
 
             ## Comment Details
 
             - Commenter: @{{ .comment.user.login }}
             - Author Association: {{ .comment.author_association }}
             - Comment URL: {{ .comment.html_url }}
+            {{- if .pull_request }}
+            - File: {{ .comment.path }}
+            - Line: {{ .comment.line }}
+            {{- end }}
 
             ### Comment Body
 
@@ -89,9 +107,19 @@ spec:
 
             If the user is asking a question:
             1. Clone the repository
+            {{- if .discussion }}
+            2. Checkout the default branch
+            3. Read and analyze the relevant code
+            4. Reply with your answer using: `gh api repos/{{ .repository.full_name }}/discussions/{{ .discussion.number }}/comments -f body="..."`
+            {{- else if .pull_request }}
+            2. Checkout the PR branch: `gh pr checkout {{ .pull_request.number }}`
+            3. Read and analyze the relevant code (especially {{ .comment.path }} around line {{ .comment.line }})
+            4. Reply with your answer using: `gh pr comment {{ .pull_request.number }} --body "..."`
+            {{- else if .issue }}
             2. {{ if .issue.pull_request }}Checkout the PR branch: `gh pr checkout {{ .issue.number }}`{{ else }}Checkout the default branch{{ end }}
             3. Read and analyze the relevant code
             4. Reply with your answer using: `gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "..."`
+            {{- end }}
 
             ### Step 2b: For No Clear Request
 
@@ -99,11 +127,23 @@ spec:
             1. Acknowledge the mention
             2. Ask what they need help with
             3. **DO NOT** make any code changes
+            {{- if .discussion }}
+            4. Reply using: `gh api repos/{{ .repository.full_name }}/discussions/{{ .discussion.number }}/comments -f body="..."`
+            {{- else if .pull_request }}
+            4. Reply using: `gh pr comment {{ .pull_request.number }} --body "..."`
+            {{- else if .issue }}
             4. Reply using: `gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "..."`
+            {{- end }}
 
             Example response:
             ```
+            {{- if .discussion }}
+            Hi @{{ .comment.user.login }}! I noticed you mentioned me. How can I help you with this discussion?
+            {{- else if .pull_request }}
+            Hi @{{ .comment.user.login }}! I noticed you mentioned me in this PR review comment. How can I help you?
+            {{- else if .issue }}
             Hi @{{ .comment.user.login }}! I noticed you mentioned me. How can I help you with this {{ if .issue.pull_request }}PR{{ else }}issue{{ end }}?
+            {{- end }}
 
             I can:
             - Answer questions about the code
@@ -120,6 +160,28 @@ spec:
 
             If you're unsure whether the user wants code changes, ask for clarification first.
 
+            {{- if .discussion }}
+            This is a discussion comment. For code change requests in discussions:
+            - Reply explaining that code changes should be made via a Pull Request
+            - Offer to help create a PR if the user describes what changes they want
+            {{- else if .pull_request }}
+            If the user is requesting code changes on this PR review comment:
+
+            1. First, check if this PR is from a fork:
+               ```bash
+               gh pr view {{ .pull_request.number }} --json headRepositoryOwner,baseRepository --jq '{head: .headRepositoryOwner.login, base: .baseRepository.owner.login}'
+               ```
+
+            2. **If same-repo PR** (head owner == base owner):
+               - Checkout the PR branch: `gh pr checkout {{ .pull_request.number }}`
+               - Make the requested changes (especially in {{ .comment.path }} around line {{ .comment.line }})
+               - Commit with signoff: `git commit -s -m "fix: <description>"`
+               - Push the changes
+               - Reply confirming the changes were made
+
+            3. **If fork PR** (different owners):
+               - Reply explaining: "This PR is from a fork. I cannot directly push to fork PRs. Please make the changes locally, or a maintainer with write access to your fork can assist."
+            {{- else if .issue }}
             {{ if .issue.pull_request }}
             If the user is requesting code changes on this PR:
 
@@ -142,6 +204,7 @@ spec:
             - Reply explaining that code changes should be made via a Pull Request
             - Offer to help create a PR if the user describes what changes they want
             {{ end }}
+            {{- end }}
 
             ### Response Format
 
@@ -157,16 +220,27 @@ spec:
 
             After composing your response, you MUST post it as a GitHub comment:
 
+            {{- if .discussion }}
+            ```bash
+            gh api repos/{{ .repository.full_name }}/discussions/{{ .discussion.number }}/comments -f body="<your response>"
+            ```
+            {{- else if .pull_request }}
+            ```bash
+            gh pr comment {{ .pull_request.number }} --body "<your response>"
+            ```
+            {{- else if .issue }}
             ```bash
             gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "<your response>"
             ```
+            {{- end }}
 
             **IMPORTANT**: Do not just print the response to stdout. You MUST use the `gh` command to actually post the comment to GitHub.
 
     # Rule 3: @kubetask-bot mention from non-privileged users (FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE)
+    # Supports: issue_comment, pull_request_review_comment, discussion_comment
     - name: comment-unprivileged
       filter: |
-        headers["x-github-event"] == "issue_comment" &&
+        headers["x-github-event"] in ["issue_comment", "pull_request_review_comment", "discussion_comment"] &&
         body.action == "created" &&
         body.comment.body.contains("@kubetask-bot") &&
         body.comment.author_association in ["FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"]
@@ -180,15 +254,32 @@ spec:
 
             - Repository: {{ .repository.full_name }}
             - Clone URL: {{ .repository.clone_url }}
+            {{- if .issue }}
+            - Event Type: Issue/PR Comment
             - Issue/PR #{{ .issue.number }}: {{ .issue.title }}
             - Issue/PR URL: {{ .issue.html_url }}
             - Is PR: {{ if .issue.pull_request }}Yes{{ else }}No{{ end }}
+            {{- else if .pull_request }}
+            - Event Type: PR Review Comment
+            - PR #{{ .pull_request.number }}: {{ .pull_request.title }}
+            - PR URL: {{ .pull_request.html_url }}
+            - Is PR: Yes
+            {{- else if .discussion }}
+            - Event Type: Discussion Comment
+            - Discussion #{{ .discussion.number }}: {{ .discussion.title }}
+            - Discussion URL: {{ .discussion.html_url }}
+            - Category: {{ .discussion.category.name }}
+            {{- end }}
 
             ## Comment Details
 
             - Commenter: @{{ .comment.user.login }}
             - Author Association: {{ .comment.author_association }}
             - Comment URL: {{ .comment.html_url }}
+            {{- if .pull_request }}
+            - File: {{ .comment.path }}
+            - Line: {{ .comment.line }}
+            {{- end }}
 
             ### Comment Body
 
@@ -211,9 +302,19 @@ spec:
 
             If the user is asking a question:
             1. Clone the repository
+            {{- if .discussion }}
+            2. Checkout the default branch
+            3. Read and analyze the relevant code
+            4. Reply with your answer using: `gh api repos/{{ .repository.full_name }}/discussions/{{ .discussion.number }}/comments -f body="..."`
+            {{- else if .pull_request }}
+            2. Checkout the PR branch: `gh pr checkout {{ .pull_request.number }}`
+            3. Read and analyze the relevant code (especially {{ .comment.path }} around line {{ .comment.line }})
+            4. Reply with your answer using: `gh pr comment {{ .pull_request.number }} --body "..."`
+            {{- else if .issue }}
             2. {{ if .issue.pull_request }}Checkout the PR branch: `gh pr checkout {{ .issue.number }}`{{ else }}Checkout the default branch{{ end }}
             3. Read and analyze the relevant code
             4. Reply with your answer using: `gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "..."`
+            {{- end }}
 
             ### Step 2b: For No Clear Request
 
@@ -221,11 +322,23 @@ spec:
             1. Acknowledge the mention
             2. Ask what they need help with
             3. **DO NOT** make any code changes
+            {{- if .discussion }}
+            4. Reply using: `gh api repos/{{ .repository.full_name }}/discussions/{{ .discussion.number }}/comments -f body="..."`
+            {{- else if .pull_request }}
+            4. Reply using: `gh pr comment {{ .pull_request.number }} --body "..."`
+            {{- else if .issue }}
             4. Reply using: `gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "..."`
+            {{- end }}
 
             Example response:
             ```
+            {{- if .discussion }}
+            Hi @{{ .comment.user.login }}! I noticed you mentioned me. How can I help you with this discussion?
+            {{- else if .pull_request }}
+            Hi @{{ .comment.user.login }}! I noticed you mentioned me in this PR review comment. How can I help you?
+            {{- else if .issue }}
             Hi @{{ .comment.user.login }}! I noticed you mentioned me. How can I help you with this {{ if .issue.pull_request }}PR{{ else }}issue{{ end }}?
+            {{- end }}
 
             I can:
             - Answer questions about the code
@@ -264,8 +377,18 @@ spec:
 
             After composing your response, you MUST post it as a GitHub comment:
 
+            {{- if .discussion }}
+            ```bash
+            gh api repos/{{ .repository.full_name }}/discussions/{{ .discussion.number }}/comments -f body="<your response>"
+            ```
+            {{- else if .pull_request }}
+            ```bash
+            gh pr comment {{ .pull_request.number }} --body "<your response>"
+            ```
+            {{- else if .issue }}
             ```bash
             gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "<your response>"
             ```
+            {{- end }}
 
             **IMPORTANT**: Do not just print the response to stdout. You MUST use the `gh` command to actually post the comment to GitHub.
