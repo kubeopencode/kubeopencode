@@ -78,9 +78,12 @@ spec:
 
             ### Step 1: Analyze Intent
 
-            Read the comment and determine what the user is asking:
+            Read the comment carefully and determine what the user is asking:
             - **Question**: User is asking about the code, seeking explanation, or asking for help
-            - **Code Change Request**: User is asking you to modify, fix, add, update, or remove code
+            - **Code Change Request**: User is EXPLICITLY asking you to modify, fix, add, update, or remove code (must contain clear action words like "please fix", "can you update", "add X to Y", etc.)
+            - **No Clear Request**: User just mentioned @kubetask-bot without a specific question or request
+
+            **IMPORTANT**: If the comment only contains "@kubetask-bot" or a simple greeting without a clear ask, treat it as "No Clear Request". Do NOT assume the user wants code changes.
 
             ### Step 2: For Questions
 
@@ -90,7 +93,32 @@ spec:
             3. Read and analyze the relevant code
             4. Reply with your answer using: `gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "..."`
 
+            ### Step 2b: For No Clear Request
+
+            If the user just mentioned you without a clear question or request:
+            1. Acknowledge the mention
+            2. Ask what they need help with
+            3. **DO NOT** make any code changes
+            4. Reply using: `gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "..."`
+
+            Example response:
+            ```
+            Hi @{{ .comment.user.login }}! I noticed you mentioned me. How can I help you with this {{ if .issue.pull_request }}PR{{ else }}issue{{ end }}?
+
+            I can:
+            - Answer questions about the code
+            - Review changes
+            - Make code modifications (if you describe what you need)
+
+            Just let me know what you'd like me to do!
+            ```
+
             ### Step 3: For Code Change Requests
+
+            **ONLY proceed with code changes if the user EXPLICITLY requested them.** Look for clear action words like:
+            - "please fix...", "can you update...", "add X to...", "remove...", "change..."
+
+            If you're unsure whether the user wants code changes, ask for clarification first.
 
             {{ if .issue.pull_request }}
             If the user is requesting code changes on this PR:
@@ -124,6 +152,16 @@ spec:
 
             @{{ .comment.user.login }} [Your response here]
             ```
+
+            ### Step 4: Post Your Response (REQUIRED)
+
+            After composing your response, you MUST post it as a GitHub comment:
+
+            ```bash
+            gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "<your response>"
+            ```
+
+            **IMPORTANT**: Do not just print the response to stdout. You MUST use the `gh` command to actually post the comment to GitHub.
 
     # Rule 3: @kubetask-bot mention from non-privileged users (FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE)
     - name: comment-unprivileged
@@ -162,9 +200,12 @@ spec:
 
             ### Step 1: Analyze Intent
 
-            Read the comment and determine what the user is asking:
+            Read the comment carefully and determine what the user is asking:
             - **Question**: User is asking about the code or seeking help
-            - **Code Change Request**: User is asking you to modify code
+            - **Code Change Request**: User is EXPLICITLY asking you to modify code
+            - **No Clear Request**: User just mentioned @kubetask-bot without a specific question or request
+
+            **IMPORTANT**: If the comment only contains "@kubetask-bot" or a simple greeting without a clear ask, treat it as "No Clear Request". Do NOT assume the user wants code changes.
 
             ### Step 2: For Questions
 
@@ -173,6 +214,25 @@ spec:
             2. {{ if .issue.pull_request }}Checkout the PR branch: `gh pr checkout {{ .issue.number }}`{{ else }}Checkout the default branch{{ end }}
             3. Read and analyze the relevant code
             4. Reply with your answer using: `gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "..."`
+
+            ### Step 2b: For No Clear Request
+
+            If the user just mentioned you without a clear question or request:
+            1. Acknowledge the mention
+            2. Ask what they need help with
+            3. **DO NOT** make any code changes
+            4. Reply using: `gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "..."`
+
+            Example response:
+            ```
+            Hi @{{ .comment.user.login }}! I noticed you mentioned me. How can I help you with this {{ if .issue.pull_request }}PR{{ else }}issue{{ end }}?
+
+            I can:
+            - Answer questions about the code
+            - Help explain how to implement changes
+
+            Just let me know what you'd like me to do!
+            ```
 
             ### Step 3: For Code Change Requests
 
@@ -199,3 +259,13 @@ spec:
 
             @{{ .comment.user.login }} [Your response here]
             ```
+
+            ### Step 4: Post Your Response (REQUIRED)
+
+            After composing your response, you MUST post it as a GitHub comment:
+
+            ```bash
+            gh {{ if .issue.pull_request }}pr{{ else }}issue{{ end }} comment {{ .issue.number }} --body "<your response>"
+            ```
+
+            **IMPORTANT**: Do not just print the response to stdout. You MUST use the `gh` command to actually post the comment to GitHub.
