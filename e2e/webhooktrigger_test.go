@@ -823,6 +823,99 @@ Author: {{ .pull_request.user.login }}`,
 		})
 	})
 
+	Context("WebhookTrigger with resourceTemplate.workflowRef", func() {
+		It("should create WorkflowRun referencing existing Workflow", func() {
+
+			triggerName := uniqueName("wht-wfref")
+			workflowName := triggerName + "-workflow"
+
+			By("Creating a Workflow to reference")
+			workflow := &kubetaskv1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      workflowName,
+					Namespace: testNS,
+				},
+				Spec: kubetaskv1alpha1.WorkflowSpec{
+					Stages: []kubetaskv1alpha1.WorkflowStage{
+						{
+							Name: "test-stage",
+							Tasks: []kubetaskv1alpha1.WorkflowTask{
+								{
+									Name: "test-task",
+									Spec: kubetaskv1alpha1.TaskSpec{
+										Description: stringPtr("Test task from workflow"),
+										AgentRef:    agentName,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, workflow)).Should(Succeed())
+
+			By("Creating a WebhookTrigger with resourceTemplate.workflowRef")
+			trigger := &kubetaskv1alpha1.WebhookTrigger{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      triggerName,
+					Namespace: testNS,
+				},
+				Spec: kubetaskv1alpha1.WebhookTriggerSpec{
+					ResourceTemplate: &kubetaskv1alpha1.WebhookResourceTemplate{
+						WorkflowRef: workflowName,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, trigger)).Should(Succeed())
+
+			By("Waiting for WebhookTrigger to be ready")
+			triggerKey := types.NamespacedName{Name: triggerName, Namespace: testNS}
+			Eventually(func() bool {
+				t := &kubetaskv1alpha1.WebhookTrigger{}
+				if err := k8sClient.Get(ctx, triggerKey, t); err != nil {
+					return false
+				}
+				return t.Status.WebhookURL != ""
+			}, timeout, interval).Should(BeTrue())
+
+			webhookURL := getWebhookURL(testNS, triggerName)
+
+			By("Sending webhook")
+			payload := map[string]interface{}{
+				"event": "workflow-trigger-test",
+			}
+			payloadBytes, _ := json.Marshal(payload)
+			resp, err := postWebhook(webhookURL, payloadBytes)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).Should(Equal(http.StatusCreated))
+
+			By("Verifying WorkflowRun was created")
+			Eventually(func() bool {
+				workflowRuns := &kubetaskv1alpha1.WorkflowRunList{}
+				if err := k8sClient.List(ctx, workflowRuns, client.InNamespace(testNS),
+					client.MatchingLabels{"kubetask.io/webhook-trigger": triggerName}); err != nil {
+					return false
+				}
+				return len(workflowRuns.Items) > 0
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying WorkflowRun references the correct Workflow")
+			workflowRuns := &kubetaskv1alpha1.WorkflowRunList{}
+			Expect(k8sClient.List(ctx, workflowRuns, client.InNamespace(testNS),
+				client.MatchingLabels{"kubetask.io/webhook-trigger": triggerName})).Should(Succeed())
+			Expect(workflowRuns.Items).Should(HaveLen(1))
+			Expect(workflowRuns.Items[0].Spec.WorkflowRef).Should(Equal(workflowName))
+
+			By("Verifying resource-kind label is set")
+			Expect(workflowRuns.Items[0].Labels["kubetask.io/resource-kind"]).Should(Equal("WorkflowRun"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, trigger)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, workflow)).Should(Succeed())
+		})
+	})
+
 	Context("WebhookTrigger garbage collection", func() {
 		It("should clean up Tasks when WebhookTrigger is deleted", func() {
 			triggerName := uniqueName("wht-gc")
