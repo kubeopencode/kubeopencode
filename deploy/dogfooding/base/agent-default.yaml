@@ -10,7 +10,7 @@ spec:
   command:
     - sh
     - -c
-    - gemini --output-format stream-json --yolo -p "$(cat ${WORKSPACE_DIR}/task.md)"
+    - gemini --output-format stream-json --yolo -p "$(cat ${WORKSPACE_DIR}/task.md)" | stream-json-reader
   serviceAccountName: kubetask-agent
   maxConcurrentTasks: 3
   credentials:
