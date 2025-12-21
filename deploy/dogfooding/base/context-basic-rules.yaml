@@ -11,6 +11,23 @@ spec:
   text: |
     # Rules for AI Agent
 
+      ## Working Directory Structure (IMPORTANT)
+
+      Understanding the directory structure is critical for successful task execution:
+
+      - `${WORKSPACE_DIR}` = `/workspace` (Agent's base directory, set by KubeTask)
+      - Git repositories are cloned to `${WORKSPACE_DIR}/<mountPath>`
+        - Example: Task with `mountPath: kubetask` → repo at `/workspace/kubetask`
+      - GitHub scripts are at `${WORKSPACE_DIR}/.github-app/`
+      - **Always `cd` into the Git repo directory before any git operations**
+
+      ```bash
+      # Example: Working with a cloned repo
+      cd ${WORKSPACE_DIR}/kubetask  # or your repo's mountPath from Task spec
+      git status
+      git checkout -b my-branch
+      ```
+
       ## Task Scope
 
       - If the task content is unrelated to the KubeTask project, DO NOT execute it
@@ -72,9 +89,17 @@ spec:
 
       **Do NOT use `/tmp` directory** - some AI agents have sandbox restrictions that prevent reading files outside the workspace.
 
-      Instead, create temporary directories within the workspace:
+      Create temporary files **WITHIN the Git repository directory** (not in `${WORKSPACE_DIR}` root):
+
       ```bash
-      mkdir -p target-repo/.tmp
-      # Use target-repo/.tmp for temporary files
-      # Clean up when done: rm -rf target-repo/.tmp
+      # Correct: Create temp files inside the Git repo
+      cd ${WORKSPACE_DIR}/kubetask  # Your repo's mountPath
+      mkdir -p .tmp
+      echo "some-value" > .tmp/my-temp-file
+      # Later read: cat .tmp/my-temp-file
+
+      # Wrong: Creating temp files in workspace root
+      # echo "value" > ${WORKSPACE_DIR}/branch_name  # May cause path confusion!
       ```
+
+      **Why inside the Git repo?** The Agent typically operates within the repo directory. Files created at `${WORKSPACE_DIR}/` level may be inaccessible when working inside a subdirectory.

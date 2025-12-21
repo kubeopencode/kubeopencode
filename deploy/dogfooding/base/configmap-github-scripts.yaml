@@ -67,6 +67,10 @@ data:
 
     # Scripts directory (same directory as this script)
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+    # Ensure all scripts in this directory are executable
+    # (workaround for ConfigMap mount permission issues)
+    chmod +x "$SCRIPT_DIR"/*.sh 2>/dev/null || true
     # Credentials directory (secrets mounted here)
     GITHUB_APP_DIR="${GITHUB_APP_DIR:-/etc/github-app}"
     # IAT script is in the same directory as this script
