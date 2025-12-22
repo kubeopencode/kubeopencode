@@ -55,7 +55,7 @@ controller:
 # The webhook server receives HTTP webhooks and creates Tasks based on WebhookTrigger CRDs
 webhook:
   # Whether to enable the webhook server
-  enabled: false
+  enabled: true
 
   # Number of webhook server replicas
   replicas: 1
