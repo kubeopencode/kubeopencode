@@ -20,7 +20,7 @@ type agentConfig struct {
 	agentImage         string
 	command            []string
 	workspaceDir       string
-	contexts           []kubetaskv1alpha1.ContextSource
+	contexts           []kubetaskv1alpha1.ContextItem
 	credentials        []kubetaskv1alpha1.Credential
 	podSpec            *kubetaskv1alpha1.AgentPodSpec
 	serviceAccountName string

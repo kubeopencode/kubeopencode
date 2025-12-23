@@ -43,8 +43,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&AgentList{},
 		&KubeTaskConfig{},
 		&KubeTaskConfigList{},
-		&Context{},
-		&ContextList{},
 		&Workflow{},
 		&WorkflowList{},
 		&WorkflowRun{},

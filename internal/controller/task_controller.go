@@ -611,21 +611,21 @@ func (r *TaskReconciler) getAgentConfigWithName(ctx context.Context, task *kubet
 	}, agentName, nil
 }
 
-// processAllContexts processes all contexts from Agent and Task, resolving Context CRs
-// and returning the ConfigMap, file mounts, directory mounts, and git mounts for the Job.
+// processAllContexts processes all contexts from Agent and Task
+// and returns the ConfigMap, file mounts, directory mounts, and git mounts for the Job.
 //
 // Content order in task.md (top to bottom):
 //  1. Task.description (appears first in task.md)
-//  2. Agent.contexts (Agent-level Context CRD references)
-//  3. Task.contexts (Task-specific Context CRD references, appears last)
+//  2. Agent.contexts (Agent-level contexts)
+//  3. Task.contexts (Task-specific contexts, appears last)
 func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubetaskv1alpha1.Task, cfg agentConfig) (*corev1.ConfigMap, []fileMount, []dirMount, []gitMount, error) {
 	var resolved []resolvedContext
 	var dirMounts []dirMount
 	var gitMounts []gitMount
 
 	// 1. Resolve Agent.contexts (appears after description in task.md)
-	for i, src := range cfg.contexts {
-		rc, dm, gm, err := r.resolveContextSource(ctx, src, task.Namespace, cfg.workspaceDir)
+	for i, item := range cfg.contexts {
+		rc, dm, gm, err := r.resolveContextItem(ctx, &item, task.Namespace, cfg.workspaceDir)
 		if err != nil {
 			return nil, nil, nil, nil, fmt.Errorf("failed to resolve Agent context[%d]: %w", i, err)
 		}
@@ -640,8 +640,8 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubetaskv
 	}
 
 	// 2. Resolve Task.contexts (appears last in task.md)
-	for i, src := range task.Spec.Contexts {
-		rc, dm, gm, err := r.resolveContextSource(ctx, src, task.Namespace, cfg.workspaceDir)
+	for i, item := range task.Spec.Contexts {
+		rc, dm, gm, err := r.resolveContextItem(ctx, &item, task.Namespace, cfg.workspaceDir)
 		if err != nil {
 			return nil, nil, nil, nil, fmt.Errorf("failed to resolve Task context[%d]: %w", i, err)
 		}
@@ -761,84 +761,17 @@ func validateMountPathConflicts(fileMounts []fileMount, dirMounts []dirMount, gi
 	return nil
 }
 
-// resolveContextSource resolves a ContextSource (either a reference to a Context CR or an inline definition)
-func (r *TaskReconciler) resolveContextSource(ctx context.Context, src kubetaskv1alpha1.ContextSource, defaultNS, workspaceDir string) (*resolvedContext, *dirMount, *gitMount, error) {
-	// Handle reference to Context CR
-	if src.Ref != nil {
-		return r.resolveContextRef(ctx, src.Ref, defaultNS, workspaceDir)
-	}
-
-	// Handle inline context
-	if src.Inline != nil {
-		return r.resolveContextItem(ctx, src.Inline, defaultNS, workspaceDir)
-	}
-
-	// Neither Ref nor Inline specified - this is a validation error
-	return nil, nil, nil, fmt.Errorf("ContextSource must have either Ref or Inline specified")
-}
-
-// resolveContextRef resolves a ContextRef reference to a Context CR
-func (r *TaskReconciler) resolveContextRef(ctx context.Context, ref *kubetaskv1alpha1.ContextRef, defaultNS, workspaceDir string) (*resolvedContext, *dirMount, *gitMount, error) {
-	namespace := ref.Namespace
-	if namespace == "" {
-		namespace = defaultNS
-	}
-
-	// Fetch the Context CR
-	contextCR := &kubetaskv1alpha1.Context{}
-	if err := r.Get(ctx, types.NamespacedName{Name: ref.Name, Namespace: namespace}, contextCR); err != nil {
-		return nil, nil, nil, fmt.Errorf("context %q not found in namespace %q: %w", ref.Name, namespace, err)
-	}
-
-	// Resolve mountPath: relative paths are prefixed with workspaceDir
-	resolvedPath := resolveMountPath(ref.MountPath, workspaceDir)
-
-	// Resolve content based on context type
-	content, dm, gm, err := r.resolveContextSpec(ctx, namespace, ref.Name, workspaceDir, &contextCR.Spec, resolvedPath)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	if dm != nil {
-		return nil, dm, nil, nil
-	}
-
-	if gm != nil {
-		return nil, nil, gm, nil
-	}
-
-	return &resolvedContext{
-		name:      ref.Name,
-		namespace: namespace,
-		ctxType:   string(contextCR.Spec.Type),
-		content:   content,
-		mountPath: resolvedPath,
-		fileMode:  ref.FileMode,
-	}, nil, nil, nil
-}
-
-// resolveContextItem resolves an inline ContextItem
+// resolveContextItem resolves a ContextItem to its content, directory mount, or git mount.
 func (r *TaskReconciler) resolveContextItem(ctx context.Context, item *kubetaskv1alpha1.ContextItem, defaultNS, workspaceDir string) (*resolvedContext, *dirMount, *gitMount, error) {
-	// Validate: inline Git context requires mountPath to be specified
-	// Unlike Context CRDs which have a name for automatic path generation (git-<name>),
-	// inline contexts use a hardcoded "inline" name which would cause conflicts
-	// if multiple inline Git contexts are used without explicit mountPath.
+	// Validate: Git context requires mountPath to be specified
+	// Without mountPath, multiple Git contexts would conflict with the default "git-context" path.
 	if item.Type == kubetaskv1alpha1.ContextTypeGit && item.MountPath == "" {
-		return nil, nil, nil, fmt.Errorf("inline Git context requires mountPath to be specified; use a Context CRD for automatic path generation")
+		return nil, nil, nil, fmt.Errorf("Git context requires mountPath to be specified")
 	}
 
-	// Create a temporary ContextSpec from the ContextItem
-	spec := &kubetaskv1alpha1.ContextSpec{
-		Type:      item.Type,
-		Text:      item.Text,
-		ConfigMap: item.ConfigMap,
-		Git:       item.Git,
-		Runtime:   item.Runtime,
-	}
-
-	// Use a generated name for inline contexts
+	// Use a generated name for contexts
 	// For Runtime context, use "runtime" as a more descriptive name
-	name := "inline"
+	name := "context"
 	if item.Type == kubetaskv1alpha1.ContextTypeRuntime {
 		name = "runtime"
 	}
@@ -851,7 +784,7 @@ func (r *TaskReconciler) resolveContextItem(ctx context.Context, item *kubetaskv
 	}
 
 	// Resolve content based on context type
-	content, dm, gm, err := r.resolveContextSpec(ctx, defaultNS, name, workspaceDir, spec, resolvedPath)
+	content, dm, gm, err := r.resolveContextContent(ctx, defaultNS, name, workspaceDir, item, resolvedPath)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -888,21 +821,21 @@ func resolveMountPath(mountPath, workspaceDir string) string {
 	return workspaceDir + "/" + mountPath
 }
 
-// resolveContextSpec resolves content from a ContextSpec (used by Context CRD)
+// resolveContextContent resolves content from a ContextItem.
 // Returns: content string, dirMount pointer, gitMount pointer, error
-func (r *TaskReconciler) resolveContextSpec(ctx context.Context, namespace, name, workspaceDir string, spec *kubetaskv1alpha1.ContextSpec, mountPath string) (string, *dirMount, *gitMount, error) {
-	switch spec.Type {
+func (r *TaskReconciler) resolveContextContent(ctx context.Context, namespace, name, workspaceDir string, item *kubetaskv1alpha1.ContextItem, mountPath string) (string, *dirMount, *gitMount, error) {
+	switch item.Type {
 	case kubetaskv1alpha1.ContextTypeText:
-		if spec.Text == "" {
+		if item.Text == "" {
 			return "", nil, nil, nil
 		}
-		return spec.Text, nil, nil, nil
+		return item.Text, nil, nil, nil
 
 	case kubetaskv1alpha1.ContextTypeConfigMap:
-		if spec.ConfigMap == nil {
+		if item.ConfigMap == nil {
 			return "", nil, nil, nil
 		}
-		cm := spec.ConfigMap
+		cm := item.ConfigMap
 
 		// If Key is specified, return the content
 		if cm.Key != "" {
@@ -928,10 +861,10 @@ func (r *TaskReconciler) resolveContextSpec(ctx context.Context, namespace, name
 		return content, nil, nil, err
 
 	case kubetaskv1alpha1.ContextTypeGit:
-		if spec.Git == nil {
+		if item.Git == nil {
 			return "", nil, nil, nil
 		}
-		git := spec.Git
+		git := item.Git
 
 		// Determine mount path: use specified path or default to ${WORKSPACE_DIR}/git-<context-name>/
 		resolvedMountPath := mountPath
@@ -973,7 +906,7 @@ func (r *TaskReconciler) resolveContextSpec(ctx context.Context, namespace, name
 		return RuntimeSystemPrompt, nil, nil, nil
 
 	default:
-		return "", nil, nil, fmt.Errorf("unknown context type: %s", spec.Type)
+		return "", nil, nil, fmt.Errorf("unknown context type: %s", item.Type)
 	}
 }
 

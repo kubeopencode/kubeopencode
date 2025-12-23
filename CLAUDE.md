@@ -44,7 +44,6 @@ The image constant is defined in `internal/controller/job_builder.go` as `Defaul
 4. **CronWorkflow** - Scheduled WorkflowRun triggering
 5. **WebhookTrigger** - Event-driven Task creation from webhooks
 6. **Agent** - AI agent configuration (HOW to execute)
-7. **Context** - Reusable context resources (Inline, ConfigMap, or Git)
 
 ### Important Design Decisions
 
@@ -55,17 +54,40 @@ The image constant is defined in `internal/controller/job_builder.go` as `Defaul
 
 ### Context System
 
-Tasks use the **Context CRD** to reference reusable context resources:
-- **Inline**: Content directly in YAML (`spec.inline.content`)
-- **ConfigMap**: Content from ConfigMap (`spec.configMap.name` + optional `key`)
-- **Git**: Content from Git repository (`spec.git.repository`, `path`, `ref`, `secretRef`)
+Tasks and Agents use inline **ContextItem** to provide additional context:
 
-**ContextMount** is used in Task/Agent to reference Context CRDs:
-- `name`: Name of the Context CRD
+**Context Types:**
+- **Text**: Inline text content (`type: Text`, `text: "..."`)
+- **ConfigMap**: Content from ConfigMap (`type: ConfigMap`, `configMap.name`, optional `configMap.key`)
+- **Git**: Content from Git repository (`type: Git`, `git.repository`, `git.ref`, optional `git.secretRef`)
+- **Runtime**: KubeTask platform awareness system prompt (`type: Runtime`)
+
+**ContextItem** fields:
+- `type`: Context type (Text, ConfigMap, Git, Runtime)
 - `mountPath`: Where to mount (empty = append to task.md with XML tags)
   - Path resolution follows Tekton conventions:
     - Absolute paths (`/etc/config`) are used as-is
     - Relative paths (`guides/readme.md`) are prefixed with workspaceDir
+- `fileMode`: Optional file permission mode (e.g., 493 for 0755)
+
+**Example:**
+```yaml
+contexts:
+  - type: Text
+    text: |
+      # Rules for AI Agent
+      Always use signed commits...
+  - type: ConfigMap
+    configMap:
+      name: my-scripts
+    mountPath: .scripts
+    fileMode: 493  # 0755 in decimal
+  - type: Git
+    git:
+      repository: https://github.com/org/repo.git
+      ref: main
+    mountPath: source-code
+```
 
 **Future**: MCP contexts (extensible design)
 
@@ -93,7 +115,7 @@ All Go files must include the copyright header:
 3. **Kubernetes Resources**:
    - CRD Group: `kubetask.io`
    - API Version: `v1alpha1`
-   - Kinds: `Task`, `Workflow`, `WorkflowRun`, `CronWorkflow`, `WebhookTrigger`, `Agent`, `Context`, `KubeTaskConfig`
+   - Kinds: `Task`, `Workflow`, `WorkflowRun`, `CronWorkflow`, `WebhookTrigger`, `Agent`, `KubeTaskConfig`
 
 ### Code Comments
 
@@ -224,7 +246,7 @@ kubetask/
 │   ├── images/          # Agent Dockerfiles (gemini, claude, echo, etc.)
 │   └── tools/           # Tools image for shared CLI tools
 ├── api/v1alpha1/          # CRD type definitions
-│   ├── types.go           # Main API types (Task, Workflow, WorkflowRun, CronWorkflow, Agent, Context, KubeTaskConfig)
+│   ├── types.go           # Main API types (Task, Workflow, WorkflowRun, CronWorkflow, Agent, KubeTaskConfig)
 │   ├── webhooktrigger_types.go  # WebhookTrigger CRD types
 │   ├── register.go        # Scheme registration
 │   └── zz_generated.deepcopy.go  # Generated deepcopy
@@ -367,8 +389,8 @@ internal/controller/
 
 1. Add new `ContextType` constant in `api/v1alpha1/types.go`
 2. Add corresponding struct (e.g., `APIContext`, `DatabaseContext`)
-3. Update `Context` struct with new optional field
-4. Update controller to handle new context type
+3. Update `ContextItem` struct with new optional field
+4. Update controller's `resolveContextContent` function to handle new type
 5. Update documentation
 
 ### Agent Configuration
@@ -377,7 +399,7 @@ Key Agent spec fields:
 - `agentImage`: Container image for task execution
 - `command`: **Required** - Entrypoint command that defines HOW the agent executes tasks
 - `workspaceDir`: **Required** - Working directory where task.md and context files are mounted
-- `contexts`: References to Context CRDs (applied to all tasks)
+- `contexts`: Inline ContextItems applied to all tasks using this Agent
 - `credentials`: Secrets as env vars or file mounts (supports single key or entire secret)
 - `serviceAccountName`: Kubernetes ServiceAccount for RBAC
 - `maxConcurrentTasks`: Limit concurrent Tasks using this Agent (nil/0 = unlimited)
@@ -674,4 +696,4 @@ kubectl logs job/<job-name> -n kubetask-system
 
 ---
 
-**Last Updated**: 2025-12-12
+**Last Updated**: 2025-12-23

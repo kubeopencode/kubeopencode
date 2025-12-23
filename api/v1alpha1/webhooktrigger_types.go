@@ -259,9 +259,8 @@ type WebhookTaskTemplate struct {
 	Description string `json:"description"`
 
 	// Contexts provides additional context for the task.
-	// Each context can be a reference to a Context CRD (via Ref) or inline definition.
 	// +optional
-	Contexts []ContextSource `json:"contexts,omitempty"`
+	Contexts []ContextItem `json:"contexts,omitempty"`
 }
 
 // WebhookRule defines a single rule within a WebhookTrigger.
@@ -353,9 +352,8 @@ type WebhookTaskSpec struct {
 	Description string `json:"description"`
 
 	// Contexts provides additional context for the task.
-	// Each context can be a reference to a Context CRD (via Ref) or inline definition.
 	// +optional
-	Contexts []ContextSource `json:"contexts,omitempty"`
+	Contexts []ContextItem `json:"contexts,omitempty"`
 }
 
 // WebhookWorkflowRunSpec defines WorkflowRun-specific fields for webhook resource templates.

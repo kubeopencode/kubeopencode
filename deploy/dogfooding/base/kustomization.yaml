@@ -11,10 +11,7 @@ resources:
   - kubetaskconfig.yaml
   - agent-default.yaml
   - agent-dev-realtime.yaml
-  - context-basic-rules.yaml
   - configmap-github-scripts.yaml
-  - context-github-app-auth.yaml
-  - context-github-scripts.yaml
 
 # Note: route-webhook.yaml is applied separately because it targets
 # kubetask-system namespace (where the webhook service resides).

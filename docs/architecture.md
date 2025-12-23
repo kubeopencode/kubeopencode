@@ -47,7 +47,7 @@ KubeTask is a Kubernetes-native system that executes AI-powered tasks using Cust
 | **WorkflowRun** | Workflow execution instance | Stable - DAG-like execution |
 | **CronWorkflow** | Scheduled WorkflowRun triggering | Stable - follows K8s CronJob pattern |
 | **WebhookTrigger** | Webhook-driven Task creation | Stable - event-driven triggering |
-| **Context** | Reusable context for AI agents (KNOW) | Stable - Context Engineering support |
+| **ContextItem** | Inline context for AI agents (KNOW) | Stable - inline context only |
 | **Agent** | AI agent configuration (HOW to execute) | Stable - independent of project name |
 | **KubeTaskConfig** | System-level configuration (TTL, lifecycle) | Stable - system settings |
 
@@ -117,21 +117,13 @@ This approach:
 Task (single task execution)
 ├── TaskSpec
 │   ├── description: *string         (syntactic sugar for /workspace/task.md)
-│   ├── contexts: []ContextSource    (reference or inline contexts)
+│   ├── contexts: []ContextItem      (inline context definitions)
 │   └── agentRef: string
 └── TaskExecutionStatus
     ├── phase: TaskPhase
     ├── jobName: string
     ├── startTime: Time
     └── completionTime: Time
-
-Context (reusable context resource)
-└── ContextSpec
-    ├── type: ContextType (Text, ConfigMap, Git, Runtime)
-    ├── text: string
-    ├── configMap: *ConfigMapContext
-    ├── git: *GitContext
-    └── runtime: *RuntimeContext
 
 Workflow (template only - no Status)
 └── WorkflowSpec
@@ -202,7 +194,7 @@ Agent (execution configuration)
     ├── agentImage: string
     ├── workspaceDir: string         (default: "/workspace")
     ├── command: []string
-    ├── contexts: []ContextSource    (reference or inline contexts)
+    ├── contexts: []ContextItem      (inline context definitions)
     ├── credentials: []Credential
     ├── podSpec: *AgentPodSpec
     ├── serviceAccountName: string
@@ -261,28 +253,16 @@ type Task struct {
 }
 
 type TaskSpec struct {
-    Description *string          // Syntactic sugar for /workspace/task.md
-    Contexts    []ContextSource  // Reference or inline contexts
-    AgentRef    string           // Reference to Agent
-}
-
-// ContextSource can be either a reference to a Context CRD or an inline definition
-type ContextSource struct {
-    Ref    *ContextRef  // Reference to a Context CRD
-    Inline *ContextItem // Inline context definition
-}
-
-// ContextRef references a Context CRD and specifies how to mount it
-type ContextRef struct {
-    Name      string // Name of the Context
-    Namespace string // Optional, defaults to Task's namespace
-    MountPath string // Empty = append to /workspace/task.md with XML tags
+    Description *string       // Syntactic sugar for /workspace/task.md
+    Contexts    []ContextItem // Inline context definitions
+    AgentRef    string        // Reference to Agent
 }
 
 // ContextItem defines inline context content
 type ContextItem struct {
     Type      ContextType       // Text, ConfigMap, Git, or Runtime
     MountPath string            // Empty = append to /workspace/task.md (ignored for Runtime)
+    FileMode  *int32            // Optional file permission mode (e.g., 0755 for executable)
     Text      string            // Content when Type is Text
     ConfigMap *ConfigMapContext // ConfigMap when Type is ConfigMap
     Git       *GitContext       // Git repo when Type is Git
@@ -464,19 +444,6 @@ type WebhookRuleStatus struct {
     ActiveResources   []string     // Active resources for this rule
 }
 
-// Context represents a reusable context resource
-type Context struct {
-    Spec ContextSpec
-}
-
-type ContextSpec struct {
-    Type      ContextType       // Text, ConfigMap, Git, or Runtime
-    Text      string            // Text content (when Type is Text)
-    ConfigMap *ConfigMapContext // Reference to ConfigMap
-    Git       *GitContext       // Content from Git repository
-    Runtime   *RuntimeContext   // Platform awareness context
-}
-
 type ContextType string
 const (
     ContextTypeText      ContextType = "Text"
@@ -517,7 +484,7 @@ type AgentSpec struct {
     AgentImage         string
     WorkspaceDir       string           // Working directory (default: "/workspace")
     Command            []string         // Custom entrypoint command
-    Contexts           []ContextSource  // Reference or inline contexts
+    Contexts           []ContextItem    // Inline context definitions
     Credentials        []Credential
     PodSpec            *AgentPodSpec    // Pod configuration (labels, scheduling, runtime)
     ServiceAccountName string
@@ -660,11 +627,17 @@ spec:
     Update dependencies to latest versions.
     Run tests and create PR.
 
-  # Reference reusable Context CRDs
+  # Inline context definitions
   contexts:
-    - name: coding-standards
+    - type: Text
       mountPath: /workspace/guides/standards.md
-    - name: security-policy
+      text: |
+        # Coding Standards
+        - Use descriptive variable names
+        - Write unit tests for all functions
+    - type: ConfigMap
+      configMap:
+        name: security-policy
       # Empty mountPath = append to task.md with XML tags
 
   # Optional: Reference to Agent (defaults to "default")
@@ -687,7 +660,7 @@ status:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `spec.description` | String | No | Task instruction (creates /workspace/task.md) |
-| `spec.contexts` | []ContextSource | No | Reference or inline contexts (see below) |
+| `spec.contexts` | []ContextItem | No | Inline context definitions (see below) |
 | `spec.agentRef` | String | No | Reference to Agent (default: "default") |
 
 **Status Field Description:**
@@ -699,69 +672,46 @@ status:
 | `status.startTime` | Timestamp | Start time |
 | `status.completionTime` | Timestamp | End time |
 
-**ContextSource Types:**
+**ContextItem Types:**
 
-Contexts can be defined in two ways:
+Contexts are defined inline in Task or Agent specs:
 
-1. **Reference** (`ref`) - Reference an existing Context CRD:
+1. **Text Context** - Inline text content:
 ```yaml
 contexts:
-  - ref:
-      name: coding-standards
-      mountPath: /workspace/guides/standards.md  # Optional
+  - type: Text
+    mountPath: /workspace/guides/standards.md  # Optional
+    text: |
+      # Coding Standards
+      - Use descriptive variable names
 ```
 
-2. **Inline** (`inline`) - Define context directly in Task/Agent:
+2. **ConfigMap Context** - Content from ConfigMap:
 ```yaml
 contexts:
-  - inline:
-      type: Git
-      mountPath: ${WORKSPACE_DIR}
-      git:
-        repository: https://github.com/org/repo
-        ref: main
+  - type: ConfigMap
+    mountPath: /workspace/configs  # Optional
+    configMap:
+      name: my-configs
+      key: config.md  # Optional: specific key
 ```
 
-**Context CRD Types:**
-
-Contexts are defined using the Context CRD:
-
-1. **Inline Context**:
+3. **Git Context** - Content from Git repository:
 ```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: Context
-metadata:
-  name: coding-standards
-spec:
-  type: Text
-  text: "Task description or guidelines"
+contexts:
+  - type: Git
+    mountPath: /workspace/repo
+    git:
+      repository: https://github.com/org/contexts
+      path: .claude/
+      ref: main
 ```
 
-2. **ConfigMap Context**:
+4. **Runtime Context** - KubeTask platform awareness:
 ```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: Context
-metadata:
-  name: org-config
-spec:
-  type: ConfigMap
-  configMap:
-    name: my-configs
-    key: config.md  # Optional: specific key
-```
-
-3. **Git Context**:
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: Context
-metadata:
-  name: repo-context
-spec:
-  type: Git
-  git:
-    repository: https://github.com/org/contexts
-    path: .claude/
-    ref: main
+contexts:
+  - type: Runtime
+    runtime: {}  # No fields - content is generated by controller
 ```
 
 ### Workflow (Reusable Template)
@@ -1162,68 +1112,36 @@ filter: 'headers["x-github-event"] == "pull_request"'
 
 Each WebhookTrigger has a unique endpoint at `/webhooks/<namespace>/<trigger-name>`. Configure this URL in your webhook source (GitHub, GitLab, etc.).
 
-### Context (Reusable Context)
+### Context System
 
-Context represents a reusable context resource for AI agent tasks. Context CRDs enable:
-- **Reusability**: Share the same context across multiple Tasks
-- **Independent lifecycle**: Update context without modifying Tasks
-- **Version control**: Track context changes in Git
-- **Separation of concerns**: Context content vs. mount location
+Contexts provide additional information to AI agents during task execution. They are defined inline in Task or Agent specs using the `ContextItem` structure.
 
-Context supports three source types:
-- **Inline**: Content directly in YAML
-- **ConfigMap**: Reference to a ConfigMap (key or entire ConfigMap)
-- **Git**: Content from a Git repository (future)
+**Context Types:**
 
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: Context
-metadata:
-  name: coding-standards
-  namespace: kubetask-system
-spec:
-  # Type of context: Inline, ConfigMap, or Git
-  type: Inline
+| Type | Description |
+|------|-------------|
+| `Text` | Inline text content directly in YAML |
+| `ConfigMap` | Content from a Kubernetes ConfigMap |
+| `Git` | Content cloned from a Git repository |
+| `Runtime` | KubeTask platform awareness (auto-generated by controller) |
 
-  # Inline content
-  inline:
-    content: |
-      # Coding Standards
-      - Use descriptive variable names
-      - Write unit tests for all functions
-      - Follow Go conventions
-```
-
-**Context from ConfigMap:**
-
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: Context
-metadata:
-  name: security-policy
-spec:
-  type: ConfigMap
-  configMap:
-    name: org-policies
-    key: security.md
-```
-
-**Field Description:**
+**ContextItem Fields:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `spec.type` | ContextType | Yes | Type of context: Text, ConfigMap, Git, or Runtime |
-| `spec.text` | string | When type=Text | Text content |
-| `spec.configMap` | ConfigMapContext | When type=ConfigMap | Reference to ConfigMap |
-| `spec.git` | GitContext | When type=Git | Content from Git repository |
-| `spec.runtime` | RuntimeContext | When type=Runtime | Platform awareness (no fields - content is generated by controller) |
+| `type` | ContextType | Yes | Type of context: Text, ConfigMap, Git, or Runtime |
+| `mountPath` | string | No | Where to mount (empty = append to task.md with XML tags) |
+| `fileMode` | *int32 | No | File permission mode (e.g., 0755 for executables) |
+| `text` | string | When type=Text | Text content |
+| `configMap` | ConfigMapContext | When type=ConfigMap | Reference to ConfigMap |
+| `git` | GitContext | When type=Git | Content from Git repository |
+| `runtime` | RuntimeContext | When type=Runtime | Platform awareness (no fields - content is generated by controller) |
 
 **Important Notes:**
 
-- **No mount path in Context CRD**: The mount path is defined by the referencing Task/Agent via `ContextRef.mountPath` or `ContextItem.mountPath`
-- **No Status**: Context is a pure data resource (like ConfigMap) with no controller reconciliation
 - **Empty MountPath behavior**: When mountPath is empty, content is appended to `/workspace/task.md` with XML tags
 - **Runtime context**: Provides KubeTask platform awareness to agents, explaining environment variables, kubectl commands, and system concepts
+- **Path resolution**: Relative paths are prefixed with workspaceDir; absolute paths are used as-is
 
 **Context Priority (lowest to highest):**
 
@@ -1251,11 +1169,16 @@ spec:
   # Optional: Custom entrypoint command (required when Task has humanInTheLoop enabled)
   command: ["sh", "-c", "gemini --yolo -p \"$(cat /workspace/task.md)\""]
 
-  # Optional: Reference reusable Context CRDs (applied to all tasks using this agent)
+  # Optional: Inline contexts (applied to all tasks using this agent)
   contexts:
-    - name: org-coding-standards
-      # Empty mountPath = append to task.md with XML tags
-    - name: org-security-policy
+    - type: Text
+      text: |
+        # Coding Standards
+        - Use descriptive variable names
+        - Write unit tests for all functions
+    - type: ConfigMap
+      configMap:
+        name: org-security-policy
 
   # Optional: Credentials (secrets as env vars or file mounts)
   credentials:
@@ -1615,43 +1538,39 @@ Path resolution follows [Tekton Workspaces](https://tekton.dev/docs/pipelines/wo
 Examples:
 ```yaml
 contexts:
-  - ref:
-      name: coding-standards
-      mountPath: /etc/custom-config  # Absolute path - used as-is
-  - ref:
-      name: dev-guide
-      mountPath: guides/readme.md     # Relative path - becomes ${workspaceDir}/guides/readme.md
+  - type: Text
+    mountPath: /etc/custom-config  # Absolute path - used as-is
+    text: "config content"
+  - type: Text
+    mountPath: guides/readme.md     # Relative path - becomes ${workspaceDir}/guides/readme.md
+    text: "guide content"
 ```
 
 **MountPath Behavior Summary:**
 
 The following table summarizes how different context types behave based on `mountPath` configuration:
 
-| Context Source | Context Type | mountPath | Behavior |
-|----------------|--------------|-----------|----------|
-| **Context CRD** (via `ref`) | Inline | Empty | Append to task.md with XML tags |
-| **Context CRD** (via `ref`) | Inline | Specified | Mount as file at path |
-| **Context CRD** (via `ref`) | ConfigMap (with key) | Empty | Append to task.md with XML tags |
-| **Context CRD** (via `ref`) | ConfigMap (with key) | Specified | Mount as file at path |
-| **Context CRD** (via `ref`) | ConfigMap (no key) | Empty | Append all keys to task.md |
-| **Context CRD** (via `ref`) | ConfigMap (no key) | Specified | Mount as directory at path |
-| **Context CRD** (via `ref`) | Git | Empty | Mount at `${WORKSPACE_DIR}/git-<context-name>` |
-| **Context CRD** (via `ref`) | Git | Specified | Mount at specified path |
-| **Inline** | Inline | Empty | Append to task.md with XML tags |
-| **Inline** | Inline | Specified | Mount as file at path |
-| **Inline** | ConfigMap | Empty/Specified | Same as Context CRD ConfigMap |
-| **Inline** | Git | Empty | **Error**: mountPath required |
-| **Inline** | Git | Specified | Mount at specified path |
+| Context Type | mountPath | Behavior |
+|--------------|-----------|----------|
+| Text | Empty | Append to task.md with XML tags |
+| Text | Specified | Mount as file at path |
+| ConfigMap (with key) | Empty | Append to task.md with XML tags |
+| ConfigMap (with key) | Specified | Mount as file at path |
+| ConfigMap (no key) | Empty | Append all keys to task.md |
+| ConfigMap (no key) | Specified | Mount as directory at path |
+| Git | Empty | **Error**: mountPath required |
+| Git | Specified | Mount at specified path |
+| Runtime | N/A | Appended to task.md (mountPath ignored) |
 
 **Key Rules:**
-1. **Inline Git requires mountPath** - Unlike Context CRDs which have a name for auto-generation
+1. **Git requires mountPath** - Controller returns error if Git context has no mountPath
 2. **No duplicate mountPaths** - Controller returns error if two contexts target the same path
 3. **Relative paths** - Prefixed with `${WORKSPACE_DIR}` (e.g., `guides/readme.md` → `/workspace/guides/readme.md`)
 4. **Absolute paths** - Used as-is (e.g., `/etc/config`)
 
 **Empty MountPath Behavior:**
 
-When `mountPath` is empty (in either `ContextRef` or `ContextItem`), the context content is appended to `/workspace/task.md` with XML tags:
+When `mountPath` is empty, the context content is appended to `/workspace/task.md` with XML tags:
 
 ```xml
 <context name="coding-standards" namespace="default" type="Inline">
@@ -1661,26 +1580,24 @@ When `mountPath` is empty (in either `ContextRef` or `ContextItem`), the context
 
 This enables multiple contexts to be aggregated into a single file that the agent reads.
 
-**Inline Git Context Validation:**
+**Git Context Validation:**
 
-Unlike Context CRDs (which have a `name` for automatic path generation like `git-<name>`), inline Git contexts require an explicit `mountPath`. This prevents conflicts when multiple inline Git contexts are used:
+Git contexts require an explicit `mountPath`. This prevents conflicts when multiple Git contexts are used:
 
 ```yaml
-# ❌ Invalid - inline Git without mountPath
+# ❌ Invalid - Git without mountPath
 contexts:
-  - inline:
-      type: Git
-      git:
-        repository: https://github.com/org/repo
-      # Error: inline Git context requires mountPath
+  - type: Git
+    git:
+      repository: https://github.com/org/repo
+    # Error: Git context requires mountPath
 
-# ✅ Valid - inline Git with explicit mountPath
+# ✅ Valid - Git with explicit mountPath
 contexts:
-  - inline:
-      type: Git
-      git:
-        repository: https://github.com/org/repo
-      mountPath: /workspace/my-repo
+  - type: Git
+    git:
+      repository: https://github.com/org/repo
+    mountPath: /workspace/my-repo
 ```
 
 **Mount Path Conflict Detection:**
@@ -1690,12 +1607,12 @@ The controller validates that no two contexts mount to the same path. This preve
 ```yaml
 # ❌ Invalid - duplicate mount paths
 contexts:
-  - ref:
-      name: context-a
-      mountPath: /workspace/config.yaml
-  - ref:
-      name: context-b
-      mountPath: /workspace/config.yaml  # Error: mount path conflict
+  - type: Text
+    mountPath: /workspace/config.yaml
+    text: "content a"
+  - type: Text
+    mountPath: /workspace/config.yaml  # Error: mount path conflict
+    text: "content b"
 ```
 
 **Context Priority (Agent vs Task):**
@@ -1882,32 +1799,9 @@ spec:
     Run tests and create PR.
 ```
 
-### 2. Task with Multiple Context Sources
+### 2. Task with Multiple Contexts
 
 ```yaml
-# First, create reusable Context CRDs
-apiVersion: kubetask.io/v1alpha1
-kind: Context
-metadata:
-  name: refactoring-guide
-  namespace: kubetask-system
-spec:
-  type: ConfigMap
-  configMap:
-    name: guides
-    key: refactoring-guide.md
----
-apiVersion: kubetask.io/v1alpha1
-kind: Context
-metadata:
-  name: project-configs
-  namespace: kubetask-system
-spec:
-  type: ConfigMap
-  configMap:
-    name: project-configs  # All keys become files
----
-# Then create the Task referencing the Contexts
 apiVersion: kubetask.io/v1alpha1
 kind: Task
 metadata:
@@ -1917,12 +1811,23 @@ spec:
   agentRef: claude
   description: "Refactor the authentication module"
   contexts:
-    # Guide from Context CRD
-    - name: refactoring-guide
+    # ConfigMap context (specific key)
+    - type: ConfigMap
       mountPath: /workspace/guide.md
-    # Config directory from Context CRD
-    - name: project-configs
+      configMap:
+        name: guides
+        key: refactoring-guide.md
+    # ConfigMap context (all keys as directory)
+    - type: ConfigMap
       mountPath: /workspace/configs
+      configMap:
+        name: project-configs
+    # Git context
+    - type: Git
+      mountPath: /workspace/repo
+      git:
+        repository: https://github.com/org/repo
+        ref: main
 ```
 
 ### 3. Batch Operations with Helm
@@ -2147,8 +2052,8 @@ kubectl get agent default -o yaml
 - **Agent** - stable, project-independent configuration
 - **KubeTaskConfig** - system-level settings (TTL, lifecycle)
 
-**Context Types** (via Context CRD):
-- `Inline` - Content directly in YAML
+**Context Types** (via ContextItem):
+- `Text` - Content directly in YAML
 - `ConfigMap` - Content from ConfigMap (single key or all keys as directory)
 - `Git` - Content from Git repository with branch/tag/commit support
 - `Runtime` - KubeTask platform awareness (environment variables, kubectl commands, system concepts)
@@ -2176,6 +2081,6 @@ kubectl get agent default -o yaml
 ---
 
 **Status**: FINAL
-**Date**: 2025-12-19
-**Version**: v4.3 (WebhookTrigger Support)
+**Date**: 2025-12-23
+**Version**: v4.4 (Simplified Context API - ContextItem only)
 **Maintainer**: KubeTask Team
