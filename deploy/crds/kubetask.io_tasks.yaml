@@ -288,33 +288,6 @@ spec:
                 - Completed
                 - Failed
                 type: string
-              sessionPodName:
-                description: |-
-                  SessionPodName is the name of the session Pod created for resume.
-                  Only set when a session is active (triggered by kubetask.io/resume-session annotation).
-                type: string
-              sessionStatus:
-                description: |-
-                  SessionStatus indicates the current state of the session.
-                  Only set when session persistence is enabled and a session has been created.
-                properties:
-                  phase:
-                    description: Phase is the current phase of the session.
-                    enum:
-                    - Pending
-                    - Active
-                    - Terminated
-                    type: string
-                  startTime:
-                    description: StartTime is when the session Pod started.
-                    format: date-time
-                    type: string
-                  workspacePath:
-                    description: |-
-                      WorkspacePath is the path where the persisted workspace is stored on the PVC.
-                      Format: /<namespace>/<task-name>/
-                    type: string
-                type: object
               startTime:
                 description: Start time
                 format: date-time

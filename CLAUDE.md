@@ -29,21 +29,23 @@ KubeTask uses a single container image (`quay.io/kubetask/kubetask`) with multip
 |------------|----------|
 | `controller` | Main controller reconciliation |
 | `git-init` | Git Context cloning (init container) |
-| `save-session` | Session persistence (sidecar) |
-| `webhook` | Webhook server for WebhookTrigger |
+| `context-init` | Context file initialization (init container) |
 
 The image constant is defined in `internal/controller/job_builder.go` as `DefaultKubeTaskImage`.
+
+**Event-Driven Triggers (Argo Events):**
+
+Webhook/event handling has been delegated to [Argo Events](https://argoproj.github.io/argo-events/). See `deploy/dogfooding/argo-events/` for examples of GitHub webhook integration using EventSource and Sensor resources that create KubeTask Tasks.
 
 ## Core Concepts
 
 ### Resource Hierarchy
 
 1. **Task** - Single task execution (the primary API)
-2. **Workflow** - Reusable multi-stage task template
-3. **WorkflowRun** - Workflow execution instance
-4. **CronWorkflow** - Scheduled WorkflowRun triggering
-5. **WebhookTrigger** - Event-driven Task creation from webhooks
-6. **Agent** - AI agent configuration (HOW to execute)
+2. **Agent** - AI agent configuration (HOW to execute)
+3. **KubeTaskConfig** - System-level configuration (optional)
+
+> **Note**: Workflow orchestration and webhook triggers have been delegated to Argo Workflows and Argo Events respectively. KubeTask focuses on the core Task/Agent abstraction.
 
 ### Important Design Decisions
 
@@ -115,7 +117,7 @@ All Go files must include the copyright header:
 3. **Kubernetes Resources**:
    - CRD Group: `kubetask.io`
    - API Version: `v1alpha1`
-   - Kinds: `Task`, `Workflow`, `WorkflowRun`, `CronWorkflow`, `WebhookTrigger`, `Agent`, `KubeTaskConfig`
+   - Kinds: `Task`, `Agent`, `KubeTaskConfig`
 
 ### Code Comments
 
@@ -198,15 +200,13 @@ make docker-buildx
 # Create namespace
 kubectl create namespace kubetask-system
 
-# Install with Helm (with webhook enabled)
+# Install with Helm
 helm install kubetask ./charts/kubetask \
-  --namespace kubetask-system \
-  --set webhook.enabled=true
+  --namespace kubetask-system
 
 # Or install from OCI registry
 helm install kubetask oci://quay.io/kubetask/helm-charts/kubetask \
-  --namespace kubetask-system \
-  --set webhook.enabled=true
+  --namespace kubetask-system
 ```
 
 ### Agent Images
@@ -246,33 +246,27 @@ kubetask/
 │   ├── images/          # Agent Dockerfiles (gemini, claude, echo, etc.)
 │   └── tools/           # Tools image for shared CLI tools
 ├── api/v1alpha1/          # CRD type definitions
-│   ├── types.go           # Main API types (Task, Workflow, WorkflowRun, CronWorkflow, Agent, KubeTaskConfig)
-│   ├── webhooktrigger_types.go  # WebhookTrigger CRD types
+│   ├── types.go           # Main API types (Task, Agent, KubeTaskConfig)
 │   ├── register.go        # Scheme registration
 │   └── zz_generated.deepcopy.go  # Generated deepcopy
 ├── cmd/kubetask/          # Unified binary entry point
 │   ├── main.go            # Root command
 │   ├── controller.go      # Controller subcommand
-│   ├── webhook.go         # Webhook server subcommand
 │   ├── git_init.go        # Git init container subcommand
-│   └── save_session.go    # Session persistence subcommand
+│   └── context_init.go    # Context initialization subcommand
 ├── internal/controller/   # Controller reconcilers
-│   ├── task_controller.go
-│   ├── workflow_controller.go
-│   ├── workflowrun_controller.go
-│   ├── cronworkflow_controller.go
-│   └── webhooktrigger_controller.go
-├── internal/webhook/      # Webhook server
-│   ├── server.go          # HTTP server for receiving webhooks
-│   ├── auth.go            # Authentication (HMAC, Bearer, Header)
-│   ├── filter.go          # CEL filter evaluation
-│   └── template.go        # Go template rendering
+│   ├── task_controller.go # Task reconciliation logic
+│   ├── job_builder.go     # Job creation from Task specs
+│   └── context_resolver.go # Context resolution logic
 ├── deploy/               # Kubernetes manifests
-│   └── crds/            # Generated CRD YAMLs
+│   ├── crds/            # Generated CRD YAMLs
+│   └── dogfooding/      # Dogfooding environment
+│       ├── base/        # Base resources (Agent, secrets, etc.)
+│       ├── argo-events/ # Argo Events integration (EventSource, Sensor)
+│       └── system/      # System resources (smee-client, route)
 ├── charts/kubetask/     # Helm chart
 │   └── templates/
-│       ├── controller/   # Controller deployment
-│       └── webhook/      # Webhook server deployment (optional)
+│       └── controller/   # Controller deployment
 ├── hack/                # Build and codegen scripts
 ├── docs/                # Documentation
 │   ├── architecture.md  # Architecture documentation
@@ -466,75 +460,8 @@ When this annotation is detected:
 - The `Stopped` condition has reason `UserStopped`
 
 This is useful for:
-- Exiting `humanInTheLoop` Tasks early after verification is complete
 - Stopping long-running Tasks without waiting for timeout
 - Preserving logs for debugging or auditing after stopping
-
-**Session Strategies:**
-
-KubeTask supports two complementary session strategies for human interaction:
-
-1. **Session Sidecar (Ephemeral)**: A sidecar container runs alongside the agent for immediate access
-2. **Session Persistence (Durable)**: Workspace is saved to PVC for later resume
-
-Both are configured via `humanInTheLoop` and can be enabled independently:
-
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: Agent
-metadata:
-  name: dev-agent
-spec:
-  agentImage: quay.io/kubetask/kubetask-agent-gemini:latest
-  serviceAccountName: kubetask-agent
-  humanInTheLoop:
-    # Shared config (used by both strategies)
-    image: ""      # Optional: defaults to agentImage
-    command: []    # Optional: custom command for session containers
-    ports: []      # Optional: for port-forwarding
-
-    # Ephemeral session sidecar
-    sidecar:
-      enabled: true
-      duration: "2h"
-
-    # Durable workspace persistence
-    persistence:
-      enabled: true  # Requires sessionPVC in KubeTaskConfig
-```
-
-To provide PVC infrastructure for session persistence, configure `sessionPVC` in KubeTaskConfig:
-
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: KubeTaskConfig
-metadata:
-  name: default
-spec:
-  # System image for internal components (git-init, context-init, save-session)
-  systemImage:
-    image: quay.io/kubetask/kubetask:latest
-    imagePullPolicy: Always  # Recommended when using :latest tags
-
-  # Default pull policy for agent containers
-  agentImagePullPolicy: Always
-
-  sessionPVC:
-    name: kubetask-session-data  # Shared PVC for all HITL tasks
-    storageSize: 50Gi
-```
-
-When `persistence.enabled` is true and `sessionPVC` is configured:
-- A `save-session` sidecar is added to Task Pods
-- After agent completion, workspace is copied to PVC at `/<namespace>/<task-name>/`
-- Users can resume work by adding annotation: `kubectl annotate task my-task kubetask.io/resume-session=true`
-- A session Pod is created with the same image, credentials, and environment as the original agent
-- Session Pod mounts the persisted workspace from PVC
-
-Requirements:
-- Agent must have `humanInTheLoop.persistence.enabled = true`
-- KubeTaskConfig must have `sessionPVC` configured
-- PVC must support ReadWriteMany (RWX) access mode for concurrent session access
 
 **Credentials Mounting:**
 
@@ -696,4 +623,4 @@ kubectl logs job/<job-name> -n kubetask-system
 
 ---
 
-**Last Updated**: 2025-12-23
+**Last Updated**: 2025-12-25

@@ -10,9 +10,8 @@ resources:
   - secrets.yaml
   - kubetaskconfig.yaml
   - agent-default.yaml
-  - agent-dev-realtime.yaml
   - configmap-github-scripts.yaml
 
-# Note: route-webhook.yaml is applied separately because it targets
-# kubetask-system namespace (where the webhook service resides).
-# Apply with: kubectl apply -f route-webhook.yaml
+# Note: Webhook functionality has been migrated to Argo Events.
+# See ../argo-events/ for EventSource and Sensor configuration.
+# See ../system/ for supporting infrastructure (smee-client, route).

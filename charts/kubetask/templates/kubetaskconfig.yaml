@@ -7,16 +7,13 @@ metadata:
   labels:
     {{- include "kubetask.labels" . | nindent 4 }}
 spec:
-  taskLifecycle:
-    ttlSecondsAfterFinished: {{ .Values.kubetaskConfig.taskLifecycle.ttlSecondsAfterFinished }}
-  {{- if .Values.kubetaskConfig.sessionPVC }}
-  sessionPVC:
-    name: {{ .Values.kubetaskConfig.sessionPVC.name | quote }}
-    {{- if .Values.kubetaskConfig.sessionPVC.storageClassName }}
-    storageClassName: {{ .Values.kubetaskConfig.sessionPVC.storageClassName | quote }}
+  {{- if .Values.kubetaskConfig.systemImage }}
+  systemImage:
+    {{- if .Values.kubetaskConfig.systemImage.image }}
+    image: {{ .Values.kubetaskConfig.systemImage.image | quote }}
     {{- end }}
-    storageSize: {{ .Values.kubetaskConfig.sessionPVC.storageSize | quote }}
-    retentionPolicy:
-      ttlSecondsAfterTaskDeletion: {{ .Values.kubetaskConfig.sessionPVC.retentionPolicy.ttlSecondsAfterTaskDeletion }}
+    {{- if .Values.kubetaskConfig.systemImage.imagePullPolicy }}
+    imagePullPolicy: {{ .Values.kubetaskConfig.systemImage.imagePullPolicy }}
+    {{- end }}
   {{- end }}
 {{- end }}

@@ -1,9 +1,12 @@
 # Copyright Contributors to the KubeTask project
+# This directory previously contained WebhookTrigger and Workflow resources.
+# These have been migrated to Argo Events (see ../argo-events/).
+#
+# This kustomization is kept for backwards compatibility but is now empty.
+# Future resources can be added here as needed.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: kubetask-dogfooding
 
-resources:
-  - workflow-go-update.yaml
-  - webhooktrigger-github.yaml
+resources: []

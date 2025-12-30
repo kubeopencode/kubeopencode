@@ -38,8 +38,8 @@ var controllerCmd = &cobra.Command{
 	Short: "Start the KubeTask controller",
 	Long: `Start the KubeTask Kubernetes controller.
 
-The controller watches for Task, Workflow, WorkflowRun, and CronWorkflow
-resources and manages their execution as Kubernetes Jobs.
+The controller watches for Task resources and manages their execution
+as Kubernetes Jobs using the referenced Agent configuration.
 
 Example:
   kubetask controller --metrics-bind-address=:8080 --health-probe-bind-address=:8081`,
@@ -128,30 +128,6 @@ func runController(cmd *cobra.Command, args []string) error {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Task")
-		os.Exit(1)
-	}
-
-	if err = (&controller.WorkflowReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Workflow")
-		os.Exit(1)
-	}
-
-	if err = (&controller.WorkflowRunReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "WorkflowRun")
-		os.Exit(1)
-	}
-
-	if err = (&controller.CronWorkflowReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CronWorkflow")
 		os.Exit(1)
 	}
 

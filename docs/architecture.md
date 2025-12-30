@@ -34,6 +34,18 @@ KubeTask is a Kubernetes-native system that executes AI-powered tasks using Cust
 - **Simplified Operations**: Manage with standard K8s tools (kubectl, dashboard)
 - **Batch Operations**: Use Helm/Kustomize to create multiple Tasks (Kubernetes-native approach)
 
+### External Integrations
+
+KubeTask focuses on the core Task/Agent abstraction. For advanced features, integrate with external projects:
+
+| Feature | Recommended Integration |
+|---------|------------------------|
+| Workflow orchestration | [Argo Workflows](https://argoproj.github.io/argo-workflows/) |
+| Event-driven triggers | [Argo Events](https://argoproj.github.io/argo-events/) |
+| Scheduled execution | Kubernetes CronJob or Argo CronWorkflows |
+
+See `deploy/dogfooding/argo-events/` for examples of GitHub webhook integration using Argo Events that creates KubeTask Tasks.
+
 ---
 
 ## API Design
@@ -43,13 +55,9 @@ KubeTask is a Kubernetes-native system that executes AI-powered tasks using Cust
 | Resource | Purpose | Stability |
 |----------|---------|-----------|
 | **Task** | Single task execution (primary API) | Stable - semantic name |
-| **Workflow** | Multi-stage task template (no execution) | Stable - reusable template |
-| **WorkflowRun** | Workflow execution instance | Stable - DAG-like execution |
-| **CronWorkflow** | Scheduled WorkflowRun triggering | Stable - follows K8s CronJob pattern |
-| **WebhookTrigger** | Webhook-driven Task creation | Stable - event-driven triggering |
-| **ContextItem** | Inline context for AI agents (KNOW) | Stable - inline context only |
 | **Agent** | AI agent configuration (HOW to execute) | Stable - independent of project name |
-| **KubeTaskConfig** | System-level configuration (TTL, lifecycle) | Stable - system settings |
+| **KubeTaskConfig** | System-level configuration | Stable - system settings |
+| **ContextItem** | Inline context for AI agents (KNOW) | Stable - inline context only |
 
 ### Key Design Decisions
 
@@ -98,18 +106,6 @@ kind: Agent
 - **Argo Workflows**: DAG-based workflow with conditional retry logic
 - **Tekton Pipelines**: CI/CD pipelines with result-based retry
 - **Custom controllers**: Monitor Task status and create new Tasks based on validation results
-- **CronWorkflow**: For periodic re-execution of tasks
-
-This approach:
-- Keeps the Task API simple and focused
-- Delegates retry/orchestration to specialized tools
-- Allows users to implement custom validation before retry
-- Prevents accidental duplicate operations from AI agents
-
-**If retry or scheduled execution is needed:**
-- **CronWorkflow**: For periodic re-execution of workflows (single-task or multi-task)
-- **Argo Workflows**: DAG-based workflow with conditional retry logic
-- **Tekton Pipelines**: CI/CD pipelines with result-based retry
 
 ### Resource Hierarchy
 
@@ -123,70 +119,7 @@ Task (single task execution)
     ├── phase: TaskPhase
     ├── jobName: string
     ├── startTime: Time
-    └── completionTime: Time
-
-Workflow (template only - no Status)
-└── WorkflowSpec
-    └── stages: []WorkflowStage
-        ├── name: string (optional, auto-generated as "stage-0", "stage-1")
-        └── tasks: []WorkflowTask
-            ├── name: string
-            └── spec: TaskSpec
-
-WorkflowRun (execution instance)
-├── WorkflowRunSpec
-│   ├── workflowRef: string          (mutually exclusive with inline)
-│   └── inline: *WorkflowSpec        (mutually exclusive with workflowRef)
-└── WorkflowRunStatus
-    ├── phase: WorkflowPhase (Pending|Running|Completed|Failed)
-    ├── currentStage: int32
-    ├── totalTasks: int32
-    ├── completedTasks: int32
-    ├── failedTasks: int32
-    ├── startTime: *Time
-    ├── completionTime: *Time
-    ├── stageStatuses: []WorkflowStageStatus
-    └── conditions: []Condition
-
-CronWorkflow (scheduled WorkflowRun triggering)
-├── CronWorkflowSpec
-│   ├── schedule: string (cron expression)
-│   ├── suspend: *bool
-│   ├── workflowRef: string          (mutually exclusive with inline)
-│   └── inline: *WorkflowSpec        (mutually exclusive with workflowRef)
-└── CronWorkflowStatus
-    ├── active: []ObjectReference
-    ├── lastScheduleTime: *Time
-    ├── lastSuccessfulTime: *Time
-    └── conditions: []Condition
-
-WebhookTrigger (webhook-driven Task/WorkflowRun creation)
-├── WebhookTriggerSpec
-│   ├── auth: *WebhookAuth           (HMAC, BearerToken, or Header)
-│   ├── matchPolicy: MatchPolicy     (First or All, for rules-based triggers)
-│   ├── rules: []WebhookRule         (multiple filter-to-resourceTemplate mappings)
-│   │   ├── name: string             (unique rule identifier)
-│   │   ├── filter: string           (CEL expression for filtering)
-│   │   ├── concurrencyPolicy: string (per-rule override)
-│   │   └── resourceTemplate: WebhookResourceTemplate
-│   │       ├── task: *WebhookTaskSpec       (create Task)
-│   │       ├── workflowRef: string          (reference Workflow, create WorkflowRun)
-│   │       └── workflowRun: *WebhookWorkflowRunSpec (inline WorkflowRun)
-│   ├── filter: string               (DEPRECATED: use rules[].filter)
-│   ├── concurrencyPolicy: string    (Allow, Forbid, Replace)
-│   ├── taskTemplate: *WebhookTaskTemplate   (DEPRECATED: use resourceTemplate)
-│   └── resourceTemplate: *WebhookResourceTemplate (new: supports Task/WorkflowRun)
-└── WebhookTriggerStatus
-    ├── lastTriggeredTime: *Time
-    ├── totalTriggered: int64
-    ├── activeTasks: []string        (DEPRECATED: use activeResources)
-    ├── activeResources: []string    (currently running Tasks/WorkflowRuns)
-    ├── ruleStatuses: []WebhookRuleStatus  (per-rule status)
-    │   ├── name: string
-    │   ├── lastTriggeredTime: *Time
-    │   ├── totalTriggered: int64
-    │   └── activeResources: []string
-    ├── webhookURL: string
+    ├── completionTime: Time
     └── conditions: []Condition
 
 Agent (execution configuration)
@@ -202,46 +135,10 @@ Agent (execution configuration)
 
 KubeTaskConfig (system configuration)
 └── KubeTaskConfigSpec
-    ├── systemImage: *SystemImageConfig       (internal KubeTask components)
-    │   ├── image: string                     (default: DefaultKubeTaskImage)
-    │   └── imagePullPolicy: PullPolicy       (default: IfNotPresent)
-    ├── agentImagePullPolicy: PullPolicy      (default: IfNotPresent)
-    ├── taskLifecycle: *TaskLifecycleConfig
-    │   └── ttlSecondsAfterFinished: *int32
-    └── sessionPVC: *SessionPVCConfig
-        ├── name: string
-        ├── storageClassName: *string
-        ├── storageSize: string
-        └── retentionPolicy: *SessionRetentionPolicy
-            └── ttlSecondsAfterTaskDeletion: *int32
+    └── systemImage: *SystemImageConfig       (internal KubeTask components)
+        ├── image: string                     (default: DefaultKubeTaskImage)
+        └── imagePullPolicy: PullPolicy       (default: IfNotPresent)
 ```
-
-### Workflow Template/Instance Pattern
-
-The Workflow API follows a template/instance pattern similar to Kubernetes Deployment/ReplicaSet:
-
-```
-Workflow (template - no execution)
-    │
-    ├──── WorkflowRun (manual execution)
-    │         spec.workflowRef: my-workflow
-    │         └── Task, Task, Task (child resources)
-    │
-    ├──── WorkflowRun (inline definition)
-    │         spec.inline: { stages: [...] }
-    │         └── Task, Task (child resources)
-    │
-    └──── CronWorkflow (scheduled execution)
-              spec.schedule: "0 9 * * *"
-              spec.workflowRef: my-workflow
-              └── WorkflowRun → Task, Task (created on schedule)
-```
-
-**Benefits:**
-- Workflow templates are reusable across multiple executions
-- WorkflowRun preserves execution history
-- CronWorkflow provides scheduled workflow execution
-- Clear separation of concerns: definition vs execution vs scheduling
 
 ### Complete Type Definitions
 
@@ -274,174 +171,7 @@ type TaskExecutionStatus struct {
     JobName        string
     StartTime      *metav1.Time
     CompletionTime *metav1.Time
-    SessionPodName string         // Name of session Pod (when resume triggered)
-    SessionStatus  *SessionStatus // Session state (when persistence enabled)
     Conditions     []metav1.Condition
-}
-
-// SessionStatus tracks session Pod state
-type SessionStatus struct {
-    Phase         SessionPhase // Pending | Active | Terminated
-    StartTime     *metav1.Time
-    WorkspacePath string       // Path on PVC: /<namespace>/<task-name>/
-}
-
-type SessionPhase string
-const (
-    SessionPhasePending    SessionPhase = "Pending"
-    SessionPhaseActive     SessionPhase = "Active"
-    SessionPhaseTerminated SessionPhase = "Terminated"
-)
-
-// Workflow represents a reusable workflow template (no execution, no Status)
-type Workflow struct {
-    Spec WorkflowSpec  // No Status - Workflow is a template
-}
-
-type WorkflowSpec struct {
-    Stages []WorkflowStage // Sequential stages (stage N+1 starts after stage N completes)
-}
-
-type WorkflowStage struct {
-    Name  string         // Optional, auto-generated as "stage-0", "stage-1" if not specified
-    Tasks []WorkflowTask // Tasks to run in parallel within this stage
-}
-
-type WorkflowTask struct {
-    Name string   // Unique name within workflow (Task CR name = "{workflowrun}-{name}")
-    Spec TaskSpec // TaskSpec for the created Task
-}
-
-// WorkflowRun represents an execution instance of a Workflow
-type WorkflowRun struct {
-    Spec   WorkflowRunSpec
-    Status WorkflowRunStatus
-}
-
-type WorkflowRunSpec struct {
-    WorkflowRef string        // Reference to Workflow template (mutually exclusive with Inline)
-    Inline      *WorkflowSpec // Inline workflow definition (mutually exclusive with WorkflowRef)
-}
-
-type WorkflowRunStatus struct {
-    Phase          WorkflowPhase           // Pending|Running|Completed|Failed
-    CurrentStage   int32                   // Index of current stage (-1 = not started)
-    TotalTasks     int32                   // Total tasks across all stages
-    CompletedTasks int32                   // Number of completed tasks
-    FailedTasks    int32                   // Number of failed tasks
-    StartTime      *metav1.Time            // When workflow run started
-    CompletionTime *metav1.Time            // When workflow run finished
-    StageStatuses  []WorkflowStageStatus   // Status of each stage
-    Conditions     []metav1.Condition
-}
-
-type WorkflowStageStatus struct {
-    Name           string        // Stage name
-    Phase          WorkflowPhase // Stage phase
-    Tasks          []string      // Actual Task CR names created
-    StartTime      *metav1.Time
-    CompletionTime *metav1.Time
-}
-
-type WorkflowPhase string
-const (
-    WorkflowPhasePending   WorkflowPhase = "Pending"
-    WorkflowPhaseRunning   WorkflowPhase = "Running"
-    WorkflowPhaseCompleted WorkflowPhase = "Completed"
-    WorkflowPhaseFailed    WorkflowPhase = "Failed"
-)
-
-// CronWorkflow represents scheduled WorkflowRun triggering
-type CronWorkflow struct {
-    Spec   CronWorkflowSpec
-    Status CronWorkflowStatus
-}
-
-type CronWorkflowSpec struct {
-    Schedule    string        // Cron expression (e.g., "0 9 * * *")
-    Suspend     *bool         // Suspend scheduling
-    WorkflowRef string        // Reference to Workflow template (mutually exclusive with Inline)
-    Inline      *WorkflowSpec // Inline workflow definition (mutually exclusive with WorkflowRef)
-}
-
-type CronWorkflowStatus struct {
-    Active             []corev1.ObjectReference // Currently running WorkflowRuns
-    LastScheduleTime   *metav1.Time             // Last scheduled time
-    LastSuccessfulTime *metav1.Time             // Last successful completion
-    Conditions         []metav1.Condition
-}
-
-// WebhookTrigger represents a webhook-to-Task mapping rule
-type WebhookTrigger struct {
-    Spec   WebhookTriggerSpec
-    Status WebhookTriggerStatus
-}
-
-type WebhookTriggerSpec struct {
-    Auth              *WebhookAuth             // Authentication configuration
-    MatchPolicy       MatchPolicy              // First (default) or All
-    Rules             []WebhookRule            // Multiple filter-to-resourceTemplate mappings
-    Filter            string                   // DEPRECATED: CEL expression for filtering
-    ConcurrencyPolicy ConcurrencyPolicy        // Allow, Forbid, or Replace
-    TaskTemplate      *WebhookTaskTemplate     // DEPRECATED: use ResourceTemplate
-    ResourceTemplate  *WebhookResourceTemplate // Task, WorkflowRun, or WorkflowRef
-}
-
-// WebhookRule defines a single rule for rules-based triggers
-type WebhookRule struct {
-    Name              string                  // Unique rule identifier
-    Filter            string                  // CEL expression for filtering
-    ConcurrencyPolicy ConcurrencyPolicy       // Per-rule override
-    ResourceTemplate  WebhookResourceTemplate // What to create when matched
-}
-
-// WebhookResourceTemplate defines Task or WorkflowRun to create
-type WebhookResourceTemplate struct {
-    Task        *WebhookTaskSpec        // Create Task
-    WorkflowRef string                  // Reference Workflow, create WorkflowRun
-    WorkflowRun *WebhookWorkflowRunSpec // Inline WorkflowRun
-}
-
-type WebhookAuth struct {
-    HMAC        *HMACAuth        // HMAC signature validation
-    BearerToken *BearerTokenAuth // Bearer token validation
-    Header      *HeaderAuth      // Custom header validation
-}
-
-type HMACAuth struct {
-    SecretRef       SecretKeyReference // Secret containing HMAC key
-    SignatureHeader string             // Header containing signature (e.g., "X-Hub-Signature-256")
-    Algorithm       string             // sha1, sha256, or sha512 (default: sha256)
-}
-
-type WebhookTaskTemplate struct {
-    AgentRef    string          // Reference to Agent (optional)
-    Description string          // Go template with webhook payload data
-    Contexts    []ContextSource // Additional contexts
-}
-
-type ConcurrencyPolicy string
-const (
-    ConcurrencyPolicyAllow   ConcurrencyPolicy = "Allow"   // Create new Task regardless of existing
-    ConcurrencyPolicyForbid  ConcurrencyPolicy = "Forbid"  // Skip if Task already running
-    ConcurrencyPolicyReplace ConcurrencyPolicy = "Replace" // Stop existing, create new
-)
-
-type WebhookTriggerStatus struct {
-    LastTriggeredTime *metav1.Time         // When last triggered
-    TotalTriggered    int64                // Total trigger count
-    ActiveTasks       []string             // DEPRECATED: use ActiveResources
-    ActiveResources   []string             // Currently running Task/WorkflowRun names
-    RuleStatuses      []WebhookRuleStatus  // Per-rule status (only for rules-based)
-    WebhookURL        string               // Full webhook URL path
-    Conditions        []metav1.Condition
-}
-
-type WebhookRuleStatus struct {
-    Name              string       // Rule name
-    LastTriggeredTime *metav1.Time // When this rule was last triggered
-    TotalTriggered    int64        // Times this rule triggered
-    ActiveResources   []string     // Active resources for this rule
 }
 
 type ContextType string
@@ -456,7 +186,7 @@ const (
 // When enabled, the controller injects a system prompt explaining:
 // - The agent is running in a Kubernetes environment as a KubeTask Task
 // - Available environment variables (TASK_NAME, TASK_NAMESPACE, WORKSPACE_DIR)
-// - How to query Task/Workflow information via kubectl
+// - How to query Task information via kubectl
 type RuntimeContext struct {
     // No fields - content is generated by the controller
 }
@@ -488,37 +218,7 @@ type AgentSpec struct {
     Credentials        []Credential
     PodSpec            *AgentPodSpec    // Pod configuration (labels, scheduling, runtime)
     ServiceAccountName string
-    HumanInTheLoop     *HumanInTheLoop  // Enable session sidecar for debugging
-}
-
-// HumanInTheLoop configures session strategies for human interaction
-type HumanInTheLoop struct {
-    // Shared configuration for both session strategies
-    Image   string          // Custom image for session containers (default: agentImage)
-    Command []string        // Custom command for session containers (overrides sidecar.duration)
-    Ports   []ContainerPort // Ports to expose for port-forwarding
-
-    // Strategy-specific configuration
-    Sidecar     *SessionSidecar     // Ephemeral session sidecar
-    Persistence *SessionPersistence // Durable workspace persistence
-}
-
-// SessionSidecar configures ephemeral session sidecar
-type SessionSidecar struct {
-    Enabled  bool             // Enable session sidecar
-    Duration *metav1.Duration // How long sidecar runs (default: "1h", ignored if command is set)
-}
-
-// SessionPersistence configures durable workspace persistence
-type SessionPersistence struct {
-    Enabled bool // Enable workspace persistence to PVC
-}
-
-// ContainerPort defines a port to expose on the sidecar container
-type ContainerPort struct {
-    Name          string          // Optional name for this port
-    ContainerPort int32           // Port number to expose (1-65535)
-    Protocol      corev1.Protocol // TCP (default) or UDP
+    MaxConcurrentTasks *int32           // Limit concurrent Tasks (nil/0 = unlimited)
 }
 
 // KubeTaskConfig defines system-level configuration
@@ -527,33 +227,13 @@ type KubeTaskConfig struct {
 }
 
 type KubeTaskConfigSpec struct {
-    SystemImage          *SystemImageConfig   // System image for internal components
-    AgentImagePullPolicy corev1.PullPolicy    // Default pull policy for agent containers
-    TaskLifecycle        *TaskLifecycleConfig
-    SessionPVC           *SessionPVCConfig    // PVC infrastructure for session persistence
+    SystemImage *SystemImageConfig // System image for internal components
 }
 
 // SystemImageConfig configures the KubeTask system image
 type SystemImageConfig struct {
     Image           string            // System image (default: built-in DefaultKubeTaskImage)
     ImagePullPolicy corev1.PullPolicy // Pull policy: Always/Never/IfNotPresent (default: IfNotPresent)
-}
-
-type TaskLifecycleConfig struct {
-    TTLSecondsAfterFinished *int32  // TTL for completed/failed tasks (default: 604800 = 7 days)
-}
-
-// SessionPVCConfig provides PVC infrastructure for session persistence.
-// Whether persistence is enabled is controlled per-Agent via humanInTheLoop.persistence.enabled.
-type SessionPVCConfig struct {
-    Name             string                  // PVC name (default: "kubetask-session-data")
-    StorageClassName *string                 // StorageClass for PVC
-    StorageSize      string                  // PVC size (default: "10Gi")
-    RetentionPolicy  *SessionRetentionPolicy // Cleanup policy
-}
-
-type SessionRetentionPolicy struct {
-    TTLSecondsAfterTaskDeletion *int32 // How long to keep session data (default: 604800 = 7 days)
 }
 ```
 
@@ -578,7 +258,6 @@ type SessionRetentionPolicy struct {
 │  - Reconcile loop                                           │
 │  - Create Kubernetes Jobs for tasks                         │
 │  - Update CR status fields                                  │
-│  - Handle retries and failures                              │
 └─────────────────────────────────────────────────────────────┘
                           │
                           ▼
@@ -645,7 +324,7 @@ spec:
 
 status:
   # Execution phase
-  phase: Running  # Pending|Running|Completed|Failed
+  phase: Running  # Pending|Queued|Running|Completed|Failed
 
   # Kubernetes Job name
   jobName: update-service-a-xyz123
@@ -714,404 +393,6 @@ contexts:
     runtime: {}  # No fields - content is generated by controller
 ```
 
-### Workflow (Reusable Template)
-
-Workflow is a template resource that defines a multi-stage task structure. It does NOT execute - to run a workflow, create a WorkflowRun that references it.
-
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: Workflow
-metadata:
-  name: ci-pipeline
-  namespace: kubetask-system
-spec:
-  stages:
-    # Stage 0: Lint (name auto-generated as "stage-0")
-    - tasks:
-        - name: lint
-          spec:
-            description: "Run linting checks"
-            agentRef: claude
-
-    # Stage 1: Testing (explicit name)
-    - name: testing
-      tasks:
-        - name: test-unit
-          spec:
-            description: "Run unit tests"
-            agentRef: claude
-        - name: test-e2e
-          spec:
-            description: "Run e2e tests"
-            agentRef: gemini
-
-    # Stage 2: Deploy (name auto-generated as "stage-2")
-    - tasks:
-        - name: deploy
-          spec:
-            description: "Deploy to staging"
-            agentRef: claude
-# Note: No status field - Workflow is a template only
-```
-
-**Field Description:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `spec.stages` | []WorkflowStage | Yes | Sequential stages of the workflow |
-| `spec.stages[].name` | String | No | Stage name (auto-generated as "stage-N" if not specified) |
-| `spec.stages[].tasks` | []WorkflowTask | Yes | Tasks to run in parallel within this stage |
-| `spec.stages[].tasks[].name` | String | Yes | Unique task name within workflow |
-| `spec.stages[].tasks[].spec` | TaskSpec | Yes | TaskSpec for the created Task |
-
-### WorkflowRun (Execution Instance)
-
-WorkflowRun executes a workflow, either by referencing a Workflow template or with an inline definition.
-
-```
-workflowrun = [[task] -> [task, task, task] -> [task]]
-```
-
-This example has 3 stages:
-- Stage 0: 1 task
-- Stage 1: 3 tasks in parallel (starts after stage 0 completes)
-- Stage 2: 1 task (starts after all stage 1 tasks complete)
-
-**WorkflowRun with workflowRef:**
-
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: WorkflowRun
-metadata:
-  name: ci-pipeline-run-001
-  namespace: kubetask-system
-spec:
-  workflowRef: ci-pipeline  # Reference to Workflow template
-status:
-  phase: Running
-  currentStage: 1
-  totalTasks: 4
-  completedTasks: 1
-  failedTasks: 0
-  startTime: "2025-01-18T10:00:00Z"
-  stageStatuses:
-    - name: stage-0
-      phase: Completed
-      tasks: ["ci-pipeline-run-001-lint"]
-      startTime: "2025-01-18T10:00:00Z"
-      completionTime: "2025-01-18T10:02:00Z"
-    - name: testing
-      phase: Running
-      tasks: ["ci-pipeline-run-001-test-unit", "ci-pipeline-run-001-test-e2e"]
-      startTime: "2025-01-18T10:02:00Z"
-    - name: stage-2
-      phase: Pending
-      tasks: []
-```
-
-**WorkflowRun with inline definition:**
-
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: WorkflowRun
-metadata:
-  name: adhoc-run
-  namespace: kubetask-system
-spec:
-  inline:
-    stages:
-      - tasks:
-          - name: quick-task
-            spec:
-              description: "One-off task"
-              agentRef: claude
-```
-
-**Field Description:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `spec.workflowRef` | String | Either this or inline | Reference to Workflow template |
-| `spec.inline` | WorkflowSpec | Either this or workflowRef | Inline workflow definition |
-
-**Status Field Description:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `status.phase` | WorkflowPhase | Workflow phase: Pending\|Running\|Completed\|Failed |
-| `status.currentStage` | int32 | Index of currently executing stage (-1 = not started) |
-| `status.totalTasks` | int32 | Total number of tasks across all stages |
-| `status.completedTasks` | int32 | Number of completed tasks |
-| `status.failedTasks` | int32 | Number of failed tasks |
-| `status.stageStatuses` | []WorkflowStageStatus | Status of each stage |
-
-**Task Naming:**
-
-Created Tasks are named `{workflowrun-name}-{task-name}` (e.g., `ci-pipeline-run-001-lint`).
-
-**Dependency Tracking:**
-
-Tasks created by WorkflowRun have labels and annotations for dependency tracking:
-
-```yaml
-# Labels on created Tasks
-labels:
-  kubetask.io/workflow-run: ci-pipeline-run-001
-  kubetask.io/workflow: ci-pipeline  # Only if workflowRef was used
-  kubetask.io/stage: testing
-  kubetask.io/stage-index: "1"
-
-# Annotation for dependencies (comma-separated Task CR names)
-annotations:
-  kubetask.io/depends-on: "ci-pipeline-run-001-lint"
-```
-
-**Failure Handling:**
-
-WorkflowRun uses a **Fail Fast** strategy:
-- If any task fails, the workflow run immediately enters `Failed` phase
-- No further stages are started
-- Tasks already running in the current stage continue to completion
-
-**Key Behaviors:**
-
-1. **Stage Progression**: Stage N+1 starts only after ALL tasks in stage N complete successfully
-2. **Parallel Execution**: All tasks within a stage start simultaneously
-3. **Garbage Collection**: Tasks have OwnerReference to WorkflowRun for cascade deletion
-4. **No Data Passing**: Tasks don't pass data between stages (AI outputs are unstructured)
-
-### CronWorkflow (Scheduled Execution)
-
-CronWorkflow creates WorkflowRun resources on a schedule, similar to how Kubernetes CronJob creates Jobs.
-
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: CronWorkflow
-metadata:
-  name: daily-ci
-  namespace: kubetask-system
-spec:
-  # Cron schedule (required)
-  schedule: "0 9 * * *"  # Every day at 9:00 AM
-
-  # Reference to Workflow template (mutually exclusive with inline)
-  workflowRef: ci-pipeline
-
-  # Or inline definition:
-  # inline:
-  #   stages:
-  #     - tasks:
-  #         - name: daily-task
-  #           spec:
-  #             description: "Daily CI task"
-  #             agentRef: claude
-
-  # Suspend scheduling (optional, default: false)
-  suspend: false
-
-status:
-  # Currently running WorkflowRuns
-  active:
-    - name: daily-ci-1737190800
-      namespace: kubetask-system
-
-  # Last scheduled time
-  lastScheduleTime: "2025-01-18T09:00:00Z"
-
-  # Last successful completion
-  lastSuccessfulTime: "2025-01-17T09:05:00Z"
-
-  # Conditions
-  conditions:
-    - type: Scheduled
-      status: "True"
-      reason: WorkflowRunCreated
-      message: "Created WorkflowRun daily-ci-1737190800"
-```
-
-**Field Description:**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `spec.schedule` | String | Yes | - | Cron expression (e.g., "0 9 * * *") |
-| `spec.workflowRef` | String | Either this or inline | - | Reference to Workflow template |
-| `spec.inline` | WorkflowSpec | Either this or workflowRef | - | Inline workflow definition |
-| `spec.suspend` | Bool | No | false | Suspend scheduling |
-
-**WorkflowRun Naming:**
-
-Created WorkflowRuns are named `{cronworkflow-name}-{unix-timestamp}` (e.g., `daily-ci-1737190800`).
-
-**Concurrency Policy:**
-
-CronWorkflow uses a **Forbid** policy - if a WorkflowRun is still active when the next schedule triggers, the new run is skipped.
-
-### WebhookTrigger (Event-Driven Triggering)
-
-WebhookTrigger enables event-driven Task or WorkflowRun creation from external webhooks (GitHub, GitLab, custom systems, etc.). It supports two modes:
-
-1. **Legacy mode**: Single filter + taskTemplate (for backward compatibility)
-2. **Rules-based mode**: Multiple rules with different filters triggering different resources
-
-**Multi-Rule Example (Recommended):**
-
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: WebhookTrigger
-metadata:
-  name: github-events
-  namespace: kubetask-system
-spec:
-  auth:
-    hmac:
-      secretRef:
-        name: github-webhook-secret
-        key: secret
-      signatureHeader: X-Hub-Signature-256
-
-  matchPolicy: First  # First matching rule triggers (or All for multiple)
-  concurrencyPolicy: Allow  # Default for all rules
-
-  rules:
-    # Rule 1: PR review -> Task
-    - name: pr-review
-      filter: |
-        headers["x-github-event"] == "pull_request" &&
-        body.action in ["opened", "synchronize"]
-      resourceTemplate:
-        task:
-          agentRef: code-review-agent
-          description: |
-            Review PR #{{ .pull_request.number }}
-            Repository: {{ .repository.full_name }}
-
-    # Rule 2: Complex issue -> Workflow
-    - name: issue-workflow
-      filter: |
-        headers["x-github-event"] == "issues" &&
-        body.action == "opened" &&
-        body.issue.labels.exists(l, l.name == "needs-analysis")
-      resourceTemplate:
-        workflowRef: issue-analysis-workflow
-
-    # Rule 3: Simple issue -> Task
-    - name: issue-triage
-      filter: |
-        headers["x-github-event"] == "issues" &&
-        body.action == "opened"
-      concurrencyPolicy: Forbid  # Per-rule override
-      resourceTemplate:
-        task:
-          agentRef: triage-agent
-          description: |
-            Triage Issue #{{ .issue.number }}
-
-status:
-  webhookURL: /webhooks/kubetask-system/github-events
-  lastTriggeredTime: "2025-01-18T10:00:00Z"
-  totalTriggered: 42
-  activeResources:
-    - github-events-pr-review-abc123
-  ruleStatuses:
-    - name: pr-review
-      lastTriggeredTime: "2025-01-18T10:00:00Z"
-      totalTriggered: 30
-      activeResources:
-        - github-events-pr-review-abc123
-    - name: issue-workflow
-      totalTriggered: 5
-    - name: issue-triage
-      totalTriggered: 7
-```
-
-**Legacy Example (for backward compatibility):**
-
-```yaml
-apiVersion: kubetask.io/v1alpha1
-kind: WebhookTrigger
-metadata:
-  name: github-pr-review
-spec:
-  auth:
-    hmac:
-      secretRef:
-        name: github-webhook-secret
-        key: secret
-      signatureHeader: X-Hub-Signature-256
-  filter: 'body.action in ["opened", "synchronize"]'
-  concurrencyPolicy: Replace
-  taskTemplate:
-    agentRef: code-review-agent
-    description: |
-      Review PR #{{ .pull_request.number }}
-```
-
-**Field Description:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `spec.auth` | WebhookAuth | No | Authentication configuration (HMAC, Bearer, or Header) |
-| `spec.matchPolicy` | String | No | First (default) or All for rules-based mode |
-| `spec.rules` | []WebhookRule | No | Multiple filter-to-resourceTemplate mappings |
-| `spec.rules[].resourceTemplate.task` | WebhookTaskSpec | - | Create a Task |
-| `spec.rules[].resourceTemplate.workflowRef` | String | - | Reference Workflow, create WorkflowRun |
-| `spec.rules[].resourceTemplate.workflowRun` | WebhookWorkflowRunSpec | - | Inline WorkflowRun |
-| `spec.filter` | String | No | DEPRECATED: CEL expression (use rules[].filter) |
-| `spec.taskTemplate` | WebhookTaskTemplate | No | DEPRECATED: use resourceTemplate |
-
-**Resource Naming:**
-
-Created resources are named `{trigger-name}-{rule-name}-{random}` (e.g., `github-events-pr-review-abc123`).
-
-**Authentication Methods:**
-
-| Method | Use Case | Example |
-|--------|----------|---------|
-| `auth.hmac` | GitHub, HMAC-based systems | `X-Hub-Signature-256` header |
-| `auth.bearerToken` | OAuth systems | `Authorization: Bearer <token>` |
-| `auth.header` | GitLab, custom systems | `X-Gitlab-Token` header |
-
-**CEL Filter Variables:**
-
-| Variable | Type | Description |
-|----------|------|-------------|
-| `body` | dynamic | Webhook JSON payload |
-| `headers` | map[string]string | HTTP headers (lowercase keys) |
-
-**CEL Filter Examples:**
-
-```yaml
-# Simple equality
-filter: 'body.action == "opened"'
-
-# Multiple conditions
-filter: 'body.action in ["opened", "synchronize"] && body.repository.full_name == "myorg/myrepo"'
-
-# String functions
-filter: '!body.pull_request.title.startsWith("[WIP]")'
-
-# Existence checks
-filter: 'has(body.pull_request) && body.pull_request.draft == false'
-
-# List predicates
-filter: 'body.pull_request.labels.exists(l, l.name == "needs-review")'
-
-# Header-based filtering
-filter: 'headers["x-github-event"] == "pull_request"'
-```
-
-**Concurrency Policies:**
-
-| Policy | Behavior |
-|--------|----------|
-| `Allow` | Create new Task regardless of existing running Tasks (default) |
-| `Forbid` | Skip webhook if there's already a running Task |
-| `Replace` | Stop running Task(s) and create new one |
-
-**Webhook URL:**
-
-Each WebhookTrigger has a unique endpoint at `/webhooks/<namespace>/<trigger-name>`. Configure this URL in your webhook source (GitHub, GitLab, etc.).
-
 ### Context System
 
 Contexts provide additional information to AI agents during task execution. They are defined inline in Task or Agent specs using the `ContextItem` structure.
@@ -1166,7 +447,7 @@ spec:
   # Optional: Working directory (default: "/workspace")
   workspaceDir: /workspace
 
-  # Optional: Custom entrypoint command (required when Task has humanInTheLoop enabled)
+  # Optional: Custom entrypoint command
   command: ["sh", "-c", "gemini --yolo -p \"$(cat /workspace/task.md)\""]
 
   # Optional: Inline contexts (applied to all tasks using this agent)
@@ -1222,6 +503,9 @@ spec:
     # RuntimeClass for enhanced isolation (gVisor, Kata, etc.)
     runtimeClassName: gvisor
 
+  # Optional: Limit concurrent Tasks using this Agent
+  maxConcurrentTasks: 3
+
   # Required: ServiceAccount for agent pods
   serviceAccountName: kubetask-agent
 ```
@@ -1233,269 +517,25 @@ spec:
 | `spec.agentImage` | String | No | Agent container image |
 | `spec.workspaceDir` | String | No | Working directory (default: "/workspace") |
 | `spec.command` | []String | No | Custom entrypoint command |
-| `spec.contexts` | []ContextSource | No | Reference or inline contexts (applied to all tasks) |
+| `spec.contexts` | []ContextItem | No | Inline contexts (applied to all tasks) |
 | `spec.credentials` | []Credential | No | Secrets as env vars or file mounts |
 | `spec.podSpec` | *AgentPodSpec | No | Advanced Pod configuration (labels, scheduling, runtimeClass) |
+| `spec.maxConcurrentTasks` | *int32 | No | Limit concurrent Tasks (nil/0 = unlimited) |
 | `spec.serviceAccountName` | String | Yes | ServiceAccount for agent pods |
 
-**PodSpec Configuration:**
+**Task Stop:**
 
-The `podSpec` field groups all Pod-level settings:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `podSpec.labels` | map[string]string | Additional labels for the pod (for NetworkPolicy, monitoring) |
-| `podSpec.scheduling` | *PodScheduling | Node selector, tolerations, affinity |
-| `podSpec.runtimeClassName` | String | RuntimeClass for container isolation (gVisor, Kata) |
-
-**RuntimeClass for Enhanced Isolation:**
-
-When running untrusted AI agent code, you can use `runtimeClassName` to specify a more secure container runtime:
-
-```yaml
-podSpec:
-  runtimeClassName: gvisor  # or "kata" for Kata Containers
-```
-
-This provides an additional layer of security beyond standard container isolation. The RuntimeClass must exist in the cluster before use. See [Kubernetes RuntimeClass documentation](https://kubernetes.io/docs/concepts/containers/runtime-class/) for details.
-
-**Human-in-the-Loop:**
-
-KubeTask supports two complementary session strategies for human interaction:
-
-1. **Session Sidecar (Ephemeral)**: A sidecar container that runs alongside the agent, providing **immediate but temporary** access after task completion.
-
-2. **Session Persistence (Durable)**: Workspace content is saved to a PVC, enabling **resume from a new Pod** after the original Pod terminates.
-
-Both strategies can be enabled independently or together via `humanInTheLoop`:
-
-```yaml
-# Agent with humanInTheLoop settings
-apiVersion: kubetask.io/v1alpha1
-kind: Agent
-metadata:
-  name: dev-agent
-spec:
-  agentImage: quay.io/kubetask/kubetask-agent-gemini:latest
-  command: ["sh", "-c", "gemini -p \"$(cat /workspace/task.md)\""]
-  workspaceDir: /workspace
-  serviceAccountName: kubetask-agent
-  humanInTheLoop:
-    # Shared configuration (used by both strategies)
-    image: ""  # Optional: defaults to agentImage
-    ports:
-      - name: dev-server
-        containerPort: 3000
-
-    # Session Sidecar (ephemeral)
-    sidecar:
-      enabled: true
-      duration: "2h"
-
-    # Session Persistence (durable)
-    persistence:
-      enabled: true  # Requires sessionPVC configured in KubeTaskConfig
-```
-
-**Task Annotation:**
-
-When a Task is created with an Agent that has either `humanInTheLoop.sidecar.enabled: true` or `humanInTheLoop.persistence.enabled: true`, the controller automatically adds the following annotation to the Task:
-
-```yaml
-annotations:
-  kubetask.io/human-in-the-loop: "true"
-```
-
-This annotation allows users and tools to easily identify Tasks that have human-in-the-loop enabled, without needing to look up the Agent configuration.
-
-**Sidecar Container:**
-
-When `sidecar.enabled` is true, the Pod will have two containers:
-1. `agent` - Executes the task with the original command (exits when done)
-2. `session` - Runs `sleep` for the specified duration, allowing user access
-
-Users can exec into the sidecar container to use the same tools as the agent:
-
-```bash
-# Access the session sidecar container
-kubectl exec -it <pod-name> -c session -- /bin/bash
-
-# Inside the container, you can use the same tools
-$ ls /workspace          # View agent's output files
-$ gemini --yolo "..."    # Use the same gemini CLI
-```
-
-**Custom Sidecar Image:**
-
-By default, the sidecar uses the same image as the Agent. You can specify a custom image:
-
-```yaml
-humanInTheLoop:
-  image: "busybox:stable"  # Lightweight image to save resources
-  sidecar:
-    enabled: true
-```
-
-**Custom Sidecar Command:**
-
-For advanced scenarios like running code-server or other services, use the `command` field instead of `sidecar.duration`:
-
-```yaml
-humanInTheLoop:
-  image: quay.io/kubetask/kubetask-agent-code-server:latest
-  command:
-    - sh
-    - -c
-    - code-server --bind-addr 0.0.0.0:8080 ${WORKSPACE_DIR} & sleep 7200
-  ports:
-    - name: code-server
-      containerPort: 8080
-  sidecar:
-    enabled: true
-    # duration is ignored when command is specified
-```
-
-Note: When `command` is specified, `sidecar.duration` is ignored.
-
-**Port Forwarding:**
-
-For development tasks that need to expose network services (e.g., dev servers, APIs), configure ports in the `humanInTheLoop` section:
-
-```yaml
-spec:
-  humanInTheLoop:
-    ports:
-      - name: dev-server
-        containerPort: 3000
-      - name: api
-        containerPort: 8080
-        protocol: TCP  # TCP (default) or UDP
-    sidecar:
-      enabled: true
-      duration: "2h"
-```
-
-Access ports via:
-
-```bash
-kubectl port-forward pod/<pod-name> 3000:3000 8080:8080
-```
-
-**Early Stop:**
-
-To exit a human-in-the-loop Task early (without waiting for the session duration timeout), set the stop annotation:
+Running Tasks can be stopped by setting the `kubetask.io/stop=true` annotation:
 
 ```bash
 kubectl annotate task my-task kubetask.io/stop=true
 ```
 
-This stops the Task gracefully and sets its status to `Completed` with a `Stopped` condition.
-
-**How Task Stop Works (Technical Details):**
-
-When the stop annotation is detected, the controller leverages Kubernetes native Job suspension:
-
-1. **Controller sets `job.spec.suspend = true`** on the associated Job
-2. **Kubernetes sends SIGTERM** to all running Pods (including the agent and any sidecars like code-server)
-3. **Graceful termination period** (default 30 seconds) is honored, allowing processes to clean up
-4. **Pod transitions to `Failed` state** - the Pod is NOT deleted, so logs remain accessible
-5. **Task status is set to `Completed`** with a `Stopped` condition (reason: `UserStopped`)
-
-This approach ensures:
-- **Logs are preserved**: Unlike deleting the Job/Pod, suspending keeps all resources intact
-- **Graceful shutdown**: Containers receive SIGTERM and can clean up properly
-- **Sidecars are terminated**: All containers (agent + sidecars) receive the signal
-- **Resources remain for inspection**: Job and Pod exist until TTL-based cleanup (default 7 days)
-
-Reference: [Kubernetes Jobs - Suspending a Job](https://kubernetes.io/docs/concepts/workloads/controllers/job/#suspending-a-job)
-
-**Session Persistence:**
-
-When `humanInTheLoop.persistence.enabled` is true on the Agent and `sessionPVC` is configured in KubeTaskConfig, workspace content is automatically saved to a shared PVC after Task completion. This enables users to resume work later via a session Pod.
-
-**How Session Persistence Works:**
-
-1. A `save-session` sidecar is added to the Task Pod
-2. After the agent container completes, save-session copies workspace to PVC
-3. Workspace is saved at `/<namespace>/<task-name>/` on the PVC
-4. User can trigger resume by adding annotation: `kubetask.io/resume-session=true`
-5. Controller creates a session Pod with the same image, credentials, and environment
-
-**Comparison of Session Strategies:**
-
-| Aspect | Session Sidecar | Session Persistence |
-|--------|-----------------|---------------------|
-| Availability | Immediate | After annotation trigger |
-| Duration | Fixed (e.g., 1h) | Unlimited (within retention) |
-| Workspace after timeout | Lost | Preserved |
-| Resource when idle | Pod running | Only PVC storage |
-| Resume capability | No | Yes |
-| Setup complexity | Low | Medium (requires RWX PVC) |
-
-**Combined Usage:**
-
-When both strategies are enabled, users get the best of both:
-- Session sidecar provides immediate access after Task completion
-- Workspace is saved to PVC in parallel
-- If sidecar times out, user can resume via annotation later
-
-**Resume Session:**
-
-```bash
-# Trigger session resume
-kubectl annotate task my-task kubetask.io/resume-session=true
-
-# Check session status
-kubectl get task my-task -o jsonpath='{.status.sessionStatus}'
-
-# Access session Pod
-kubectl exec -it my-task-session -c session -- /bin/bash
-
-# Stop session when done
-kubectl annotate task my-task kubetask.io/stop=true
-```
-
-**Session Pod Labels:**
-
-Session Pods have specific labels for easy identification:
-
-```yaml
-labels:
-  kubetask.io/task: <task-name>
-  kubetask.io/session-task: <task-name>
-  kubetask.io/component: session
-```
-
-**Session Cleanup:**
-
-When a Task with session persistence is deleted, the controller automatically cleans up the persisted session data from the PVC.
-
-**How Cleanup Works:**
-
-1. When a Task with session persistence is created, a finalizer `kubetask.io/session-cleanup` is added
-2. When the Task is deleted, the controller creates a cleanup Job before allowing deletion
-3. The cleanup Job runs `rm -rf /<namespace>/<task-name>/` on the session PVC
-4. After the cleanup Job completes (or fails after 3 retries), the finalizer is removed
-5. The Task deletion proceeds normally
-
-**Cleanup Job Details:**
-
-- Job name: `<task-name>-cleanup`
-- Labels: `kubetask.io/cleanup: session`, `kubetask.io/task: <task-name>`
-- Auto-deleted after 5 minutes (TTL)
-- BackoffLimit: 3 retries
-
-**Error Handling:**
-
-If cleanup fails after retries, the finalizer is removed anyway to avoid blocking Task deletion indefinitely. In this case, orphaned files may remain on the PVC and require manual cleanup:
-
-```bash
-# List session directories on PVC (if using a debug Pod)
-ls /pvc/<namespace>/
-
-# Manually clean up orphaned session data
-rm -rf /pvc/<namespace>/<task-name>/
-```
+When this annotation is detected:
+- The controller suspends the Job (sets `spec.suspend=true`)
+- Kubernetes sends SIGTERM to all running Pods, triggering graceful shutdown
+- Job and Pod are preserved (not deleted), so **logs remain accessible**
+- Task status is set to `Completed` with a `Stopped` condition
 
 ---
 
@@ -1519,105 +559,6 @@ The controller:
    - Environment variables (`TASK_NAME`, `TASK_NAMESPACE`)
    - Owner references for garbage collection
    - ServiceAccount from Agent spec
-
-### Context Priority
-
-When a Task references an Agent, contexts are merged with the following priority (lowest to highest):
-
-1. **Agent.contexts** (array order, lowest priority)
-2. **Task.contexts** (array order)
-3. **Task.description** (highest priority, becomes start of /workspace/task.md)
-
-**MountPath Path Resolution:**
-
-Path resolution follows [Tekton Workspaces](https://tekton.dev/docs/pipelines/workspaces/) conventions:
-
-- **Absolute paths** (starting with `/`) are used as-is: `/etc/config/app.conf` → mounts at `/etc/config/app.conf`
-- **Relative paths** (NOT starting with `/`) are prefixed with the agent's workspaceDir: `guides/readme.md` → mounts at `${workspaceDir}/guides/readme.md`
-
-Examples:
-```yaml
-contexts:
-  - type: Text
-    mountPath: /etc/custom-config  # Absolute path - used as-is
-    text: "config content"
-  - type: Text
-    mountPath: guides/readme.md     # Relative path - becomes ${workspaceDir}/guides/readme.md
-    text: "guide content"
-```
-
-**MountPath Behavior Summary:**
-
-The following table summarizes how different context types behave based on `mountPath` configuration:
-
-| Context Type | mountPath | Behavior |
-|--------------|-----------|----------|
-| Text | Empty | Append to task.md with XML tags |
-| Text | Specified | Mount as file at path |
-| ConfigMap (with key) | Empty | Append to task.md with XML tags |
-| ConfigMap (with key) | Specified | Mount as file at path |
-| ConfigMap (no key) | Empty | Append all keys to task.md |
-| ConfigMap (no key) | Specified | Mount as directory at path |
-| Git | Empty | **Error**: mountPath required |
-| Git | Specified | Mount at specified path |
-| Runtime | N/A | Appended to task.md (mountPath ignored) |
-
-**Key Rules:**
-1. **Git requires mountPath** - Controller returns error if Git context has no mountPath
-2. **No duplicate mountPaths** - Controller returns error if two contexts target the same path
-3. **Relative paths** - Prefixed with `${WORKSPACE_DIR}` (e.g., `guides/readme.md` → `/workspace/guides/readme.md`)
-4. **Absolute paths** - Used as-is (e.g., `/etc/config`)
-
-**Empty MountPath Behavior:**
-
-When `mountPath` is empty, the context content is appended to `/workspace/task.md` with XML tags:
-
-```xml
-<context name="coding-standards" namespace="default" type="Inline">
-... content ...
-</context>
-```
-
-This enables multiple contexts to be aggregated into a single file that the agent reads.
-
-**Git Context Validation:**
-
-Git contexts require an explicit `mountPath`. This prevents conflicts when multiple Git contexts are used:
-
-```yaml
-# ❌ Invalid - Git without mountPath
-contexts:
-  - type: Git
-    git:
-      repository: https://github.com/org/repo
-    # Error: Git context requires mountPath
-
-# ✅ Valid - Git with explicit mountPath
-contexts:
-  - type: Git
-    git:
-      repository: https://github.com/org/repo
-    mountPath: /workspace/my-repo
-```
-
-**Mount Path Conflict Detection:**
-
-The controller validates that no two contexts mount to the same path. This prevents silent overwrites:
-
-```yaml
-# ❌ Invalid - duplicate mount paths
-contexts:
-  - type: Text
-    mountPath: /workspace/config.yaml
-    text: "content a"
-  - type: Text
-    mountPath: /workspace/config.yaml  # Error: mount path conflict
-    text: "content b"
-```
-
-**Context Priority (Agent vs Task):**
-
-When both Agent and Task define contexts, Task contexts are processed after Agent contexts. If they target the same `mountPath`, a conflict error is returned. To override Agent defaults, use different paths or omit the mountPath (append to task.md).
 
 ### Concurrency Control
 
@@ -1659,20 +600,13 @@ Task Created
                                     └─── Still at capacity ──► Remain Queued
 ```
 
-**Implementation Details:**
-
-- Tasks are labeled with `kubetask.io/agent: <agent-name>` for efficient capacity tracking
-- Queued Tasks have a `Queued` condition with reason `AgentAtCapacity`
-- Tasks are processed in approximate FIFO order based on creation timestamp
-- When a running Task completes, queued Tasks are checked every 10 seconds
-
 ---
 
 ## System Configuration
 
 ### KubeTaskConfig (System-level Configuration)
 
-KubeTaskConfig provides cluster or namespace-level settings for task lifecycle management, session PVC infrastructure, and container image configuration.
+KubeTaskConfig provides cluster or namespace-level settings for container image configuration.
 
 ```yaml
 apiVersion: kubetask.io/v1alpha1
@@ -1682,30 +616,10 @@ metadata:
   namespace: kubetask-system
 spec:
   # System image configuration for internal KubeTask components
-  # (git-init, context-init, save-session containers)
+  # (git-init, context-init containers)
   systemImage:
     image: quay.io/kubetask/kubetask:latest  # Default system image
     imagePullPolicy: Always  # Always/Never/IfNotPresent (default: IfNotPresent)
-
-  # Default image pull policy for agent containers
-  # Can be overridden by individual Agent specifications
-  agentImagePullPolicy: Always  # Always/Never/IfNotPresent (default: IfNotPresent)
-
-  taskLifecycle:
-    # TTL for completed/failed tasks before automatic deletion
-    # Default: 604800 (7 days)
-    # Set to 0 to disable automatic cleanup
-    ttlSecondsAfterFinished: 604800
-
-  # Session PVC infrastructure for human-in-the-loop persistence
-  # This only provides the PVC - whether persistence is enabled is
-  # controlled per-Agent via humanInTheLoop.persistence.enabled
-  sessionPVC:
-    name: kubetask-session-data
-    storageClassName: ""  # Empty = use cluster default
-    storageSize: "50Gi"
-    retentionPolicy:
-      ttlSecondsAfterTaskDeletion: 604800  # 7 days
 ```
 
 **Field Description:**
@@ -1714,12 +628,6 @@ spec:
 |-------|------|----------|-------------|
 | `spec.systemImage.image` | string | No | System image for internal components (default: built-in DefaultKubeTaskImage) |
 | `spec.systemImage.imagePullPolicy` | string | No | Pull policy for system containers: Always, Never, IfNotPresent (default: IfNotPresent) |
-| `spec.agentImagePullPolicy` | string | No | Default pull policy for agent containers: Always, Never, IfNotPresent (default: IfNotPresent) |
-| `spec.taskLifecycle.ttlSecondsAfterFinished` | int32 | No | TTL in seconds for completed/failed tasks (default: 604800 = 7 days) |
-| `spec.sessionPVC.name` | string | No | Shared PVC name (default: "kubetask-session-data") |
-| `spec.sessionPVC.storageClassName` | string | No | StorageClass for PVC (empty = cluster default) |
-| `spec.sessionPVC.storageSize` | string | No | PVC size (default: "10Gi") |
-| `spec.sessionPVC.retentionPolicy.ttlSecondsAfterTaskDeletion` | int32 | No | How long to keep session data after Task deletion (default: 604800 = 7 days) |
 
 **Image Pull Policy:**
 
@@ -1731,43 +639,6 @@ Setting `imagePullPolicy: Always` is recommended when:
 The `systemImage` configuration affects all internal KubeTask containers:
 - `git-init`: Clones Git repositories for Context
 - `context-init`: Copies ConfigMap content to writable workspace
-- `save-session`: Persists workspace to PVC after Task completion
-
-**Session Persistence Requirements:**
-
-- Agent must have `humanInTheLoop.persistence.enabled = true`
-- KubeTaskConfig must have `sessionPVC` configured
-- PVC must support ReadWriteMany (RWX) access mode for concurrent session access
-- Workspace is saved at `/<namespace>/<task-name>/` on the PVC
-
-### TTL-based Cleanup
-
-The controller automatically deletes completed or failed Tasks after the configured TTL:
-
-1. Task enters `Completed` or `Failed` phase
-2. Controller records `CompletionTime`
-3. After TTL expires, controller deletes the Task CR
-4. Associated Job and ConfigMap are deleted via OwnerReference cascade
-
-**Configuration Lookup Order:**
-
-1. `KubeTaskConfig/default` in the Task's namespace
-2. Built-in default (604800 seconds = 7 days)
-
-**Disabling Cleanup:**
-
-Set `ttlSecondsAfterFinished: 0` to disable automatic cleanup:
-
-```yaml
-spec:
-  taskLifecycle:
-    ttlSecondsAfterFinished: 0  # Disable automatic cleanup
-```
-
-### Future Extensions (TODO)
-
-- **Historical Archiving**: Archive Tasks to external storage (S3, GCS) before deletion (similar to Tekton Results)
-- **Retention by Count**: Keep the last N successful/failed tasks
 
 ---
 
@@ -1886,116 +757,8 @@ kubectl logs job/$(kubectl get task update-service-a -o jsonpath='{.status.jobNa
 # Stop a running task (gracefully stops and marks as Completed with logs preserved)
 kubectl annotate task update-service-a kubetask.io/stop=true
 
-# Resume a session (when sessionPersistence is enabled)
-kubectl annotate task update-service-a kubetask.io/resume-session=true
-
-# Access session Pod
-kubectl exec -it update-service-a-session -c session -- /bin/bash
-
-# Check session status
-kubectl get task update-service-a -o jsonpath='{.status.sessionStatus}'
-
-# List all session Pods
-kubectl get pods -l kubetask.io/component=session -n kubetask-system
-
 # Delete task
 kubectl delete task update-service-a -n kubetask-system
-```
-
-### Workflow Operations
-
-```bash
-# Create a workflow template
-kubectl apply -f workflow.yaml
-
-# List workflow templates
-kubectl get workflows -n kubetask-system
-
-# Check workflow template details
-kubectl get workflow ci-pipeline -o yaml
-
-# Delete workflow template
-kubectl delete workflow ci-pipeline -n kubetask-system
-```
-
-### WorkflowRun Operations
-
-```bash
-# Create a workflow run (referencing a template)
-kubectl apply -f workflowrun.yaml
-
-# List workflow runs
-kubectl get workflowruns -n kubetask-system
-
-# Watch workflow run execution
-kubectl get workflowrun ci-pipeline-run-001 -n kubetask-system -w
-
-# Check workflow run status
-kubectl get workflowrun ci-pipeline-run-001 -o yaml
-
-# View tasks created by workflow run
-kubectl get tasks -l kubetask.io/workflow-run=ci-pipeline-run-001 -n kubetask-system
-
-# View tasks in a specific stage
-kubectl get tasks -l kubetask.io/workflow-run=ci-pipeline-run-001,kubetask.io/stage=testing -n kubetask-system
-
-# Delete workflow run (also deletes all child Tasks)
-kubectl delete workflowrun ci-pipeline-run-001 -n kubetask-system
-```
-
-### CronWorkflow Operations
-
-```bash
-# Create a scheduled workflow
-kubectl apply -f cronworkflow.yaml
-
-# List scheduled workflows
-kubectl get cronworkflows -n kubetask-system
-
-# Watch scheduled workflow status
-kubectl get cronworkflow daily-ci -n kubetask-system -w
-
-# Check scheduled workflow details
-kubectl get cronworkflow daily-ci -o yaml
-
-# Suspend a scheduled workflow
-kubectl patch cronworkflow daily-ci -p '{"spec":{"suspend":true}}' --type=merge
-
-# Resume a scheduled workflow
-kubectl patch cronworkflow daily-ci -p '{"spec":{"suspend":false}}' --type=merge
-
-# View workflow runs created by CronWorkflow
-kubectl get workflowruns -l kubetask.io/cronworkflow=daily-ci -n kubetask-system
-
-# Delete scheduled workflow
-kubectl delete cronworkflow daily-ci -n kubetask-system
-```
-
-### WebhookTrigger Operations
-
-```bash
-# Create a webhook trigger
-kubectl apply -f webhooktrigger.yaml
-
-# List webhook triggers
-kubectl get webhooktriggers -n kubetask-system
-# Or use short name
-kubectl get wht -n kubetask-system
-
-# Check webhook trigger details
-kubectl get webhooktrigger github-pr-review -o yaml
-
-# View webhook URL
-kubectl get webhooktrigger github-pr-review -o jsonpath='{.status.webhookURL}'
-
-# View trigger statistics
-kubectl get webhooktrigger github-pr-review -o jsonpath='{.status.totalTriggered}'
-
-# List tasks created by webhook trigger
-kubectl get tasks -l kubetask.io/webhook-trigger=github-pr-review -n kubetask-system
-
-# Delete webhook trigger
-kubectl delete webhooktrigger github-pr-review -n kubetask-system
 ```
 
 ### Agent Operations
@@ -2013,44 +776,12 @@ kubectl get agent default -o yaml
 
 ---
 
-## Benefits of Design
-
-### 1. Simplicity
-
-- **Core CRDs**: Task, Workflow, WorkflowRun, CronWorkflow, WebhookTrigger, and Agent
-- **Clear separation**: WHAT (Task) vs WHEN (CronWorkflow/WebhookTrigger) vs HOW (Agent)
-- **Kubernetes-native batch**: Use Helm/Kustomize for multiple Tasks
-- **Follows K8s patterns**: CronWorkflow mirrors CronJob, WebhookTrigger mirrors event-driven patterns
-
-### 2. Stability
-
-- **Agent**: Won't change even if project renames
-- **Core concepts**: Independent of project name
-
-### 3. Flexibility
-
-- Multiple context types (File, future: MCP)
-- Directory mounts with ConfigMapRef
-- Tools image for CLI tools
-
-### 4. K8s Alignment
-
-- **Agent**: Follows K8s Config pattern
-- **Convention-based discovery**: K8s standard practice
-- **Batch via Helm/Kustomize**: Cloud-native approach
-
----
-
 ## Summary
 
 **API**:
 - **Task** - primary API for single task execution
-- **Workflow** - reusable multi-stage task template (no execution)
-- **WorkflowRun** - workflow execution instance (stage-based DAG execution)
-- **CronWorkflow** - scheduled WorkflowRun triggering (creates WorkflowRuns on cron schedule)
-- **WebhookTrigger** - event-driven Task creation from webhooks (GitHub, GitLab, custom)
 - **Agent** - stable, project-independent configuration
-- **KubeTaskConfig** - system-level settings (TTL, lifecycle)
+- **KubeTaskConfig** - system-level settings (systemImage)
 
 **Context Types** (via ContextItem):
 - `Text` - Content directly in YAML
@@ -2060,16 +791,20 @@ kubectl get agent default -o yaml
 
 **Task Lifecycle**:
 - No retry on failure (AI tasks are non-idempotent)
-- TTL-based automatic cleanup (default: 7 days)
-- Human-in-the-loop debugging support (session sidecar)
-- Session persistence for long-running work (save to PVC, resume via annotation)
 - User-initiated stop via `kubetask.io/stop=true` annotation (graceful, logs preserved)
-- Session resume via `kubetask.io/resume-session=true` annotation
 - OwnerReference cascade deletion
 
 **Batch Operations**:
 - Use Helm, Kustomize, or other templating tools
 - Kubernetes-native approach
+
+**Event-Driven Triggers**:
+- Use [Argo Events](https://argoproj.github.io/argo-events/) for webhook-driven Task creation
+- See `deploy/dogfooding/argo-events/` for examples
+
+**Workflow Orchestration**:
+- Use [Argo Workflows](https://argoproj.github.io/argo-workflows/) for multi-stage task orchestration
+- KubeTask Tasks can be triggered from Argo Workflow steps
 
 **Advantages**:
 - Simplified Architecture
@@ -2081,6 +816,6 @@ kubectl get agent default -o yaml
 ---
 
 **Status**: FINAL
-**Date**: 2025-12-23
-**Version**: v4.4 (Simplified Context API - ContextItem only)
+**Date**: 2025-12-25
+**Version**: v5.0 (Simplified API - Task, Agent, KubeTaskConfig only)
 **Maintainer**: KubeTask Team

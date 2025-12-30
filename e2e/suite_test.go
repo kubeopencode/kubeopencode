@@ -26,14 +26,13 @@ import (
 )
 
 var (
-	k8sClient      client.Client
-	clientset      *kubernetes.Clientset
-	ctx            context.Context
-	cancel         context.CancelFunc
-	scheme         *runtime.Scheme
-	testNS         string
-	echoImage      string
-	webhookBaseURL string // Base URL for webhook server (e.g., http://localhost:30082)
+	k8sClient client.Client
+	clientset *kubernetes.Clientset
+	ctx       context.Context
+	cancel    context.CancelFunc
+	scheme    *runtime.Scheme
+	testNS    string
+	echoImage string
 )
 
 const (
@@ -51,20 +50,13 @@ const (
 
 	// Test ServiceAccount name for e2e tests
 	testServiceAccount = "kubetask-e2e-agent"
-
-	// Default webhook server URL (Kind cluster node is localhost, NodePort is 30082)
-	defaultWebhookBaseURL = "http://localhost:30082"
 )
 
 // Test labels for selective execution
-// Usage: make e2e-test-label LABEL="workflow"
+// Usage: make e2e-test-label LABEL="task"
 const (
-	LabelTask           = "task"
-	LabelWorkflow       = "workflow"
-	LabelAgent          = "agent"
-	LabelCronWorkflow   = "cronworkflow"
-	LabelSession        = "session"
-	LabelWebhookTrigger = "webhooktrigger"
+	LabelTask  = "task"
+	LabelAgent = "agent"
 )
 
 func TestE2E(t *testing.T) {
@@ -89,12 +81,6 @@ var _ = BeforeSuite(func() {
 	echoImage = os.Getenv("E2E_ECHO_IMAGE")
 	if echoImage == "" {
 		echoImage = defaultEchoImage
-	}
-
-	// Get webhook base URL from env or use default (Kind cluster exposes NodePort on localhost)
-	webhookBaseURL = os.Getenv("E2E_WEBHOOK_BASE_URL")
-	if webhookBaseURL == "" {
-		webhookBaseURL = defaultWebhookBaseURL
 	}
 
 	By("Connecting to Kubernetes cluster")
@@ -167,7 +153,7 @@ var _ = BeforeSuite(func() {
 		return false
 	}, timeout, interval).Should(BeTrue(), "Controller should be running")
 
-	GinkgoWriter.Printf("E2E test setup complete. Namespace: %s, Echo Image: %s, Webhook URL: %s\n", testNS, echoImage, webhookBaseURL)
+	GinkgoWriter.Printf("E2E test setup complete. Namespace: %s, Echo Image: %s\n", testNS, echoImage)
 })
 
 var _ = AfterSuite(func() {
@@ -186,38 +172,6 @@ var _ = AfterSuite(func() {
 	if err := k8sClient.List(ctx, agents, client.InNamespace(testNS)); err == nil {
 		for _, a := range agents.Items {
 			_ = k8sClient.Delete(ctx, &a)
-		}
-	}
-
-	// Delete all WorkflowRuns in test namespace
-	workflowRuns := &kubetaskv1alpha1.WorkflowRunList{}
-	if err := k8sClient.List(ctx, workflowRuns, client.InNamespace(testNS)); err == nil {
-		for i := range workflowRuns.Items {
-			_ = k8sClient.Delete(ctx, &workflowRuns.Items[i])
-		}
-	}
-
-	// Delete all Workflows in test namespace
-	workflows := &kubetaskv1alpha1.WorkflowList{}
-	if err := k8sClient.List(ctx, workflows, client.InNamespace(testNS)); err == nil {
-		for i := range workflows.Items {
-			_ = k8sClient.Delete(ctx, &workflows.Items[i])
-		}
-	}
-
-	// Delete all CronWorkflows in test namespace
-	cronWorkflows := &kubetaskv1alpha1.CronWorkflowList{}
-	if err := k8sClient.List(ctx, cronWorkflows, client.InNamespace(testNS)); err == nil {
-		for i := range cronWorkflows.Items {
-			_ = k8sClient.Delete(ctx, &cronWorkflows.Items[i])
-		}
-	}
-
-	// Delete all WebhookTriggers in test namespace
-	webhookTriggers := &kubetaskv1alpha1.WebhookTriggerList{}
-	if err := k8sClient.List(ctx, webhookTriggers, client.InNamespace(testNS)); err == nil {
-		for i := range webhookTriggers.Items {
-			_ = k8sClient.Delete(ctx, &webhookTriggers.Items[i])
 		}
 	}
 

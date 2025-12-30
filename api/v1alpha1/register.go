@@ -43,14 +43,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&AgentList{},
 		&KubeTaskConfig{},
 		&KubeTaskConfigList{},
-		&Workflow{},
-		&WorkflowList{},
-		&WorkflowRun{},
-		&WorkflowRunList{},
-		&CronWorkflow{},
-		&CronWorkflowList{},
-		&WebhookTrigger{},
-		&WebhookTriggerList{},
 	)
 	metav1.AddToGroupVersion(scheme, GroupVersion)
 	return nil

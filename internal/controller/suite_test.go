@@ -44,28 +44,7 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 	scheme    *runtime.Scheme
-	fakeClock *FakeClock
 )
-
-// FakeClock is a mock clock for testing time-sensitive operations
-type FakeClock struct {
-	now time.Time
-}
-
-// Now returns the fake current time
-func (f *FakeClock) Now() time.Time {
-	return f.now
-}
-
-// SetTime sets the fake current time
-func (f *FakeClock) SetTime(t time.Time) {
-	f.now = t
-}
-
-// Advance advances the fake clock by the given duration
-func (f *FakeClock) Advance(d time.Duration) {
-	f.now = f.now.Add(d)
-}
 
 const (
 	timeout  = time.Second * 10
@@ -114,36 +93,6 @@ var _ = BeforeSuite(func() {
 	err = (&TaskReconciler{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	// Initialize fake clock for CronWorkflow tests
-	// Set initial time to a minute boundary to ensure predictable scheduling
-	fakeClock = &FakeClock{now: time.Now().Truncate(time.Minute)}
-
-	err = (&WorkflowReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&WorkflowRunReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&CronWorkflowReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
-		Clock:  fakeClock,
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&WebhookTriggerReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
-		// WebhookServer is nil for controller-only tests
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

@@ -25,17 +25,10 @@ type agentConfig struct {
 	podSpec            *kubetaskv1alpha1.AgentPodSpec
 	serviceAccountName string
 	maxConcurrentTasks *int32
-	humanInTheLoop     *kubetaskv1alpha1.HumanInTheLoop
-}
-
-// sessionPVCConfig holds PVC configuration for session persistence.
-// Whether persistence is enabled is determined by the Agent's humanInTheLoop.persistence.enabled field.
-type sessionPVCConfig struct {
-	pvcName string
 }
 
 // systemConfig holds resolved system-level configuration from KubeTaskConfig.
-// This configures internal KubeTask components (git-init, context-init, save-session).
+// This configures internal KubeTask components (git-init, context-init).
 type systemConfig struct {
 	// systemImage is the container image for internal KubeTask components.
 	// Defaults to DefaultKubeTaskImage if not specified.
@@ -43,9 +36,6 @@ type systemConfig struct {
 	// systemImagePullPolicy is the image pull policy for system containers.
 	// Defaults to IfNotPresent if not specified.
 	systemImagePullPolicy corev1.PullPolicy
-	// agentImagePullPolicy is the default image pull policy for agent containers.
-	// Defaults to IfNotPresent if not specified.
-	agentImagePullPolicy corev1.PullPolicy
 }
 
 // fileMount represents a file to be mounted at a specific path
@@ -137,7 +127,7 @@ func int32Ptr(i int32) *int32 {
 
 const (
 	// DefaultKubeTaskImage is the default kubetask container image.
-	// This unified image provides: controller, git-init (Git clone), save-session (workspace persistence), etc.
+	// This unified image provides: controller, git-init (Git clone), etc.
 	DefaultKubeTaskImage = "quay.io/kubetask/kubetask:latest"
 )
 
@@ -272,7 +262,7 @@ func buildContextInitContainer(workspaceDir string, fileMounts []fileMount, dirM
 }
 
 // buildJob creates a Job object for the task with context mounts
-func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, contextConfigMap *corev1.ConfigMap, fileMounts []fileMount, dirMounts []dirMount, gitMounts []gitMount, sessionCfg *sessionPVCConfig, sysCfg systemConfig) *batchv1.Job {
+func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, contextConfigMap *corev1.ConfigMap, fileMounts []fileMount, dirMounts []dirMount, gitMounts []gitMount, sysCfg systemConfig) *batchv1.Job {
 	var volumes []corev1.Volume
 	var volumeMounts []corev1.VolumeMount
 	var envVars []corev1.EnvVar
@@ -305,25 +295,6 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 		corev1.EnvVar{Name: "TASK_NAMESPACE", Value: task.Namespace},
 		corev1.EnvVar{Name: "WORKSPACE_DIR", Value: cfg.workspaceDir},
 	)
-
-	// Get humanInTheLoop configuration from Agent only
-	// (Task-level humanInTheLoop was removed to simplify the API)
-	effectiveHumanInTheLoop := cfg.humanInTheLoop
-
-	// Add human-in-the-loop session duration environment variable if sidecar is enabled
-	sidecarEnabled := effectiveHumanInTheLoop != nil &&
-		effectiveHumanInTheLoop.Sidecar != nil && effectiveHumanInTheLoop.Sidecar.Enabled
-	if sidecarEnabled {
-		sessionDuration := DefaultSessionDuration
-		if effectiveHumanInTheLoop.Sidecar.Duration != nil {
-			sessionDuration = effectiveHumanInTheLoop.Sidecar.Duration.Duration
-		}
-		durationSeconds := int64(sessionDuration.Seconds())
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  EnvHumanInTheLoopDuration,
-			Value: strconv.FormatInt(durationSeconds, 10),
-		})
-	}
 
 	// envFromSources collects secretRef entries for mounting entire secrets
 	var envFromSources []corev1.EnvFromSource
@@ -579,137 +550,15 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 	agentContainer := corev1.Container{
 		Name:            "agent",
 		Image:           cfg.agentImage,
-		ImagePullPolicy: sysCfg.agentImagePullPolicy,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command:         cfg.command,
 		Env:             envVars,
 		EnvFrom:         envFromSources,
 		VolumeMounts:    volumeMounts,
 	}
 
-	// Apply command as-is (no wrapping needed - humanInTheLoop uses sidecar approach)
-	agentContainer.Command = cfg.command
-
-	// Build containers list - start with agent container
+	// Build containers list
 	containers := []corev1.Container{agentContainer}
-
-	// Add session sidecar container if sidecar is enabled
-	if sidecarEnabled {
-		// Determine sidecar image: use custom image if specified, otherwise use agentImage
-		sidecarImage := cfg.agentImage
-		if effectiveHumanInTheLoop.Image != "" {
-			sidecarImage = effectiveHumanInTheLoop.Image
-		}
-
-		// Determine sidecar command: use Command if specified, otherwise use sleep with Duration
-		var sidecarCommand []string
-		if len(effectiveHumanInTheLoop.Command) > 0 {
-			// Use custom command (shared by both sidecar and resumed session)
-			sidecarCommand = effectiveHumanInTheLoop.Command
-		} else {
-			// Use sleep with session duration (default: 1h)
-			sessionDuration := DefaultSessionDuration
-			if effectiveHumanInTheLoop.Sidecar.Duration != nil {
-				sessionDuration = effectiveHumanInTheLoop.Sidecar.Duration.Duration
-			}
-			durationSeconds := int64(sessionDuration.Seconds())
-			sidecarCommand = []string{"sleep", fmt.Sprintf("%d", durationSeconds)}
-		}
-
-		// Build session sidecar container with same mounts and env as agent
-		sidecar := corev1.Container{
-			Name:            "session",
-			Image:           sidecarImage,
-			ImagePullPolicy: agentContainer.ImagePullPolicy,
-			Command:         sidecarCommand,
-			WorkingDir:      cfg.workspaceDir,
-			Env:             agentContainer.Env,
-			EnvFrom:         agentContainer.EnvFrom,
-			VolumeMounts:    agentContainer.VolumeMounts,
-		}
-
-		// Apply container ports to sidecar (for port-forwarding)
-		if len(effectiveHumanInTheLoop.Ports) > 0 {
-			var containerPorts []corev1.ContainerPort
-			for _, port := range effectiveHumanInTheLoop.Ports {
-				protocol := port.Protocol
-				if protocol == "" {
-					protocol = corev1.ProtocolTCP
-				}
-				containerPorts = append(containerPorts, corev1.ContainerPort{
-					Name:          port.Name,
-					ContainerPort: port.ContainerPort,
-					Protocol:      protocol,
-				})
-			}
-			sidecar.Ports = containerPorts
-		}
-
-		containers = append(containers, sidecar)
-	}
-
-	// Add save-session sidecar if session persistence is enabled
-	// This sidecar waits for the agent to complete and copies workspace to PVC
-	// Persistence is enabled when:
-	// 1. Agent has humanInTheLoop.persistence.enabled = true
-	// 2. KubeTaskConfig has sessionPVC configured (provides PVC name)
-	enableSessionPersistence := sessionCfg != nil && effectiveHumanInTheLoop != nil &&
-		effectiveHumanInTheLoop.Persistence != nil && effectiveHumanInTheLoop.Persistence.Enabled
-	if enableSessionPersistence {
-		// Add PVC volume for session persistence
-		volumes = append(volumes, corev1.Volume{
-			Name: "session-pvc",
-			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: sessionCfg.pvcName,
-				},
-			},
-		})
-
-		// Add shared volume for signaling between agent and save-session containers
-		volumes = append(volumes, corev1.Volume{
-			Name: "session-signal",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
-		})
-
-		// Build save-session sidecar container
-		// Uses kubetask save-session command to wait for agent and save workspace
-		saveSessionSidecar := corev1.Container{
-			Name:            "save-session",
-			Image:           sysCfg.systemImage,
-			ImagePullPolicy: sysCfg.systemImagePullPolicy,
-			Command:         []string{"/kubetask", "save-session"},
-			Env: []corev1.EnvVar{
-				{Name: "TASK_NAME", Value: task.Name},
-				{Name: "TASK_NAMESPACE", Value: task.Namespace},
-				{Name: "WORKSPACE_DIR", Value: cfg.workspaceDir},
-				{Name: "PVC_MOUNT_PATH", Value: "/pvc"},
-				{Name: "SIGNAL_FILE", Value: "/signal/.agent-done"},
-			},
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: "session-pvc", MountPath: "/pvc"},
-				{Name: "session-signal", MountPath: "/signal"},
-			},
-		}
-		// Add the same volume mounts as agent container for accessing workspace
-		saveSessionSidecar.VolumeMounts = append(saveSessionSidecar.VolumeMounts, volumeMounts...)
-
-		containers = append(containers, saveSessionSidecar)
-
-		// Wrap the agent command to create signal file on exit
-		// This modifies the agent container's command to signal completion
-		agentContainer.VolumeMounts = append(agentContainer.VolumeMounts, corev1.VolumeMount{
-			Name:      "session-signal",
-			MountPath: "/signal",
-		})
-		// Update the agent container in the containers list
-		containers[0] = agentContainer
-
-		// Wrap the original command to create signal file on completion
-		originalCmd := strings.Join(cfg.command, " ")
-		wrappedCmd := fmt.Sprintf(`%s; EXIT_CODE=$?; touch /signal/.agent-done; exit $EXIT_CODE`, originalCmd)
-		containers[0].Command = []string{"sh", "-c", wrappedCmd}
-	}
 
 	// Build PodSpec with scheduling configuration
 	podSpec := corev1.PodSpec{
@@ -766,290 +615,6 @@ func buildJob(task *kubetaskv1alpha1.Task, jobName string, cfg agentConfig, cont
 					Labels: podLabels,
 				},
 				Spec: podSpec,
-			},
-		},
-	}
-}
-
-// buildSessionPod creates a Pod for resuming work on a completed Task.
-// The session Pod has the same image, credentials, and environment as the original agent,
-// but mounts the persisted workspace from the shared PVC.
-func buildSessionPod(task *kubetaskv1alpha1.Task, cfg agentConfig, sessionCfg *sessionPVCConfig, sysCfg systemConfig) *corev1.Pod {
-	sessionPodName := fmt.Sprintf("%s-session", task.Name)
-	pvcSubPath := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
-
-	// Base environment variables for SCC compatibility (see buildJob comments)
-	envVars := []corev1.EnvVar{
-		{Name: "HOME", Value: "/tmp"},
-		{Name: "SHELL", Value: "/bin/bash"},
-		{Name: "TASK_NAME", Value: task.Name},
-		{Name: "TASK_NAMESPACE", Value: task.Namespace},
-		{Name: "WORKSPACE_DIR", Value: cfg.workspaceDir},
-	}
-
-	// envFromSources collects secretRef entries for mounting entire secrets
-	var envFromSources []corev1.EnvFromSource
-
-	var volumes []corev1.Volume
-	var volumeMounts []corev1.VolumeMount
-
-	// Add session PVC volume - this is where the persisted workspace is stored
-	volumes = append(volumes, corev1.Volume{
-		Name: "session-workspace",
-		VolumeSource: corev1.VolumeSource{
-			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-				ClaimName: sessionCfg.pvcName,
-			},
-		},
-	})
-
-	// Mount the PVC subdirectory as the workspace
-	volumeMounts = append(volumeMounts, corev1.VolumeMount{
-		Name:      "session-workspace",
-		MountPath: cfg.workspaceDir,
-		SubPath:   pvcSubPath,
-	})
-
-	// Add credentials (same as in buildJob)
-	for i, cred := range cfg.credentials {
-		if cred.SecretRef.Key == nil || *cred.SecretRef.Key == "" {
-			if cred.MountPath != nil && *cred.MountPath != "" {
-				volumeName := fmt.Sprintf("credential-%d", i)
-				var fileMode int32 = 0600
-				if cred.FileMode != nil {
-					fileMode = *cred.FileMode
-				}
-				volumes = append(volumes, corev1.Volume{
-					Name: volumeName,
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName:  cred.SecretRef.Name,
-							DefaultMode: &fileMode,
-						},
-					},
-				})
-				volumeMounts = append(volumeMounts, corev1.VolumeMount{
-					Name:      volumeName,
-					MountPath: *cred.MountPath,
-				})
-			} else {
-				envFromSources = append(envFromSources, corev1.EnvFromSource{
-					SecretRef: &corev1.SecretEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: cred.SecretRef.Name,
-						},
-					},
-				})
-			}
-			continue
-		}
-
-		if cred.Env != nil && *cred.Env != "" {
-			envVars = append(envVars, corev1.EnvVar{
-				Name: *cred.Env,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: cred.SecretRef.Name,
-						},
-						Key: *cred.SecretRef.Key,
-					},
-				},
-			})
-		}
-
-		if cred.MountPath != nil && *cred.MountPath != "" {
-			volumeName := fmt.Sprintf("credential-%d", i)
-			var fileMode int32 = 0600
-			if cred.FileMode != nil {
-				fileMode = *cred.FileMode
-			}
-			volumes = append(volumes, corev1.Volume{
-				Name: volumeName,
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: cred.SecretRef.Name,
-						Items: []corev1.KeyToPath{
-							{
-								Key:  *cred.SecretRef.Key,
-								Path: "secret-file",
-								Mode: &fileMode,
-							},
-						},
-						DefaultMode: &fileMode,
-					},
-				},
-			})
-			volumeMounts = append(volumeMounts, corev1.VolumeMount{
-				Name:      volumeName,
-				MountPath: *cred.MountPath,
-				SubPath:   "secret-file",
-			})
-		}
-	}
-
-	// Determine session command and image from humanInTheLoop config
-	var command []string
-	image := cfg.agentImage
-
-	if cfg.humanInTheLoop != nil {
-		// Use shared image if specified
-		if cfg.humanInTheLoop.Image != "" {
-			image = cfg.humanInTheLoop.Image
-		}
-
-		// Use shared command if specified
-		if len(cfg.humanInTheLoop.Command) > 0 {
-			command = cfg.humanInTheLoop.Command
-		} else {
-			// Default: sleep for the sidecar duration (if configured) or 1 hour
-			sessionDuration := DefaultSessionDuration
-			if cfg.humanInTheLoop.Sidecar != nil && cfg.humanInTheLoop.Sidecar.Duration != nil {
-				sessionDuration = cfg.humanInTheLoop.Sidecar.Duration.Duration
-			}
-			durationSeconds := int64(sessionDuration.Seconds())
-			command = []string{"sleep", fmt.Sprintf("%d", durationSeconds)}
-		}
-	} else {
-		// Fallback: default sleep
-		command = []string{"sleep", "3600"}
-	}
-
-	// Build session container
-	sessionContainer := corev1.Container{
-		Name:            "session",
-		Image:           image,
-		ImagePullPolicy: sysCfg.agentImagePullPolicy,
-		Command:         command,
-		WorkingDir:      cfg.workspaceDir,
-		Env:             envVars,
-		EnvFrom:         envFromSources,
-		VolumeMounts:    volumeMounts,
-	}
-
-	// Apply ports if specified
-	if cfg.humanInTheLoop != nil && len(cfg.humanInTheLoop.Ports) > 0 {
-		var containerPorts []corev1.ContainerPort
-		for _, port := range cfg.humanInTheLoop.Ports {
-			protocol := port.Protocol
-			if protocol == "" {
-				protocol = corev1.ProtocolTCP
-			}
-			containerPorts = append(containerPorts, corev1.ContainerPort{
-				Name:          port.Name,
-				ContainerPort: port.ContainerPort,
-				Protocol:      protocol,
-			})
-		}
-		sessionContainer.Ports = containerPorts
-	}
-
-	// Build pod labels
-	podLabels := map[string]string{
-		"app":                      "kubetask",
-		"kubetask.io/task":         task.Name,
-		"kubetask.io/session-task": task.Name,
-		"kubetask.io/component":    "session",
-	}
-
-	// Build PodSpec
-	podSpec := corev1.PodSpec{
-		ServiceAccountName: cfg.serviceAccountName,
-		Containers:         []corev1.Container{sessionContainer},
-		Volumes:            volumes,
-		RestartPolicy:      corev1.RestartPolicyNever,
-	}
-
-	// Apply PodSpec configuration if specified
-	if cfg.podSpec != nil {
-		if cfg.podSpec.Scheduling != nil {
-			if cfg.podSpec.Scheduling.NodeSelector != nil {
-				podSpec.NodeSelector = cfg.podSpec.Scheduling.NodeSelector
-			}
-			if cfg.podSpec.Scheduling.Tolerations != nil {
-				podSpec.Tolerations = cfg.podSpec.Scheduling.Tolerations
-			}
-			if cfg.podSpec.Scheduling.Affinity != nil {
-				podSpec.Affinity = cfg.podSpec.Scheduling.Affinity
-			}
-		}
-		if cfg.podSpec.RuntimeClassName != nil {
-			podSpec.RuntimeClassName = cfg.podSpec.RuntimeClassName
-		}
-	}
-
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      sessionPodName,
-			Namespace: task.Namespace,
-			Labels:    podLabels,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: task.APIVersion,
-					Kind:       task.Kind,
-					Name:       task.Name,
-					UID:        task.UID,
-					Controller: boolPtr(true),
-				},
-			},
-		},
-		Spec: podSpec,
-	}
-}
-
-// buildSessionCleanupJob creates a Job to clean up session data from PVC.
-// The cleanup Job deletes the session directory at /<namespace>/<task-name>/ on the PVC.
-// This is called when a Task with session persistence is being deleted.
-func buildSessionCleanupJob(task *kubetaskv1alpha1.Task, sessionCfg *sessionPVCConfig, sysCfg systemConfig) *batchv1.Job {
-	jobName := fmt.Sprintf("%s-cleanup", task.Name)
-	sessionPath := fmt.Sprintf("/%s/%s", task.Namespace, task.Name)
-
-	// TTL to auto-delete the Job after completion (5 minutes)
-	ttlSeconds := int32(300)
-
-	return &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: task.Namespace,
-			Labels: map[string]string{
-				"app":                 "kubetask",
-				"kubetask.io/task":    task.Name,
-				"kubetask.io/cleanup": "session",
-			},
-			// NO OwnerReference - Task is being deleted, so we can't set it as owner
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit:            int32Ptr(3),
-			TTLSecondsAfterFinished: &ttlSeconds,
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app":                 "kubetask",
-						"kubetask.io/task":    task.Name,
-						"kubetask.io/cleanup": "session",
-					},
-				},
-				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers: []corev1.Container{{
-						Name:            "cleanup",
-						Image:           sysCfg.systemImage,
-						ImagePullPolicy: sysCfg.systemImagePullPolicy,
-						Command:         []string{"sh", "-c", fmt.Sprintf("rm -rf /pvc%s && echo 'Cleaned up session data at %s'", sessionPath, sessionPath)},
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "session-pvc",
-							MountPath: "/pvc",
-						}},
-					}},
-					Volumes: []corev1.Volume{{
-						Name: "session-pvc",
-						VolumeSource: corev1.VolumeSource{
-							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: sessionCfg.pvcName,
-							},
-						},
-					}},
-				},
 			},
 		},
 	}

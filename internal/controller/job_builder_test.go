@@ -7,7 +7,6 @@ package controller
 import (
 	"strings"
 	"testing"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,7 +20,6 @@ func defaultSystemConfig() systemConfig {
 	return systemConfig{
 		systemImage:           DefaultKubeTaskImage,
 		systemImagePullPolicy: corev1.PullIfNotPresent,
-		agentImagePullPolicy:  corev1.PullIfNotPresent,
 	}
 }
 
@@ -229,7 +227,7 @@ func TestBuildJob_BasicTask(t *testing.T) {
 		command:            []string{"sh", "-c", "echo test"},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, defaultSystemConfig())
 
 	// Verify job metadata
 	if job.Name != "test-task-job" {
@@ -346,7 +344,7 @@ func TestBuildJob_WithCredentials(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, defaultSystemConfig())
 
 	container := job.Spec.Template.Spec.Containers[0]
 
@@ -422,7 +420,7 @@ func TestBuildJob_WithEntireSecretCredential(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, defaultSystemConfig())
 
 	container := job.Spec.Template.Spec.Containers[0]
 
@@ -477,7 +475,7 @@ func TestBuildJob_WithMixedCredentials(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, defaultSystemConfig())
 
 	container := job.Spec.Template.Spec.Containers[0]
 
@@ -544,7 +542,7 @@ func TestBuildJob_WithEntireSecretAsDirectory(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, defaultSystemConfig())
 
 	container := job.Spec.Template.Spec.Containers[0]
 	podSpec := job.Spec.Template.Spec
@@ -598,154 +596,6 @@ func TestBuildJob_WithEntireSecretAsDirectory(t *testing.T) {
 	}
 }
 
-func TestBuildJob_WithHumanInTheLoop_Sidecar(t *testing.T) {
-	// Test that humanInTheLoop creates a session sidecar container instead of wrapping command
-	duration := metav1.Duration{Duration: 30 * time.Minute}
-	task := &kubetaskv1alpha1.Task{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
-			Namespace: "default",
-			UID:       types.UID("test-uid"),
-		},
-		Spec: kubetaskv1alpha1.TaskSpec{},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	cfg := agentConfig{
-		agentImage:         "test-agent:v1.0.0",
-		workspaceDir:       "/workspace",
-		serviceAccountName: "test-sa",
-		command:            []string{"sh", "-c", "echo hello"},
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Sidecar: &kubetaskv1alpha1.SessionSidecar{
-				Enabled:  true,
-				Duration: &duration,
-			},
-		},
-	}
-
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
-
-	// Verify there are 2 containers: agent and session sidecar
-	containers := job.Spec.Template.Spec.Containers
-	if len(containers) != 2 {
-		t.Fatalf("len(Containers) = %d, want 2 (agent + sidecar)", len(containers))
-	}
-
-	// Verify agent container command is NOT wrapped (uses original command)
-	agentContainer := containers[0]
-	if agentContainer.Name != "agent" {
-		t.Errorf("Containers[0].Name = %q, want %q", agentContainer.Name, "agent")
-	}
-	if len(agentContainer.Command) != 3 {
-		t.Fatalf("len(agent Command) = %d, want 3", len(agentContainer.Command))
-	}
-	if agentContainer.Command[2] != "echo hello" {
-		t.Errorf("Agent command should be original 'echo hello', got: %s", agentContainer.Command[2])
-	}
-
-	// Verify sidecar container
-	sidecar := containers[1]
-	if sidecar.Name != "session" {
-		t.Errorf("Containers[1].Name = %q, want %q", sidecar.Name, "session")
-	}
-	if sidecar.Image != "test-agent:v1.0.0" {
-		t.Errorf("Sidecar image = %q, want %q (same as agent)", sidecar.Image, "test-agent:v1.0.0")
-	}
-	// Verify sidecar has the same ImagePullPolicy as agent
-	if sidecar.ImagePullPolicy != agentContainer.ImagePullPolicy {
-		t.Errorf("Sidecar ImagePullPolicy = %q, agent ImagePullPolicy = %q, should be equal",
-			sidecar.ImagePullPolicy, agentContainer.ImagePullPolicy)
-	}
-	// Verify sidecar command is sleep with correct duration
-	if len(sidecar.Command) != 2 {
-		t.Fatalf("len(sidecar Command) = %d, want 2", len(sidecar.Command))
-	}
-	if sidecar.Command[0] != "sleep" {
-		t.Errorf("Sidecar Command[0] = %q, want %q", sidecar.Command[0], "sleep")
-	}
-	if sidecar.Command[1] != "1800" {
-		t.Errorf("Sidecar Command[1] = %q, want %q (30 minutes)", sidecar.Command[1], "1800")
-	}
-
-	// Verify sidecar shares the same working directory
-	if sidecar.WorkingDir != "/workspace" {
-		t.Errorf("Sidecar WorkingDir = %q, want %q", sidecar.WorkingDir, "/workspace")
-	}
-
-	// Verify sidecar has the same volume mounts as agent
-	if len(sidecar.VolumeMounts) != len(agentContainer.VolumeMounts) {
-		t.Errorf("Sidecar should have same number of volume mounts as agent")
-	}
-
-	// Verify session duration env var in agent container
-	var foundDurationEnv bool
-	for _, env := range agentContainer.Env {
-		if env.Name == EnvHumanInTheLoopDuration {
-			foundDurationEnv = true
-			if env.Value != "1800" {
-				t.Errorf("KUBETASK_SESSION_DURATION_SECONDS = %q, want %q", env.Value, "1800")
-			}
-		}
-	}
-	if !foundDurationEnv {
-		t.Errorf("KUBETASK_SESSION_DURATION_SECONDS env not found in agent container")
-	}
-}
-
-func TestBuildJob_WithHumanInTheLoop_CustomImage(t *testing.T) {
-	// Test that custom image can be specified for the sidecar
-	duration := metav1.Duration{Duration: 30 * time.Minute}
-	task := &kubetaskv1alpha1.Task{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
-			Namespace: "default",
-			UID:       types.UID("test-uid"),
-		},
-		Spec: kubetaskv1alpha1.TaskSpec{},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	cfg := agentConfig{
-		agentImage:         "test-agent:v1.0.0",
-		workspaceDir:       "/workspace",
-		serviceAccountName: "test-sa",
-		command:            []string{"python", "-c", "print('hello; world')"},
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Image: "busybox:stable", // Custom lightweight image
-			Sidecar: &kubetaskv1alpha1.SessionSidecar{
-				Enabled:  true,
-				Duration: &duration,
-			},
-		},
-	}
-
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
-
-	// Verify there are 2 containers
-	containers := job.Spec.Template.Spec.Containers
-	if len(containers) != 2 {
-		t.Fatalf("len(Containers) = %d, want 2", len(containers))
-	}
-
-	// Verify agent container uses original command unmodified
-	agentContainer := containers[0]
-	if len(agentContainer.Command) != 3 {
-		t.Fatalf("len(agent Command) = %d, want 3, got: %v", len(agentContainer.Command), agentContainer.Command)
-	}
-	if agentContainer.Command[0] != "python" {
-		t.Errorf("Agent Command[0] = %q, want %q", agentContainer.Command[0], "python")
-	}
-
-	// Verify sidecar uses custom image
-	sidecar := containers[1]
-	if sidecar.Image != "busybox:stable" {
-		t.Errorf("Sidecar image = %q, want %q", sidecar.Image, "busybox:stable")
-	}
-}
-
 func TestBuildJob_WithPodScheduling(t *testing.T) {
 	task := &kubetaskv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
@@ -784,7 +634,7 @@ func TestBuildJob_WithPodScheduling(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, defaultSystemConfig())
 
 	podSpec := job.Spec.Template.Spec
 
@@ -849,7 +699,7 @@ func TestBuildJob_WithContextConfigMap(t *testing.T) {
 		{filePath: "/workspace/task.md"},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, nil, nil, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, nil, nil, defaultSystemConfig())
 
 	// Verify context-files volume exists (for init container to read from)
 	var foundContextVolume bool
@@ -944,7 +794,7 @@ func TestBuildJob_WithDirMounts(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, dirMounts, nil, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, nil, nil, dirMounts, nil, defaultSystemConfig())
 
 	// Verify dir-mount volume exists (for init container to read from)
 	var foundDirVolume bool
@@ -1041,7 +891,7 @@ func TestBuildJob_WithGitMounts(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, gitMounts, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, gitMounts, defaultSystemConfig())
 
 	// Verify init container exists
 	if len(job.Spec.Template.Spec.InitContainers) != 1 {
@@ -1131,7 +981,7 @@ func TestBuildJob_WithGitMountsAndAuth(t *testing.T) {
 		},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, gitMounts, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, gitMounts, defaultSystemConfig())
 
 	// Verify init container has auth env vars
 	initContainer := job.Spec.Template.Spec.InitContainers[0]
@@ -1219,484 +1069,6 @@ func TestBuildGitInitContainer(t *testing.T) {
 	}
 	if container.VolumeMounts[0].MountPath != "/git" {
 		t.Errorf("Volume mount path = %q, want %q", container.VolumeMounts[0].MountPath, "/git")
-	}
-}
-
-func TestBuildJob_WithHumanInTheLoop_Ports(t *testing.T) {
-	// Test that ports are applied to the sidecar container, not the agent
-	duration := metav1.Duration{Duration: 30 * time.Minute}
-	task := &kubetaskv1alpha1.Task{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
-			Namespace: "default",
-			UID:       types.UID("test-uid"),
-		},
-		Spec: kubetaskv1alpha1.TaskSpec{},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	cfg := agentConfig{
-		agentImage:         "test-agent:v1.0.0",
-		workspaceDir:       "/workspace",
-		serviceAccountName: "test-sa",
-		command:            []string{"sh", "-c", "npm run dev"},
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Ports: []kubetaskv1alpha1.ContainerPort{
-				{
-					Name:          "dev-server",
-					ContainerPort: 3000,
-					Protocol:      corev1.ProtocolTCP,
-				},
-				{
-					Name:          "api",
-					ContainerPort: 8080,
-					// Protocol not specified, should default to TCP
-				},
-			},
-			Sidecar: &kubetaskv1alpha1.SessionSidecar{
-				Enabled:  true,
-				Duration: &duration,
-			},
-		},
-	}
-
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
-
-	containers := job.Spec.Template.Spec.Containers
-	if len(containers) != 2 {
-		t.Fatalf("len(Containers) = %d, want 2", len(containers))
-	}
-
-	// Verify agent container has no ports
-	agentContainer := containers[0]
-	if len(agentContainer.Ports) != 0 {
-		t.Errorf("Agent container should have no ports, got %d", len(agentContainer.Ports))
-	}
-
-	// Verify sidecar container has the ports
-	sidecar := containers[1]
-	if len(sidecar.Ports) != 2 {
-		t.Fatalf("len(sidecar.Ports) = %d, want 2", len(sidecar.Ports))
-	}
-
-	// Verify first port
-	if sidecar.Ports[0].Name != "dev-server" {
-		t.Errorf("Ports[0].Name = %q, want %q", sidecar.Ports[0].Name, "dev-server")
-	}
-	if sidecar.Ports[0].ContainerPort != 3000 {
-		t.Errorf("Ports[0].ContainerPort = %d, want %d", sidecar.Ports[0].ContainerPort, 3000)
-	}
-	if sidecar.Ports[0].Protocol != corev1.ProtocolTCP {
-		t.Errorf("Ports[0].Protocol = %q, want %q", sidecar.Ports[0].Protocol, corev1.ProtocolTCP)
-	}
-
-	// Verify second port (with default protocol)
-	if sidecar.Ports[1].Name != "api" {
-		t.Errorf("Ports[1].Name = %q, want %q", sidecar.Ports[1].Name, "api")
-	}
-	if sidecar.Ports[1].ContainerPort != 8080 {
-		t.Errorf("Ports[1].ContainerPort = %d, want %d", sidecar.Ports[1].ContainerPort, 8080)
-	}
-	if sidecar.Ports[1].Protocol != corev1.ProtocolTCP {
-		t.Errorf("Ports[1].Protocol = %q, want %q (default)", sidecar.Ports[1].Protocol, corev1.ProtocolTCP)
-	}
-}
-
-func TestBuildJob_WithHumanInTheLoop_Disabled(t *testing.T) {
-	// Test that when humanInTheLoop is disabled, no sidecar is created
-	task := &kubetaskv1alpha1.Task{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
-			Namespace: "default",
-			UID:       types.UID("test-uid"),
-		},
-		Spec: kubetaskv1alpha1.TaskSpec{},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	cfg := agentConfig{
-		agentImage:         "test-agent:v1.0.0",
-		workspaceDir:       "/workspace",
-		serviceAccountName: "test-sa",
-		command:            []string{"sh", "-c", "echo test"},
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Ports: []kubetaskv1alpha1.ContainerPort{
-				{
-					Name:          "http",
-					ContainerPort: 80,
-				},
-			},
-			Sidecar: &kubetaskv1alpha1.SessionSidecar{
-				Enabled: false,
-			},
-		},
-	}
-
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
-
-	containers := job.Spec.Template.Spec.Containers
-
-	// Only agent container should exist, no sidecar
-	if len(containers) != 1 {
-		t.Fatalf("len(Containers) = %d, want 1 (no sidecar when disabled)", len(containers))
-	}
-
-	// Agent container should have no ports (ports only apply to sidecar)
-	if len(containers[0].Ports) != 0 {
-		t.Errorf("Agent container should have no ports when humanInTheLoop is disabled, got %d", len(containers[0].Ports))
-	}
-}
-
-func TestBuildJob_WithHumanInTheLoop_UDPPort(t *testing.T) {
-	// Test that UDP protocol is respected on sidecar ports
-	task := &kubetaskv1alpha1.Task{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
-			Namespace: "default",
-			UID:       types.UID("test-uid"),
-		},
-		Spec: kubetaskv1alpha1.TaskSpec{},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	cfg := agentConfig{
-		agentImage:         "test-agent:v1.0.0",
-		workspaceDir:       "/workspace",
-		serviceAccountName: "test-sa",
-		command:            []string{"sh", "-c", "echo test"},
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Ports: []kubetaskv1alpha1.ContainerPort{
-				{
-					Name:          "dns",
-					ContainerPort: 53,
-					Protocol:      corev1.ProtocolUDP,
-				},
-			},
-			Sidecar: &kubetaskv1alpha1.SessionSidecar{
-				Enabled: true,
-			},
-		},
-	}
-
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
-
-	containers := job.Spec.Template.Spec.Containers
-	if len(containers) != 2 {
-		t.Fatalf("len(Containers) = %d, want 2", len(containers))
-	}
-
-	// Verify UDP protocol is respected on sidecar
-	sidecar := containers[1]
-	if len(sidecar.Ports) != 1 {
-		t.Fatalf("len(sidecar.Ports) = %d, want 1", len(sidecar.Ports))
-	}
-	if sidecar.Ports[0].Protocol != corev1.ProtocolUDP {
-		t.Errorf("Ports[0].Protocol = %q, want %q", sidecar.Ports[0].Protocol, corev1.ProtocolUDP)
-	}
-}
-
-func TestBuildJob_WithHumanInTheLoop_FromAgent(t *testing.T) {
-	// Test that humanInTheLoop from Agent creates sidecar with correct configuration
-	task := &kubetaskv1alpha1.Task{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
-			Namespace: "default",
-			UID:       types.UID("test-uid"),
-		},
-		Spec: kubetaskv1alpha1.TaskSpec{},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	duration := metav1.Duration{Duration: 2 * time.Hour}
-	cfg := agentConfig{
-		agentImage:         "test-agent:v1.0.0",
-		workspaceDir:       "/workspace",
-		serviceAccountName: "test-sa",
-		command:            []string{"sh", "-c", "echo test"},
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Ports: []kubetaskv1alpha1.ContainerPort{
-				{
-					Name:          "agent-port",
-					ContainerPort: 9000,
-				},
-			},
-			Sidecar: &kubetaskv1alpha1.SessionSidecar{
-				Enabled:  true,
-				Duration: &duration,
-			},
-		},
-	}
-
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
-
-	containers := job.Spec.Template.Spec.Containers
-	if len(containers) != 2 {
-		t.Fatalf("len(Containers) = %d, want 2", len(containers))
-	}
-
-	// Verify sidecar has correct sleep duration (2 hours = 7200 seconds)
-	sidecar := containers[1]
-	if sidecar.Command[1] != "7200" {
-		t.Errorf("Sidecar Command[1] = %q, want %q (2 hours)", sidecar.Command[1], "7200")
-	}
-
-	// Verify ports from Agent's humanInTheLoop are applied to sidecar
-	if len(sidecar.Ports) != 1 {
-		t.Fatalf("len(sidecar.Ports) = %d, want 1", len(sidecar.Ports))
-	}
-	if sidecar.Ports[0].Name != "agent-port" {
-		t.Errorf("Ports[0].Name = %q, want %q", sidecar.Ports[0].Name, "agent-port")
-	}
-	if sidecar.Ports[0].ContainerPort != 9000 {
-		t.Errorf("Ports[0].ContainerPort = %d, want %d", sidecar.Ports[0].ContainerPort, 9000)
-	}
-}
-
-func TestBuildJob_WithHumanInTheLoop_DefaultDuration(t *testing.T) {
-	// Test that default duration (1 hour) is used when not specified
-	task := &kubetaskv1alpha1.Task{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
-			Namespace: "default",
-			UID:       types.UID("test-uid"),
-		},
-		Spec: kubetaskv1alpha1.TaskSpec{},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	cfg := agentConfig{
-		agentImage:         "test-agent:v1.0.0",
-		workspaceDir:       "/workspace",
-		serviceAccountName: "test-sa",
-		command:            []string{"sh", "-c", "echo test"},
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Sidecar: &kubetaskv1alpha1.SessionSidecar{
-				Enabled: true,
-				// Duration not specified, should use default (1 hour)
-			},
-		},
-	}
-
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
-
-	containers := job.Spec.Template.Spec.Containers
-	if len(containers) != 2 {
-		t.Fatalf("len(Containers) = %d, want 2", len(containers))
-	}
-
-	// Verify sidecar uses default duration (1 hour = 3600 seconds)
-	sidecar := containers[1]
-	if sidecar.Command[1] != "3600" {
-		t.Errorf("Sidecar Command[1] = %q, want %q (default 1 hour)", sidecar.Command[1], "3600")
-	}
-}
-
-func TestBuildJob_WithHumanInTheLoop_SidecarSharesAllMounts(t *testing.T) {
-	// Test that sidecar container has all the same mounts as agent container
-	// including context ConfigMap, directory mounts, and git mounts
-	duration := metav1.Duration{Duration: 30 * time.Minute}
-	task := &kubetaskv1alpha1.Task{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
-			Namespace: "default",
-			UID:       types.UID("test-uid"),
-		},
-		Spec: kubetaskv1alpha1.TaskSpec{},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	envVarName := "GITHUB_TOKEN"
-	secretKey := "token"
-	mountPath := "/home/agent/.ssh/id_rsa"
-	cfg := agentConfig{
-		agentImage:         "test-agent:v1.0.0",
-		workspaceDir:       "/workspace",
-		serviceAccountName: "test-sa",
-		command:            []string{"sh", "-c", "echo hello"},
-		credentials: []kubetaskv1alpha1.Credential{
-			{
-				SecretRef: kubetaskv1alpha1.SecretReference{
-					Name: "github-creds",
-					Key:  &secretKey,
-				},
-				Env: &envVarName,
-			},
-			{
-				SecretRef: kubetaskv1alpha1.SecretReference{
-					Name: "ssh-key",
-					Key:  &secretKey,
-				},
-				MountPath: &mountPath,
-			},
-		},
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Sidecar: &kubetaskv1alpha1.SessionSidecar{
-				Enabled:  true,
-				Duration: &duration,
-			},
-		},
-	}
-
-	// Create context ConfigMap with file mounts
-	contextConfigMap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task-context",
-			Namespace: "default",
-		},
-		Data: map[string]string{
-			"workspace-task.md": "# Test Task",
-		},
-	}
-
-	fileMounts := []fileMount{
-		{filePath: "/workspace/task.md"},
-	}
-
-	dirMounts := []dirMount{
-		{dirPath: "/workspace/config", configMapName: "my-config", optional: false},
-	}
-
-	gitMounts := []gitMount{
-		{
-			contextName: "my-repo",
-			repository:  "https://github.com/example/repo",
-			ref:         "main",
-			mountPath:   "/workspace/src",
-		},
-	}
-
-	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, dirMounts, gitMounts, nil, defaultSystemConfig())
-
-	containers := job.Spec.Template.Spec.Containers
-	if len(containers) != 2 {
-		t.Fatalf("len(Containers) = %d, want 2", len(containers))
-	}
-
-	agentContainer := containers[0]
-	sidecar := containers[1]
-
-	// Verify sidecar has the same number of volume mounts as agent
-	if len(sidecar.VolumeMounts) != len(agentContainer.VolumeMounts) {
-		t.Errorf("Sidecar VolumeMounts count = %d, agent VolumeMounts count = %d, should be equal",
-			len(sidecar.VolumeMounts), len(agentContainer.VolumeMounts))
-	}
-
-	// Verify specific mounts exist on both agent and sidecar
-	agentMountPaths := make(map[string]bool)
-	for _, vm := range agentContainer.VolumeMounts {
-		agentMountPaths[vm.MountPath] = true
-	}
-
-	sidecarMountPaths := make(map[string]bool)
-	for _, vm := range sidecar.VolumeMounts {
-		sidecarMountPaths[vm.MountPath] = true
-	}
-
-	// Verify all expected mounts are present
-	// Note: With the new emptyDir + init container approach, workspace content is
-	// accessed via the workspace emptyDir mount, not individual file/dir mounts.
-	// The init container copies ConfigMap content to the workspace emptyDir.
-	expectedMounts := []string{
-		"/workspace",              // Workspace emptyDir (includes task.md and config via init container)
-		"/workspace/src",          // Git mount (still separate emptyDir)
-		"/home/agent/.ssh/id_rsa", // Credential file mount
-	}
-
-	for _, path := range expectedMounts {
-		if !agentMountPaths[path] {
-			t.Errorf("Agent container missing expected mount: %s", path)
-		}
-		if !sidecarMountPaths[path] {
-			t.Errorf("Sidecar container missing expected mount: %s (should have same mounts as agent)", path)
-		}
-	}
-
-	// Verify sidecar has the same environment variables as agent
-	if len(sidecar.Env) != len(agentContainer.Env) {
-		t.Errorf("Sidecar Env count = %d, agent Env count = %d, should be equal",
-			len(sidecar.Env), len(agentContainer.Env))
-	}
-
-	// Verify sidecar has the same EnvFrom as agent
-	if len(sidecar.EnvFrom) != len(agentContainer.EnvFrom) {
-		t.Errorf("Sidecar EnvFrom count = %d, agent EnvFrom count = %d, should be equal",
-			len(sidecar.EnvFrom), len(agentContainer.EnvFrom))
-	}
-}
-
-func TestBuildJob_WithHumanInTheLoop_CustomCommand(t *testing.T) {
-	// Test that humanInTheLoop with custom Command uses the command instead of sleep
-	task := &kubetaskv1alpha1.Task{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-task",
-			Namespace: "default",
-			UID:       types.UID("test-uid"),
-		},
-		Spec: kubetaskv1alpha1.TaskSpec{},
-	}
-	task.APIVersion = "kubetask.io/v1alpha1"
-	task.Kind = "Task"
-
-	customCommand := []string{"sh", "-c", "code-server --bind-addr 0.0.0.0:8080 & sleep 7200"}
-	cfg := agentConfig{
-		agentImage:   "test-agent:v1",
-		command:      []string{"gemini", "--yolo", "-p", "$(cat /workspace/task.md)"},
-		workspaceDir: "/workspace",
-		humanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-			Command: customCommand,
-			Image:   "code-server:latest",
-			Ports: []kubetaskv1alpha1.ContainerPort{
-				{Name: "code-server", ContainerPort: 8080},
-			},
-			Sidecar: &kubetaskv1alpha1.SessionSidecar{
-				Enabled: true,
-			},
-		},
-	}
-
-	job := buildJob(task, "test-task-job", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
-
-	// Verify we have 2 containers (agent + sidecar)
-	if len(job.Spec.Template.Spec.Containers) != 2 {
-		t.Fatalf("Expected 2 containers, got %d", len(job.Spec.Template.Spec.Containers))
-	}
-
-	agentContainer := job.Spec.Template.Spec.Containers[0]
-	sidecar := job.Spec.Template.Spec.Containers[1]
-
-	// Verify agent container has original command (not modified)
-	if len(agentContainer.Command) != 4 || agentContainer.Command[0] != "gemini" {
-		t.Errorf("Agent command was unexpectedly modified: %v", agentContainer.Command)
-	}
-
-	// Verify sidecar uses custom command, not sleep
-	if len(sidecar.Command) != 3 {
-		t.Fatalf("Sidecar command length = %d, want 3", len(sidecar.Command))
-	}
-	if sidecar.Command[0] != "sh" || sidecar.Command[1] != "-c" {
-		t.Errorf("Sidecar command = %v, expected sh -c ...", sidecar.Command)
-	}
-	if sidecar.Command[2] != "code-server --bind-addr 0.0.0.0:8080 & sleep 7200" {
-		t.Errorf("Sidecar command = %v, expected custom command", sidecar.Command)
-	}
-
-	// Verify sidecar uses custom image
-	if sidecar.Image != "code-server:latest" {
-		t.Errorf("Sidecar Image = %q, want %q", sidecar.Image, "code-server:latest")
-	}
-
-	// Verify sidecar has the port exposed
-	if len(sidecar.Ports) != 1 {
-		t.Fatalf("Sidecar ports count = %d, want 1", len(sidecar.Ports))
-	}
-	if sidecar.Ports[0].ContainerPort != 8080 {
-		t.Errorf("Sidecar port = %d, want 8080", sidecar.Ports[0].ContainerPort)
 	}
 }
 
@@ -1861,7 +1233,7 @@ func TestBuildJob_WithExternalFileMounts(t *testing.T) {
 		{filePath: "/etc/github-app/github-app-iat.sh"},
 	}
 
-	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, nil, nil, nil, defaultSystemConfig())
+	job := buildJob(task, "test-task-job", cfg, contextConfigMap, fileMounts, nil, nil, defaultSystemConfig())
 
 	// Verify workspace emptyDir volume exists
 	var foundWorkspaceVolume bool

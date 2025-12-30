@@ -25,8 +25,7 @@ spec:
       openAPIV3Schema:
         description: |-
           KubeTaskConfig defines system-level configuration for KubeTask.
-          This CRD provides cluster or namespace-level settings for task lifecycle management,
-          including TTL-based cleanup and future archive capabilities.
+          This CRD provides cluster or namespace-level settings for the KubeTask system.
         properties:
           apiVersion:
             description: |-
@@ -48,67 +47,10 @@ spec:
           spec:
             description: Spec defines the KubeTask configuration
             properties:
-              agentImagePullPolicy:
-                description: |-
-                  AgentImagePullPolicy specifies the default image pull policy for agent containers.
-                  This can be overridden by individual Agent specifications.
-                  Defaults to IfNotPresent if not specified.
-                enum:
-                - Always
-                - Never
-                - IfNotPresent
-                type: string
-              sessionPVC:
-                description: |-
-                  SessionPVC configures the PVC infrastructure for session persistence.
-                  This defines WHERE session data is stored, not WHETHER it's enabled.
-                  Session persistence is enabled per-Agent via humanInTheLoop.persistence.enabled.
-
-                  Requirements:
-                    - PVC must support ReadWriteMany access mode (for concurrent session access)
-                    - Agent must have humanInTheLoop.persistence.enabled = true
-
-                  Workspace is saved to: /<namespace>/<task-name>/ on the PVC.
-                properties:
-                  name:
-                    default: kubetask-session-data
-                    description: |-
-                      Name specifies the name of the PersistentVolumeClaim to use.
-                      The PVC must exist in the same namespace as the Task and support
-                      ReadWriteMany access mode for concurrent session access.
-                      If not specified, defaults to "kubetask-session-data".
-                    type: string
-                  retentionPolicy:
-                    description: RetentionPolicy defines when persisted workspace
-                      data should be cleaned up.
-                    properties:
-                      ttlSecondsAfterTaskDeletion:
-                        default: 604800
-                        description: |-
-                          TTLSecondsAfterTaskDeletion specifies how long to retain session data
-                          after the Task is deleted. The timer starts when the Task CR is deleted.
-                          Set to 0 to retain forever (manual cleanup required).
-                          Defaults to 604800 (7 days).
-                        format: int32
-                        type: integer
-                    type: object
-                  storageClassName:
-                    description: |-
-                      StorageClassName specifies the StorageClass for auto-provisioning.
-                      Only used if the PVC does not exist and needs to be created.
-                      If not specified, uses the cluster's default StorageClass.
-                    type: string
-                  storageSize:
-                    default: 10Gi
-                    description: |-
-                      StorageSize specifies the size of the PVC if auto-provisioned.
-                      Example: "10Gi", "50Gi"
-                    type: string
-                type: object
               systemImage:
                 description: |-
                   SystemImage configures the KubeTask system image used for internal components
-                  such as git-init, context-init, and save-session containers.
+                  such as git-init and context-init containers.
                   If not specified, uses the built-in default image with IfNotPresent policy.
                 properties:
                   image:
@@ -126,22 +68,6 @@ spec:
                     - Never
                     - IfNotPresent
                     type: string
-                type: object
-              taskLifecycle:
-                description: TaskLifecycle configures task lifecycle management including
-                  cleanup policies.
-                properties:
-                  ttlSecondsAfterFinished:
-                    default: 604800
-                    description: |-
-                      TTLSecondsAfterFinished specifies how long completed or failed Tasks
-                      should be retained before automatic deletion.
-                      The timer starts when a Task enters Completed or Failed phase.
-                      Associated Jobs and ConfigMaps are deleted via OwnerReference cascade.
-                      Defaults to 604800 (7 days) if not specified.
-                      Set to 0 to disable automatic cleanup.
-                    format: int32
-                    type: integer
                 type: object
             type: object
         required:

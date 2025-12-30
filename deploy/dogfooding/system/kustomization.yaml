@@ -1,5 +1,6 @@
 # Copyright Contributors to the KubeTask project
-# Resources deployed to kubetask-system namespace
+# Resources deployed to kubetask-system namespace.
+# These support the Argo Events integration for webhook processing.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

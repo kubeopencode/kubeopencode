@@ -4,7 +4,7 @@
 
 # Controller configuration
 controller:
-  # Container image for kubetask (unified image with controller, git-init, save-session)
+  # Container image for kubetask (unified image with controller, git-init)
   image:
     repository: quay.io/kubetask/kubetask
     pullPolicy: IfNotPresent
@@ -51,63 +51,6 @@ controller:
   # Affinity for controller pods
   affinity: {}
 
-# Webhook server configuration
-# The webhook server receives HTTP webhooks and creates Tasks based on WebhookTrigger CRDs
-webhook:
-  # Whether to enable the webhook server
-  enabled: true
-
-  # Number of webhook server replicas
-  replicas: 1
-
-  # Webhook server port (receives webhook requests)
-  port: 8082
-
-  # Metrics port
-  metricsPort: 8083
-
-  # Health probe port
-  healthPort: 8084
-
-  # Resource limits and requests
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 50m
-      memory: 64Mi
-
-  # Security context for webhook pods
-  podSecurityContext:
-    runAsNonRoot: true
-
-  securityContext:
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-      - ALL
-
-  # Node selector for webhook pods
-  nodeSelector: {}
-
-  # Tolerations for webhook pods
-  tolerations: []
-
-  # Affinity for webhook pods
-  affinity: {}
-
-  # Service configuration
-  service:
-    # Service type (ClusterIP, NodePort, LoadBalancer)
-    type: ClusterIP
-    # Service port
-    port: 80
-    # NodePort (only used when type is NodePort, valid range: 30000-32767)
-    nodePort: null
-    # Optional: expose metrics port on service
-    metricsPort: null
-
 # Agent configuration
 # NOTE: Agent ServiceAccount is NOT created by this chart.
 # Users must create their own ServiceAccount and RBAC in each namespace where tasks run,
@@ -136,25 +79,9 @@ commonAnnotations: {}
 kubetaskConfig:
   # Whether to create the default KubeTaskConfig
   create: true
-  # Task lifecycle management
-  taskLifecycle:
-    # TTL for completed/failed tasks (7 days = 604800 seconds)
-    # Set to 0 to disable automatic cleanup
-    ttlSecondsAfterFinished: 604800
-  # Session PVC configuration for human-in-the-loop session persistence
-  # This defines WHERE session data is stored. Whether persistence is enabled
-  # is controlled per-Agent via humanInTheLoop.persistence.enabled.
-  # Set to null/empty to disable session persistence support.
-  sessionPVC:
-    # Name of the PVC to use for storing workspace data
-    name: "kubetask-session-data"
-    # Storage class for the PVC (empty = use cluster default)
-    storageClassName: ""
-    # Size of the PVC
-    storageSize: "10Gi"
-    # Whether to create the PVC automatically
-    createPVC: false
-    # Retention policy for session data
-    retentionPolicy:
-      # How long to retain session data after Task deletion (7 days = 604800 seconds)
-      ttlSecondsAfterTaskDeletion: 604800
+  # System image configuration for internal components (git-init, context-init)
+  systemImage:
+    # Image to use (empty = use controller image)
+    image: ""
+    # Image pull policy
+    imagePullPolicy: IfNotPresent

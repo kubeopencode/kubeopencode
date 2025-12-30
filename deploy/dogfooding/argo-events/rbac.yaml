@@ -1,0 +1,31 @@
+# Copyright Contributors to the KubeTask project
+# RBAC for Argo Events Sensor to create KubeTask Tasks.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-events-sensor
+  namespace: kubetask-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubetask-task-creator
+  namespace: kubetask-system
+rules:
+  - apiGroups: ["kubetask.io"]
+    resources: ["tasks"]
+    verbs: ["create", "get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-events-sensor-task-creator
+  namespace: kubetask-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubetask-task-creator
+subjects:
+  - kind: ServiceAccount
+    name: argo-events-sensor
+    namespace: kubetask-system
