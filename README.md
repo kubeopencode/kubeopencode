@@ -21,7 +21,7 @@ KubeTask enables you to execute AI agent tasks (like Claude, Gemini) using Kuber
 
 - **Kubernetes-Native**: Built on CRDs and the Operator pattern
 - **Simple API**: Core CRDs - Task, Workflow, WorkflowRun, CronWorkflow, WebhookTrigger, Agent, and Context
-- **AI-Agnostic**: Works with any AI agent (Claude, Gemini, Goose, etc.)
+- **AI-Agnostic**: Works with any AI agent (Claude, Gemini, OpenCode, etc.)
 - **No External Dependencies**: Uses etcd for state, Jobs for execution
 - **GitOps Ready**: Fully declarative resource definitions
 - **Flexible Context System**: Support for inline content, ConfigMaps, and Git repositories
@@ -439,9 +439,9 @@ spec:
 
 KubeTask provides **template agent images** that serve as starting points for building your own customized agents. These templates demonstrate the agent interface pattern and include common development tools, but are designed to be customized based on your specific requirements.
 
-**Important**: The provided agent images (gemini, goose, echo) are examples/templates. You should build and customize your own agent images according to your needs:
+**Important**: The provided agent images (gemini, claude, echo) are examples/templates. You should build and customize your own agent images according to your needs:
 
-- Choose which AI CLI to include (Gemini, Claude Code, Goose, etc.)
+- Choose which AI CLI to include (Gemini, Claude Code, OpenCode, etc.)
 - Install the specific tools your tasks require
 - Configure credentials and environment variables
 - Optimize image size for your use case
@@ -452,7 +452,7 @@ KubeTask provides **template agent images** that serve as starting points for bu
 |----------|-------------|----------|
 | `gemini` | Google Gemini CLI with Go, git, kubectl | General development tasks |
 | `claude` | Anthropic Claude Code CLI with Go, git, kubectl | Claude-powered tasks |
-| `goose` | Block's Goose agent with Go, git, kubectl | Multi-provider AI tasks |
+| `opencode` | OpenCode CLI with Go, git, kubectl | Open source AI coding |
 | `echo` | Minimal Alpine image | E2E testing and debugging |
 
 ### Building Your Agent

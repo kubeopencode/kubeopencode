@@ -10,7 +10,6 @@
    - `kubetask/kubetask-agent-base`
    - `kubetask/kubetask-agent-gemini`
    - `kubetask/kubetask-agent-claude`
-   - `kubetask/kubetask-agent-goose`
    - `kubetask/kubetask-agent-opencode`
    - `kubetask/kubetask-agent-code-server`
    - `kubetask/kubetask-agent-echo`

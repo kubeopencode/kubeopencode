@@ -1,7 +1,7 @@
 # Copyright Contributors to the KubeTask project
 SHELL := /bin/bash
 
-# Agent to build (gemini, goose, echo, etc.)
+# Agent to build (gemini, claude, echo, etc.)
 AGENT ?= gemini
 
 # No-cache option for fresh builds (usage: make NO_CACHE=1 build)
@@ -51,7 +51,7 @@ base-buildx: ## Build and push base image for multiple architectures
 ##@ Agent Images
 
 .PHONY: build
-build: ## Build agent docker image (AGENT=gemini|goose|echo)
+build: ## Build agent docker image (AGENT=gemini|claude|echo)
 	@if [ ! -d "$(AGENT)" ]; then \
 		echo "Error: Agent '$(AGENT)' not found. Available agents:"; \
 		ls -d */ 2>/dev/null | sed 's/\///g' | grep -v '^base$$'; \
@@ -129,7 +129,7 @@ help: ## Display this help
 	@echo "Examples:"
 	@echo "  make base-build               # Build the universal base image"
 	@echo "  make build                    # Build gemini (default) using base"
-	@echo "  make AGENT=goose build        # Build goose using base"
+	@echo "  make AGENT=claude build       # Build claude using base"
 	@echo "  make NO_CACHE=1 build         # Build without cache (fetch latest)"
 	@echo "  make NO_CACHE=1 build-all     # Rebuild all agents without cache"
 	@echo "  make build-all                # Build base + all agents"

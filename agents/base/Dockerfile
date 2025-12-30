@@ -7,7 +7,7 @@
 # - Development tools: git, gh, make, gcc, jq, yq
 # - Shell: zsh with Oh My Zsh
 #
-# AI agent images (gemini, goose, etc.) build on top of this base.
+# AI agent images (gemini, claude, etc.) build on top of this base.
 #
 FROM debian:bookworm-slim
 

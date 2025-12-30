@@ -7,7 +7,7 @@ This guide explains how to build custom agent images for KubeTask.
 KubeTask agent images are container images that execute AI-powered tasks. The architecture uses a **layered approach**:
 
 1. **Base Image** (`kubetask-agent-base`): Universal development environment with common tools
-2. **Agent Images** (gemini, goose, etc.): Extend base with specific AI CLI
+2. **Agent Images** (gemini, claude, etc.): Extend base with specific AI CLI
 
 This design is inspired by GitHub Actions runners and devcontainer images, providing a comprehensive development environment that covers most use cases.
 
@@ -17,8 +17,8 @@ This design is inspired by GitHub Actions runners and devcontainer images, provi
 ┌─────────────────────────────────────────────────────────┐
 │                    Agent Images                          │
 ├─────────────────┬─────────────────┬─────────────────────┤
-│  gemini         │  goose          │  (your agent)       │
-│  + Gemini CLI   │  + Goose CLI    │  + Your AI CLI      │
+│  gemini         │  claude         │  (your agent)       │
+│  + Gemini CLI   │  + Claude CLI   │  + Your AI CLI      │
 ├─────────────────┴─────────────────┴─────────────────────┤
 │                    Base Image                            │
 │  kubetask-agent-base                                    │
@@ -71,7 +71,6 @@ The universal base image (`kubetask-agent-base`) includes:
 | Template | Base | Tools | Use Case |
 |----------|------|-------|----------|
 | `gemini` | base | Gemini CLI | Google AI tasks |
-| `goose` | base | Goose CLI | Multi-provider AI tasks |
 | `claude` | base | Claude CLI | Anthropic AI tasks |
 | `opencode` | base | OpenCode CLI | Open source AI coding |
 | `code-server` | base | code-server + Gemini CLI | Browser-based VSCode for humanInTheLoop |
@@ -94,7 +93,7 @@ make base-build
 
 # Build a specific agent (uses base image)
 make build                    # Build gemini (default)
-make AGENT=goose build        # Build goose
+make AGENT=claude build       # Build claude
 
 # Build all images at once
 make build-all                # Build base + all agents
@@ -284,7 +283,7 @@ If a tool is missing:
 |-------|-----------------|-------------|
 | `base` | ~2-3 GB | Full development environment |
 | `gemini` | ~2-3 GB | Base + Gemini CLI |
-| `goose` | ~2-3 GB | Base + Goose CLI |
+| `claude` | ~2-3 GB | Base + Claude CLI |
 | `code-server` | ~3-4 GB | Base + code-server + Gemini CLI |
 | `echo` | ~10 MB | Minimal Alpine (testing only) |
 
