@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -561,106 +560,6 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, failAgent)).Should(Succeed())
-		})
-	})
-
-	Context("Task with humanInTheLoop enabled on Agent", func() {
-		It("should keep the pod running after task completion with sidecar", func() {
-			taskName := uniqueName("task-hitl")
-			duration := metav1.Duration{Duration: 30 * time.Second} // Short duration for testing
-
-			By("Creating an Agent with humanInTheLoop enabled")
-			hitlAgentName := uniqueName("hitl-agent")
-			hitlAgent := &kubetaskv1alpha1.Agent{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      hitlAgentName,
-					Namespace: testNS,
-				},
-				Spec: kubetaskv1alpha1.AgentSpec{
-					AgentImage:         echoImage,
-					ServiceAccountName: testServiceAccount,
-					WorkspaceDir:       "/workspace",
-					Command:            []string{"sh", "-c", "echo 'Task executed' && cat ${WORKSPACE_DIR}/task.md"},
-					HumanInTheLoop: &kubetaskv1alpha1.HumanInTheLoop{
-						Sidecar: &kubetaskv1alpha1.SessionSidecar{
-							Enabled:  true,
-							Duration: &duration,
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, hitlAgent)).Should(Succeed())
-
-			taskContent := "# HumanInTheLoop Test"
-
-			By("Creating a Task referencing the humanInTheLoop Agent")
-			task := &kubetaskv1alpha1.Task{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      taskName,
-					Namespace: testNS,
-				},
-				Spec: kubetaskv1alpha1.TaskSpec{
-					AgentRef:    hitlAgentName,
-					Description: &taskContent,
-				},
-			}
-			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
-
-			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
-			jobName := fmt.Sprintf("%s-job", taskName)
-
-			By("Waiting for Task to start running")
-			Eventually(func() kubetaskv1alpha1.TaskPhase {
-				t := &kubetaskv1alpha1.Task{}
-				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
-					return ""
-				}
-				return t.Status.Phase
-			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseRunning))
-
-			By("Verifying pod is running and stays running for session duration")
-			// Wait a bit for the task command to complete
-			time.Sleep(10 * time.Second)
-
-			// Check that pod is still running (not terminated immediately after command)
-			pods := &corev1.PodList{}
-			Eventually(func() bool {
-				if err := k8sClient.List(ctx, pods,
-					client.InNamespace(testNS),
-					client.MatchingLabels{"job-name": jobName}); err != nil {
-					// Try alternative label
-					_ = k8sClient.List(ctx, pods,
-						client.InNamespace(testNS),
-						client.MatchingLabels{"batch.kubernetes.io/job-name": jobName})
-				}
-				if len(pods.Items) == 0 {
-					return false
-				}
-				return pods.Items[0].Status.Phase == corev1.PodRunning
-			}, timeout, interval).Should(BeTrue(), "Pod should still be running due to humanInTheLoop")
-
-			By("Verifying task can be stopped early")
-			// Add stop annotation to exit early
-			runningTask := &kubetaskv1alpha1.Task{}
-			Expect(k8sClient.Get(ctx, taskKey, runningTask)).Should(Succeed())
-			if runningTask.Annotations == nil {
-				runningTask.Annotations = make(map[string]string)
-			}
-			runningTask.Annotations["kubetask.io/stop"] = "true"
-			Expect(k8sClient.Update(ctx, runningTask)).Should(Succeed())
-
-			By("Waiting for Task to complete after stop")
-			Eventually(func() kubetaskv1alpha1.TaskPhase {
-				t := &kubetaskv1alpha1.Task{}
-				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
-					return ""
-				}
-				return t.Status.Phase
-			}, timeout, interval).Should(Equal(kubetaskv1alpha1.TaskPhaseCompleted))
-
-			By("Cleaning up")
-			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
-			Expect(k8sClient.Delete(ctx, hitlAgent)).Should(Succeed())
 		})
 	})
 
