@@ -512,7 +512,7 @@ type AgentSpec struct {
 	//
 	// ## Example
 	//
-	//   command: ["sh", "-c", "gemini --yolo -p \"$(cat /workspace/task.md)\""]
+	//   command: ["sh", "-c", "/tools/opencode run \"$(cat /workspace/task.md)\""]
 	//
 	// +required
 	// +kubebuilder:validation:MinItems=1

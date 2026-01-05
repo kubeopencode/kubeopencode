@@ -24,20 +24,20 @@
 #
 # Binary Source:
 #   Downloaded from GitHub Releases: https://github.com/anomalyco/opencode/releases
-#   - Linux x64: opencode-linux-x64-musl.tar.gz
-#   - Linux arm64: opencode-linux-arm64-musl.tar.gz
+#   - Linux x64: opencode-linux-x64.tar.gz (glibc)
+#   - Linux arm64: opencode-linux-arm64.tar.gz (glibc)
 #
-# Note: Using musl variants for Alpine Linux compatibility.
+# Note: Using glibc variants for Debian-based executor (devbox) compatibility.
+# The init container uses Debian to ensure binary compatibility with glibc-based work containers.
 #
 
-FROM alpine:3.21
+FROM debian:bookworm-slim
 
-# Install runtime dependencies required by OpenCode binary
-# libstdc++ and libgcc are needed as the binary is dynamically linked
-RUN apk add --no-cache libstdc++ libgcc
-
-# Install curl for downloading (temporary)
-RUN apk add --no-cache curl tar
+# Install curl for downloading
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Detect architecture and download appropriate binary
 ARG TARGETARCH
@@ -47,7 +47,7 @@ RUN set -ex; \
         arm64) ARCH="arm64" ;; \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac; \
-    FILENAME="opencode-linux-${ARCH}-musl.tar.gz"; \
+    FILENAME="opencode-linux-${ARCH}.tar.gz"; \
     URL="https://github.com/anomalyco/opencode/releases/latest/download/${FILENAME}"; \
     echo "Downloading OpenCode from ${URL}..."; \
     curl -fsSL "${URL}" -o /tmp/opencode.tar.gz; \
@@ -58,8 +58,8 @@ RUN set -ex; \
     # Verify the binary
     /opencode --version
 
-# Remove curl to minimize image size (keep libstdc++ and libgcc)
-RUN apk del curl tar
+# Remove curl to minimize image size
+RUN apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Default environment variables
 ENV TOOLS_DIR=/tools

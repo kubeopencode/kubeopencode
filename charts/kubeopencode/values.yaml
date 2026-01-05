@@ -55,12 +55,14 @@ controller:
 # NOTE: Agent ServiceAccount is NOT created by this chart.
 # Users must create their own ServiceAccount and RBAC in each namespace where tasks run,
 # and reference it in Agent.spec.serviceAccountName (required field).
+# NOTE: Agent images are configured in Agent CRDs, not in this Helm chart.
+# The two-container pattern uses:
+#   - agentImage: OpenCode init container (default: quay.io/kubeopencode/kubeopencode-agent-opencode)
+#   - executorImage: Worker container (default: quay.io/kubeopencode/kubeopencode-agent-devbox)
 agent:
-  # Default container image for the agent (used when Agent.agentImage is not set)
+  # Default image settings (used for local development with Kind)
   image:
-    repository: quay.io/kubeopencode/kubeopencode-agent-gemini
     pullPolicy: IfNotPresent
-    tag: "latest"
 
 # Namespace configuration
 namespaceOverride: ""

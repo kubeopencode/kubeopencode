@@ -42,8 +42,9 @@ Build all required images:
 # Build the controller image
 make docker-build
 
-# Build the agent image (gemini is the default)
-make agent-build
+# Build the agent images (two-container pattern)
+make agent-build AGENT=opencode    # OpenCode init container
+make agent-build AGENT=devbox      # Executor container
 ```
 
 **Note:** The unified kubeopencode image provides both controller and infrastructure utilities:
@@ -57,7 +58,8 @@ Load images into the Kind cluster (required because Kind cannot pull from local 
 
 ```bash
 kind load docker-image quay.io/kubeopencode/kubeopencode:latest --name kubeopencode
-kind load docker-image quay.io/kubeopencode/kubeopencode-agent-gemini:latest --name kubeopencode
+kind load docker-image quay.io/kubeopencode/kubeopencode-agent-opencode:latest --name kubeopencode
+kind load docker-image quay.io/kubeopencode/kubeopencode-agent-devbox:latest --name kubeopencode
 ```
 
 ### 4. Deploy with Helm
@@ -67,7 +69,6 @@ helm upgrade --install kubeopencode ./charts/kubeopencode \
   --namespace kubeopencode-system \
   --create-namespace \
   --set controller.image.pullPolicy=Never \
-  --set agent.image.repository=quay.io/kubeopencode/kubeopencode-agent-gemini \
   --set agent.image.pullPolicy=Never
 ```
 
@@ -146,10 +147,16 @@ cat <<EOF | kubectl apply -f -
 apiVersion: kubeopencode.io/v1alpha1
 kind: Agent
 metadata:
-  name: gemini-agent
+  name: opencode-agent
   namespace: test
 spec:
-  agentImage: quay.io/kubeopencode/kubeopencode-agent-gemini:latest
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  command:
+    - sh
+    - -c
+    - /tools/opencode run "\$(cat \${WORKSPACE_DIR}/task.md)"
+  workspaceDir: /workspace
   serviceAccountName: task-runner
 EOF
 ```
@@ -164,9 +171,8 @@ metadata:
   name: hello-world
   namespace: test
 spec:
-  agentRef:
-    name: gemini-agent
-  prompt: "Hello, KubeOpenCode!"
+  agentRef: opencode-agent
+  description: "Hello, KubeOpenCode!"
 EOF
 ```
 
@@ -176,7 +182,7 @@ Check Task status:
 kubectl get task -n test hello-world -o yaml
 ```
 
-Check Job logs:
+Check Pod logs:
 
 ```bash
 kubectl logs -n test -l kubeopencode.io/task=hello-world

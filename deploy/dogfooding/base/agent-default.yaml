@@ -5,12 +5,13 @@ kind: Agent
 metadata:
   name: default
 spec:
-  agentImage: quay.io/kubeopencode/kubeopencode-agent-gemini:latest
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
   command:
     - sh
     - -c
-    - gemini --output-format stream-json --yolo -p "$(cat ${WORKSPACE_DIR}/task.md)" | stream-json-reader
+    - /tools/opencode run "$(cat ${WORKSPACE_DIR}/task.md)"
   serviceAccountName: kubeopencode-agent
   maxConcurrentTasks: 3
   credentials:
@@ -18,9 +19,9 @@ spec:
     - name: git
       secretRef:
         name: git-settings
-    - name: gemini
+    - name: opencode
       secretRef:
-        name: gemini-credentials
+        name: opencode-credentials
     # GitHub App credentials for IAT generation (mounted as files)
     - name: github-app-client-id
       secretRef:

@@ -75,10 +75,13 @@ The following table lists the configurable parameters of the KubeOpenCode chart 
 
 ### Agent Configuration
 
+Agent images are configured in Agent CRDs, not in this Helm chart. The two-container pattern uses:
+- `agentImage`: OpenCode init container (default: `quay.io/kubeopencode/kubeopencode-agent-opencode`)
+- `executorImage`: Worker container (default: `quay.io/kubeopencode/kubeopencode-agent-devbox`)
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `agent.image.repository` | Agent image repository | `quay.io/kubeopencode/kubeopencode-agent-gemini` |
-| `agent.image.tag` | Agent image tag | `latest` |
+| `agent.image.pullPolicy` | Agent image pull policy | `IfNotPresent` |
 
 ### Cleanup Configuration
 

@@ -154,7 +154,7 @@ spec:
   description: |
     Update all dependencies to latest versions.
     Run tests and create a PR.
-  agentRef: gemini
+  agentRef: opencode-agent
 ```
 
 Result: `/workspace/task.md` contains the description.

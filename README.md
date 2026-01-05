@@ -17,13 +17,13 @@
 
 ## Overview
 
-KubeOpenCode enables you to execute AI agent tasks (like Claude, Gemini) using Kubernetes Custom Resources. It provides a simple, declarative, GitOps-friendly approach to running AI agents as Kubernetes Jobs.
+KubeOpenCode enables you to execute AI agent tasks using Kubernetes Custom Resources. It provides a simple, declarative, GitOps-friendly approach to running AI agents as Kubernetes Pods.
 
 **Key Features:**
 
 - **Kubernetes-Native**: Built on CRDs and the Operator pattern
 - **Simple API**: Task (WHAT to do) + Agent (HOW to execute)
-- **AI-Agnostic**: Works with any AI agent (Claude, Gemini, OpenCode, etc.)
+- **AI-Agnostic**: Works with any AI agent (OpenCode, Claude, etc.)
 - **No External Dependencies**: Uses etcd for state, Jobs for execution
 - **GitOps Ready**: Fully declarative resource definitions
 - **Flexible Context System**: Support for inline content, ConfigMaps, and Git repositories
@@ -89,6 +89,10 @@ helm install kubeopencode ./charts/kubeopencode \
 
 #### 1. Create an Agent
 
+KubeOpenCode uses a **two-container pattern**:
+- **Init Container** (`agentImage`): Copies OpenCode binary to `/tools` shared volume
+- **Worker Container** (`executorImage`): Runs tasks using `/tools/opencode`
+
 ```yaml
 apiVersion: kubeopencode.io/v1alpha1
 kind: Agent
@@ -96,15 +100,20 @@ metadata:
   name: default
   namespace: kubeopencode-system
 spec:
-  agentImage: quay.io/kubeopencode/kubeopencode-agent-gemini:latest
-  workspaceDir: /workspace  # Optional, defaults to /workspace
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  command:
+    - sh
+    - -c
+    - /tools/opencode run "$(cat ${WORKSPACE_DIR}/task.md)"
   serviceAccountName: kubeopencode-agent
   credentials:
-    - name: gemini-api-key
+    - name: opencode-api-key
       secretRef:
         name: ai-credentials
-        key: gemini-key
-      env: GEMINI_API_KEY
+        key: opencode-key
+      env: OPENCODE_API_KEY
 ```
 
 #### 2. Create a Task
@@ -217,8 +226,13 @@ kind: Agent
 metadata:
   name: default
 spec:
-  agentImage: quay.io/kubeopencode/kubeopencode-agent-gemini:latest
-  workspaceDir: /workspace  # Configurable workspace directory
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  command:
+    - sh
+    - -c
+    - /tools/opencode run "$(cat ${WORKSPACE_DIR}/task.md)"
   serviceAccountName: kubeopencode-agent
 
   # Default contexts for all tasks (inline ContextItems)
@@ -247,34 +261,46 @@ spec:
 
 ### Multi-AI Support
 
-Use different Agents for different AI agents:
+Use different Agents with different executorImages for various use cases:
 
 ```yaml
-# Claude agent
+# Standard OpenCode agent with devbox
 apiVersion: kubeopencode.io/v1alpha1
 kind: Agent
 metadata:
-  name: claude
+  name: opencode-devbox
 spec:
-  agentImage: quay.io/kubeopencode/kubeopencode-agent-claude:latest
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  command:
+    - sh
+    - -c
+    - /tools/opencode run "$(cat ${WORKSPACE_DIR}/task.md)"
   serviceAccountName: kubeopencode-agent
 ---
-# Gemini agent
+# OpenCode agent with code-server (browser-based IDE)
 apiVersion: kubeopencode.io/v1alpha1
 kind: Agent
 metadata:
-  name: gemini
+  name: opencode-code-server
 spec:
-  agentImage: quay.io/kubeopencode/kubeopencode-agent-gemini:latest
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-code-server:latest
+  workspaceDir: /workspace
+  command:
+    - sh
+    - -c
+    - /tools/opencode run "$(cat ${WORKSPACE_DIR}/task.md)"
   serviceAccountName: kubeopencode-agent
 ---
 # Task using specific agent
 apiVersion: kubeopencode.io/v1alpha1
 kind: Task
 metadata:
-  name: task-with-claude
+  name: task-with-opencode
 spec:
-  agentRef: claude
+  agentRef: opencode-devbox
   description: "Update dependencies and create a PR"
 ```
 
@@ -282,30 +308,32 @@ spec:
 
 KubeOpenCode provides **template agent images** that serve as starting points for building your own customized agents. These templates demonstrate the agent interface pattern and include common development tools, but are designed to be customized based on your specific requirements.
 
-**Important**: The provided agent images (gemini, claude, echo) are examples/templates. You should build and customize your own agent images according to your needs:
+KubeOpenCode uses a **two-container pattern**:
 
-- Choose which AI CLI to include (Gemini, Claude Code, OpenCode, etc.)
-- Install the specific tools your tasks require
-- Configure credentials and environment variables
-- Optimize image size for your use case
+1. **Init Container** (`agentImage`): Contains the OpenCode CLI, copies it to a shared `/tools` volume
+2. **Worker Container** (`executorImage`): Your development environment that uses `/tools/opencode`
 
-### Available Templates
+### Available Images
 
-| Template | Description | Use Case |
-|----------|-------------|----------|
-| `gemini` | Google Gemini CLI with Go, git, kubectl | General development tasks |
-| `claude` | Anthropic Claude Code CLI with Go, git, kubectl | Claude-powered tasks |
-| `opencode` | OpenCode CLI with Go, git, kubectl | Open source AI coding |
-| `echo` | Minimal Alpine image | E2E testing and debugging |
+| Image | Type | Description |
+|-------|------|-------------|
+| `opencode` | Init Container | OpenCode CLI binary |
+| `devbox` | Worker (Executor) | Universal development environment with Go, Node, Python, kubectl, helm |
+| `code-server` | Worker (Executor) | Browser-based VSCode IDE |
+| `echo` | Testing | Minimal Alpine image for E2E testing |
 
-### Building Your Agent
+### Building Agent Images
 
 ```bash
-# Build from template
-make agent-build AGENT=gemini
+# Build OpenCode init container
+make agent-build AGENT=opencode
+
+# Build executor containers
+make agent-build AGENT=devbox
+make agent-build AGENT=code-server
 
 # Customize registry and version
-make agent-build AGENT=gemini IMG_REGISTRY=docker.io IMG_ORG=myorg VERSION=v1.0.0
+make agent-build AGENT=devbox IMG_REGISTRY=docker.io IMG_ORG=myorg VERSION=v1.0.0
 ```
 
 For detailed guidance on building custom agent images, see the [Agent Developer Guide](agents/README.md).
