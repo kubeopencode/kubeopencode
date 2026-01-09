@@ -66,14 +66,13 @@ Tasks and Agents use inline **ContextItem** to provide additional context:
 - **ConfigMap**: Content from ConfigMap (`type: ConfigMap`, `configMap.name`, optional `configMap.key`)
 - **Git**: Content from Git repository (`type: Git`, `git.repository`, `git.ref`, optional `git.secretRef`)
 - **Runtime**: KubeOpenCode platform awareness system prompt (`type: Runtime`)
-- **Secret**: Content from Kubernetes Secret (`type: Secret`, `secret.name`, optional `secret.key`)
 - **URL**: Content from remote HTTP/HTTPS URL (`type: URL`, `url.source`, requires `mountPath`)
 
 **ContextItem** fields:
 - `name`: Optional identifier for logging, debugging, and XML tag generation
 - `description`: Human-readable documentation for this context
 - `optional`: If true, task proceeds even if context cannot be resolved
-- `type`: Context type (Text, ConfigMap, Git, Runtime, Secret, URL)
+- `type`: Context type (Text, ConfigMap, Git, Runtime, URL)
 - `mountPath`: Where to mount (empty = append to task.md with XML tags)
   - Path resolution follows Tekton conventions:
     - Absolute paths (`/etc/config`) are used as-is
@@ -106,12 +105,6 @@ contexts:
     url:
       source: https://api.example.com/openapi.yaml
     mountPath: specs/openapi.yaml
-  - name: config-template
-    type: Secret
-    optional: true
-    secret:
-      name: api-config
-      key: config.yaml
 ```
 
 **Future**: MCP contexts (extensible design)
@@ -433,6 +426,7 @@ Key Agent spec fields:
 - `contexts`: Inline ContextItems applied to all tasks using this Agent
 - `credentials`: Secrets as env vars or file mounts (supports single key or entire secret)
 - `serviceAccountName`: Kubernetes ServiceAccount for RBAC
+- `allowedNamespaces`: Restrict which namespaces can reference this Agent (supports glob patterns)
 - `maxConcurrentTasks`: Limit concurrent Tasks using this Agent (nil/0 = unlimited)
 
 **Two-Container Pattern:**
@@ -510,6 +504,30 @@ This is useful for:
 - Stopping long-running Tasks without waiting for timeout
 
 **Note:** Logs are lost when a Task is stopped. For log persistence, use an external log aggregation system (Loki, ELK, CloudWatch, etc.).
+
+**Cross-Namespace Task/Agent:**
+
+Tasks can reference Agents in different namespaces, enabling credential isolation:
+
+```yaml
+# Task in dev-team-a namespace references Agent in platform-agents namespace
+apiVersion: kubeopencode.io/v1alpha1
+kind: Task
+metadata:
+  name: my-task
+  namespace: dev-team-a
+spec:
+  agentRef:
+    name: opencode-agent
+    namespace: platform-agents  # Pod runs here, credentials stay isolated
+  description: "Fix the bug"
+```
+
+Key points:
+- Pod always runs in Agent's namespace (not Task's namespace)
+- Credentials (Secrets) in Agent's namespace are never exposed to Task's namespace
+- `allowedNamespaces` on Agent restricts which namespaces can use it (glob patterns supported)
+- `status.podNamespace` shows where the Pod is running
 
 **Credentials Mounting:**
 

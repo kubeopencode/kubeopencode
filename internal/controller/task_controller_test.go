@@ -128,7 +128,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentConfigName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentConfigName},
 					Description: &description,
 				},
 			}
@@ -220,7 +220,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 				},
 			}
@@ -299,7 +299,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 				},
 			}
@@ -370,7 +370,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 				},
 			}
@@ -441,7 +441,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 				},
 			}
@@ -657,7 +657,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
@@ -813,7 +813,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description1,
 				},
 			}
@@ -841,7 +841,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description2,
 				},
 			}
@@ -934,7 +934,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description1,
 				},
 			}
@@ -957,7 +957,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description2,
 				},
 			}
@@ -1006,7 +1006,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description1,
 				},
 			}
@@ -1029,7 +1029,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description2,
 				},
 			}
@@ -1079,7 +1079,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 				},
 			}
@@ -1181,7 +1181,7 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
 					Description: &description,
-					AgentRef:    agent.Name,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agent.Name},
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
 							Type: kubeopenv1alpha1.ContextTypeGit,
@@ -1249,7 +1249,7 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
 					Description: &description,
-					AgentRef:    agent.Name,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agent.Name},
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
 							Type:      kubeopenv1alpha1.ContextTypeText,
@@ -1319,7 +1319,7 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
 					Description: &description,
-					AgentRef:    agent.Name,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agent.Name},
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
 							Type: kubeopenv1alpha1.ContextTypeGit,
@@ -1383,7 +1383,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 				},
 			}
@@ -1484,7 +1484,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 				},
 			}
@@ -1569,7 +1569,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 					// No Outputs defined
 				},
@@ -1662,7 +1662,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 					Outputs: &kubeopenv1alpha1.OutputSpec{
 						Parameters: []kubeopenv1alpha1.OutputParameterSpec{
@@ -1772,7 +1772,7 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
 					Description: &description,
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
 							Type:    kubeopenv1alpha1.ContextTypeRuntime,

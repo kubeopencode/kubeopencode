@@ -364,7 +364,9 @@ func buildOutputCollectorSidecar(mergedOutputs *kubeopenv1alpha1.OutputSpec, wor
 
 // buildPod creates a Pod object for the task with context mounts and optional output collector sidecar.
 // If mergedOutputs is non-nil, a sidecar container is added to collect outputs from files.
-func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, contextConfigMap *corev1.ConfigMap, fileMounts []fileMount, dirMounts []dirMount, gitMounts []gitMount, mergedOutputs *kubeopenv1alpha1.OutputSpec, sysCfg systemConfig) *corev1.Pod {
+// The agentNamespace parameter specifies where the Pod will be created (may differ from Task namespace
+// when using cross-namespace Agent reference).
+func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string, cfg agentConfig, contextConfigMap *corev1.ConfigMap, fileMounts []fileMount, dirMounts []dirMount, gitMounts []gitMount, mergedOutputs *kubeopenv1alpha1.OutputSpec, sysCfg systemConfig) *corev1.Pod {
 	var volumes []corev1.Volume
 	var volumeMounts []corev1.VolumeMount
 	var envVars []corev1.EnvVar
@@ -653,8 +655,13 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 
 	// Build pod labels - start with base labels
 	podLabels := map[string]string{
-		"app":              "kubeopencode",
+		"app":                  "kubeopencode",
 		"kubeopencode.io/task": task.Name,
+	}
+
+	// Track Task namespace when Pod runs in a different namespace (cross-namespace Agent reference)
+	if agentNamespace != task.Namespace {
+		podLabels[TaskNamespaceLabelKey] = task.Namespace
 	}
 
 	// Add custom pod labels from Agent.PodSpec
@@ -722,21 +729,29 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		}
 	}
 
-	return &corev1.Pod{
+	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
-			Namespace: task.Namespace,
+			Namespace: agentNamespace, // Pod runs in Agent's namespace
 			Labels:    podLabels,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: task.APIVersion,
-					Kind:       task.Kind,
-					Name:       task.Name,
-					UID:        task.UID,
-					Controller: boolPtr(true),
-				},
-			},
 		},
 		Spec: podSpec,
 	}
+
+	// Only set OwnerReference when Pod is in the same namespace as Task.
+	// Cross-namespace owner references are not allowed in Kubernetes.
+	// For cross-namespace cleanup, the controller uses a finalizer on the Task.
+	if agentNamespace == task.Namespace {
+		pod.OwnerReferences = []metav1.OwnerReference{
+			{
+				APIVersion: task.APIVersion,
+				Kind:       task.Kind,
+				Name:       task.Name,
+				UID:        task.UID,
+				Controller: boolPtr(true),
+			},
+		}
+	}
+
+	return pod
 }

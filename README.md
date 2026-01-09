@@ -26,7 +26,8 @@ KubeOpenCode enables you to execute AI agent tasks using Kubernetes Custom Resou
 - **AI-Agnostic**: Works with any AI agent (OpenCode, Claude, etc.)
 - **No External Dependencies**: Uses etcd for state, Pods for execution
 - **GitOps Ready**: Fully declarative resource definitions
-- **Flexible Context System**: Support for Text, ConfigMaps, Git, Secrets, and URLs
+- **Flexible Context System**: Support for Text, ConfigMaps, Git, Runtime, and URLs
+- **Cross-Namespace Separation**: Platform teams manage Agents with credentials; dev teams create Tasks
 - **Task Outputs**: Capture results from task execution into status
 - **Concurrency Control**: Limit concurrent tasks per Agent
 - **Event-Driven**: Integrates with Argo Events for webhook-triggered Tasks
@@ -196,7 +197,6 @@ Tasks and Agents use inline **ContextItem** to provide additional context:
 - **ConfigMap**: Content from ConfigMap
 - **Git**: Content from Git repository
 - **Runtime**: KubeOpenCode platform awareness system prompt
-- **Secret**: Content from Kubernetes Secret (for task input, not credentials)
 - **URL**: Content fetched from remote HTTP/HTTPS URL
 
 **Example:**
@@ -216,11 +216,6 @@ contexts:
       repository: https://github.com/org/repo.git
       ref: main
     mountPath: source-code
-  - type: Secret
-    secret:
-      name: api-config
-      key: config.yaml
-    mountPath: config/api.yaml
   - type: URL
     url:
       source: https://api.example.com/openapi.yaml
@@ -313,7 +308,8 @@ kind: Task
 metadata:
   name: task-with-opencode
 spec:
-  agentRef: opencode-devbox
+  agentRef:
+    name: opencode-devbox
   description: "Update dependencies and create a PR"
 ```
 
@@ -361,7 +357,8 @@ kind: Task
 metadata:
   name: my-task
 spec:
-  agentRef: pr-agent
+  agentRef:
+    name: pr-agent
   description: "Create a PR for the feature"
   outputs:
     parameters:
@@ -409,6 +406,83 @@ When the limit is reached:
 - New Tasks enter `Queued` phase instead of `Running`
 - Queued Tasks automatically transition to `Running` when capacity becomes available
 - Tasks are processed in approximate FIFO order
+
+### Cross-Namespace Task/Agent Separation
+
+Enable separation of concerns between platform and dev teams:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Task Namespace (dev-team-a)                  │
+│  ┌──────────┐                                                   │
+│  │   Task   │  agentRef:                                        │
+│  │          │    name: opencode-agent                           │
+│  │          │    namespace: platform-agents                     │
+│  └──────────┘                                                   │
+└─────────────────────────────────────────────────────────────────┘
+        │ references
+        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  Agent Namespace (platform-agents)              │
+│  ┌──────────┐     ┌──────────┐     ┌──────────┐                │
+│  │  Agent   │     │ Secrets  │     │   Pod    │◄── runs here   │
+│  │          │     │(API keys)│     │          │                │
+│  └──────────┘     └──────────┘     └──────────┘                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Example:**
+
+```yaml
+# In platform-agents namespace - managed by Infra team
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: opencode-agent
+  namespace: platform-agents
+spec:
+  # Restrict which namespaces can use this Agent
+  allowedNamespaces:
+    - "dev-*"
+    - "staging"
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  serviceAccountName: kubeopencode-agent
+  workspaceDir: /workspace
+  command:
+    - sh
+    - -c
+    - /tools/opencode run "$(cat ${WORKSPACE_DIR}/task.md)"
+  credentials:
+    - name: anthropic-key
+      secretRef:
+        name: anthropic-credentials
+        key: api-key
+      env: ANTHROPIC_API_KEY
+---
+# In dev-team-a namespace - created by Dev team
+apiVersion: kubeopencode.io/v1alpha1
+kind: Task
+metadata:
+  name: fix-bug-123
+  namespace: dev-team-a
+spec:
+  agentRef:
+    name: opencode-agent
+    namespace: platform-agents
+  description: "Fix the bug in authentication module"
+```
+
+**Result:**
+- Task exists in `dev-team-a` namespace
+- Pod runs in `platform-agents` namespace (where Agent lives)
+- Credentials stay in `platform-agents` - never exposed to dev team
+- Task status shows `podNamespace: platform-agents`
+
+**AllowedNamespaces** supports glob patterns:
+- `"dev-*"` - matches `dev-team-a`, `dev-team-b`, etc.
+- `"staging"` - exact match
+- Empty list (default) - all namespaces allowed
 
 ### Pod Configuration
 
@@ -637,12 +711,13 @@ See [CLAUDE.md](CLAUDE.md) for detailed development guidelines.
 ## Roadmap
 
 - [x] Core Task/Agent abstraction
-- [x] Inline ContextItem system (Text, ConfigMap, Git, Runtime, Secret, URL)
+- [x] Inline ContextItem system (Text, ConfigMap, Git, Runtime, URL)
 - [x] Argo Events integration for webhook-triggered Tasks
 - [x] Task output capture system
 - [x] Task stop feature (annotation-based)
 - [x] Agent concurrency control (maxConcurrentTasks)
 - [x] Pod configuration (labels, scheduling, runtimeClassName)
+- [x] Cross-namespace Task/Agent separation (credential isolation)
 - [ ] Support for additional context types (MCP)
 - [ ] Advanced retry and failure handling
 - [ ] Web UI for monitoring and management

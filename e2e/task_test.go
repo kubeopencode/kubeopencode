@@ -65,7 +65,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &taskContent,
 				},
 			}
@@ -136,7 +136,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
@@ -207,7 +207,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
@@ -282,7 +282,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    customWSConfigName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: customWSConfigName},
 					Description: &taskDescription,
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
@@ -330,7 +330,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &taskContent,
 				},
 			}
@@ -384,7 +384,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &taskContent,
 				},
 			}
@@ -454,7 +454,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    longRunAgentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: longRunAgentName},
 					Description: &taskContent,
 				},
 			}
@@ -537,7 +537,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    failAgentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: failAgentName},
 					Description: &taskContent,
 				},
 			}
@@ -579,7 +579,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
@@ -628,7 +628,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &description,
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{

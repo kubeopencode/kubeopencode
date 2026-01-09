@@ -57,7 +57,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &content,
 				},
 			}
@@ -129,7 +129,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &content,
 				},
 			}
@@ -208,7 +208,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &content,
 				},
 			}
@@ -319,7 +319,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &content1,
 				},
 			}
@@ -342,7 +342,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &content2,
 				},
 			}
@@ -453,7 +453,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    agentName,
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
 					Description: &content,
 				},
 			}

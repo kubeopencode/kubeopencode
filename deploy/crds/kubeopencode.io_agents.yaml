@@ -62,6 +62,25 @@ spec:
                   The init container runs this image and copies the opencode binary to /tools/opencode.
                   If not specified, defaults to "quay.io/kubeopencode/kubeopencode-agent-opencode:latest".
                 type: string
+              allowedNamespaces:
+                description: |-
+                  AllowedNamespaces restricts which namespaces can reference this Agent.
+                  This enables platform teams to control access to shared Agents.
+
+                  Supports glob patterns (e.g., "team-*", "prod-*", "dev-frontend").
+                  Empty list means all namespaces are allowed (default: open to all).
+
+                  When a Task in namespace "foo" references this Agent and "foo" doesn't
+                  match any pattern, the controller rejects the Task with an error condition.
+
+                  Example:
+                    allowedNamespaces:
+                      - "prod-*"      # All production namespaces
+                      - "staging"     # Staging namespace
+                      - "team-alpha"  # Specific team namespace
+                items:
+                  type: string
+                type: array
               command:
                 description: |-
                   Command specifies the entrypoint command for the agent container.
@@ -213,24 +232,6 @@ spec:
                         Enables KubeOpenCode platform awareness. The controller injects a system prompt
                         that explains the runtime environment to the agent.
                       type: object
-                    secret:
-                      description: |-
-                        Secret context (required when Type == "Secret")
-                        References a Kubernetes Secret for context content.
-                        Unlike Credentials, this provides content for the agent to read and process.
-                      properties:
-                        key:
-                          description: |-
-                            Key specifies a single key to use from the Secret.
-                            If not specified, all keys are mounted as files in the directory
-                            (requires MountPath to be set on ContextItem).
-                          type: string
-                        name:
-                          description: Name of the Secret
-                          type: string
-                      required:
-                      - name
-                      type: object
                     text:
                       description: |-
                         Text is the text content (required when Type == "Text").
@@ -244,7 +245,6 @@ spec:
                       - ConfigMap
                       - Git
                       - Runtime
-                      - Secret
                       - URL
                       type: string
                     url:
@@ -1502,7 +1502,7 @@ spec:
                   ServiceAccountName specifies the Kubernetes ServiceAccount to use for agent pods.
                   This controls what cluster resources the agent can access via RBAC.
 
-                  The ServiceAccount must exist in the same namespace where tasks are created.
+                  The ServiceAccount must exist in the Agent's namespace (where Pods run).
                   Users are responsible for creating the ServiceAccount and appropriate RBAC bindings
                   based on what permissions their agent needs.
                 type: string

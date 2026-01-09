@@ -228,7 +228,7 @@ func TestBuildPod_BasicTask(t *testing.T) {
 		command:            []string{"sh", "-c", "echo test"},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
 
 	// Verify pod metadata
 	if pod.Name != "test-task-pod" {
@@ -377,7 +377,7 @@ func TestBuildPod_WithCredentials(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
 
 	container := pod.Spec.Containers[0]
 
@@ -454,7 +454,7 @@ func TestBuildPod_WithEntireSecretCredential(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
 
 	container := pod.Spec.Containers[0]
 
@@ -510,7 +510,7 @@ func TestBuildPod_WithMixedCredentials(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
 
 	container := pod.Spec.Containers[0]
 
@@ -578,7 +578,7 @@ func TestBuildPod_WithEntireSecretAsDirectory(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
 
 	container := pod.Spec.Containers[0]
 
@@ -670,7 +670,7 @@ func TestBuildPod_WithPodScheduling(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, nil, defaultSystemConfig())
 
 	// Verify node selector
 	if pod.Spec.NodeSelector["node-type"] != "gpu" {
@@ -733,7 +733,7 @@ func TestBuildPod_WithContextConfigMap(t *testing.T) {
 		{filePath: "/workspace/task.md"},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, contextConfigMap, fileMounts, nil, nil, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, contextConfigMap, fileMounts, nil, nil, nil, defaultSystemConfig())
 
 	// Verify context-files volume exists (for init container to read from)
 	var foundContextVolume bool
@@ -829,7 +829,7 @@ func TestBuildPod_WithDirMounts(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, nil, nil, dirMounts, nil, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, dirMounts, nil, nil, defaultSystemConfig())
 
 	// Verify dir-mount volume exists (for init container to read from)
 	var foundDirVolume bool
@@ -927,7 +927,7 @@ func TestBuildPod_WithGitMounts(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, gitMounts, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, gitMounts, nil, defaultSystemConfig())
 
 	// Verify init containers exist (opencode-init first, then git-init-0)
 	if len(pod.Spec.InitContainers) != 2 {
@@ -1025,7 +1025,7 @@ func TestBuildPod_WithGitMountsAndAuth(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, gitMounts, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, gitMounts, nil, defaultSystemConfig())
 
 	// Verify we have 2 init containers (opencode-init + git-init)
 	if len(pod.Spec.InitContainers) != 2 {
@@ -1287,7 +1287,7 @@ func TestBuildPod_WithExternalFileMounts(t *testing.T) {
 		{filePath: "/etc/github-app/github-app-iat.sh"},
 	}
 
-	pod := buildPod(task, "test-task-pod", cfg, contextConfigMap, fileMounts, nil, nil, nil, defaultSystemConfig())
+	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, contextConfigMap, fileMounts, nil, nil, nil, defaultSystemConfig())
 
 	// Verify workspace emptyDir volume exists
 	var foundWorkspaceVolume bool

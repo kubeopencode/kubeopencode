@@ -56,8 +56,24 @@ spec:
               agentRef:
                 description: |-
                   AgentRef references an Agent for this task.
+                  Supports cross-namespace references: when Agent is in a different namespace,
+                  the Pod runs in the Agent's namespace to keep credentials isolated.
+
                   If not specified, uses the "default" Agent in the same namespace.
-                type: string
+                properties:
+                  name:
+                    description: Name of the Agent.
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace of the Agent.
+                      If empty, defaults to the Task's namespace.
+                      When specified, the Pod runs in the Agent's namespace (not the Task's namespace),
+                      allowing credentials to stay isolated from Task creators.
+                    type: string
+                required:
+                - name
+                type: object
               contexts:
                 description: |-
                   Contexts provides additional context for the task.
@@ -200,24 +216,6 @@ spec:
                         Enables KubeOpenCode platform awareness. The controller injects a system prompt
                         that explains the runtime environment to the agent.
                       type: object
-                    secret:
-                      description: |-
-                        Secret context (required when Type == "Secret")
-                        References a Kubernetes Secret for context content.
-                        Unlike Credentials, this provides content for the agent to read and process.
-                      properties:
-                        key:
-                          description: |-
-                            Key specifies a single key to use from the Secret.
-                            If not specified, all keys are mounted as files in the directory
-                            (requires MountPath to be set on ContextItem).
-                          type: string
-                        name:
-                          description: Name of the Secret
-                          type: string
-                      required:
-                      - name
-                      type: object
                     text:
                       description: |-
                         Text is the text content (required when Type == "Text").
@@ -231,7 +229,6 @@ spec:
                       - ConfigMap
                       - Git
                       - Runtime
-                      - Secret
                       - URL
                       type: string
                     url:
@@ -443,6 +440,13 @@ spec:
                 type: string
               podName:
                 description: Kubernetes Pod name
+                type: string
+              podNamespace:
+                description: |-
+                  PodNamespace indicates where the Pod is running.
+                  This may differ from Task's namespace when using cross-namespace Agent reference.
+                  When Agent is in a different namespace, the Pod runs in the Agent's namespace
+                  to keep credentials isolated from Task creators.
                 type: string
               startTime:
                 description: Start time
