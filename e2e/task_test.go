@@ -565,6 +565,238 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 		})
 	})
 
+	Context("Task with TaskTemplate", func() {
+		It("should merge TaskTemplate contexts with Task contexts", func() {
+			taskName := uniqueName("task-template")
+			templateName := uniqueName("template")
+			templateContext := "# Template Guidelines\n\nFollow these template rules."
+			taskContext := "# Task Guidelines\n\nFollow these task-specific rules."
+			taskDescription := "Execute task with template"
+
+			By("Creating TaskTemplate")
+			template := &kubeopenv1alpha1.TaskTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskTemplateSpec{
+					AgentRef: &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Type: kubeopenv1alpha1.ContextTypeText,
+							Text: templateContext,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, template)).Should(Succeed())
+
+			By("Creating Task with TaskTemplateRef")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: templateName},
+					Description:     &taskDescription,
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Type: kubeopenv1alpha1.ContextTypeText,
+							Text: taskContext,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying both template and task contexts are in the logs")
+			jobName := fmt.Sprintf("%s-pod", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			Expect(logs).Should(ContainSubstring("Template Guidelines"))
+			Expect(logs).Should(ContainSubstring("Task Guidelines"))
+			Expect(logs).Should(ContainSubstring("Execute task with template"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, template)).Should(Succeed())
+		})
+
+		It("should use TaskTemplate description when Task has no description", func() {
+			taskName := uniqueName("task-tmpl-desc")
+			templateName := uniqueName("template-desc")
+			templateDescription := "This is the default description from template"
+
+			By("Creating TaskTemplate with description")
+			template := &kubeopenv1alpha1.TaskTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskTemplateSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &templateDescription,
+				},
+			}
+			Expect(k8sClient.Create(ctx, template)).Should(Succeed())
+
+			By("Creating Task without description")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: templateName},
+					// No Description - should use template's
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying template description is in the logs")
+			jobName := fmt.Sprintf("%s-pod", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			Expect(logs).Should(ContainSubstring("default description from template"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, template)).Should(Succeed())
+		})
+
+		It("should fail when TaskTemplate is not found", func() {
+			taskName := uniqueName("task-missing-tmpl")
+			description := "Task with missing template"
+
+			By("Creating Task with non-existent TaskTemplateRef")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: "non-existent-template"},
+					Description:     &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to transition to Failed")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseFailed))
+
+			By("Verifying error condition mentions TaskTemplate not found")
+			failedTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskKey, failedTask)).Should(Succeed())
+			var readyCondition *metav1.Condition
+			for i := range failedTask.Status.Conditions {
+				if failedTask.Status.Conditions[i].Type == "Ready" {
+					readyCondition = &failedTask.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(readyCondition).ShouldNot(BeNil())
+			Expect(readyCondition.Reason).Should(Equal("TaskTemplateError"))
+			Expect(readyCondition.Message).Should(ContainSubstring("not found"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+		})
+
+		It("should use TaskTemplate agentRef when Task has no agentRef", func() {
+			taskName := uniqueName("task-tmpl-agent")
+			templateName := uniqueName("template-agent")
+			customAgentName := uniqueName("custom-agent")
+			description := "Task using template's agentRef"
+
+			By("Creating custom Agent")
+			customAgent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      customAgentName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      echoImage,
+					ServiceAccountName: testServiceAccount,
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo 'Custom agent running' && cat ${WORKSPACE_DIR}/task.md"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, customAgent)).Should(Succeed())
+
+			By("Creating TaskTemplate with agentRef")
+			template := &kubeopenv1alpha1.TaskTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskTemplateSpec{
+					AgentRef: &kubeopenv1alpha1.AgentReference{Name: customAgentName},
+				},
+			}
+			Expect(k8sClient.Create(ctx, template)).Should(Succeed())
+
+			By("Creating Task without agentRef")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: templateName},
+					Description:     &description,
+					// No AgentRef - should use template's
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying custom agent was used")
+			jobName := fmt.Sprintf("%s-pod", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			Expect(logs).Should(ContainSubstring("Custom agent running"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, template)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, customAgent)).Should(Succeed())
+		})
+	})
+
 	Context("Task with Git Context", func() {
 		It("should clone a public Git repository and mount content", func() {
 			taskName := uniqueName("task-git")

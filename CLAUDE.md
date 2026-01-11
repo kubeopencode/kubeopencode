@@ -45,8 +45,9 @@ Webhook/event handling has been delegated to [Argo Events](https://argoproj.gith
 ### Resource Hierarchy
 
 1. **Task** - Single task execution (the primary API)
-2. **Agent** - AI agent configuration (HOW to execute)
-3. **KubeOpenCodeConfig** - System-level configuration (optional)
+2. **TaskTemplate** - Reusable template for Task creation (similar to Argo WorkflowTemplate)
+3. **Agent** - AI agent configuration (HOW to execute)
+4. **KubeOpenCodeConfig** - System-level configuration (optional)
 
 > **Note**: Workflow orchestration and webhook triggers have been delegated to Argo Workflows and Argo Events respectively. KubeOpenCode focuses on the core Task/Agent abstraction.
 
@@ -611,6 +612,70 @@ kubectl get task my-task -o jsonpath='{.status.outputs.parameters.pr-url}'
 
 **Note:** Due to Kubernetes termination message 4KB limit, total output must be under 4KB. For larger outputs, consider using external storage.
 
+### TaskTemplate
+
+TaskTemplate defines a reusable template for Task creation. Similar to Argo Workflows' WorkflowTemplate.
+
+**TaskTemplate Spec:**
+- `description`: Default task instruction/prompt (Task can override)
+- `agentRef`: Default Agent reference (Task can override)
+- `contexts`: Default contexts (merged with Task contexts)
+- `outputs`: Default output parameters (merged with Task outputs)
+
+**Example TaskTemplate:**
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: TaskTemplate
+metadata:
+  name: pr-task-template
+spec:
+  agentRef:
+    name: opencode-agent
+  description: |
+    ## PR Creation Task
+    Follow coding standards and create a PR.
+  contexts:
+    - type: Git
+      git:
+        repository: https://github.com/org/repo
+        ref: main
+      mountPath: source
+    - type: ConfigMap
+      configMap:
+        name: coding-standards
+  outputs:
+    parameters:
+      - name: pr-url
+        path: .outputs/pr-url
+      - name: commit-sha
+        path: .outputs/commit-sha
+```
+
+**Task using TaskTemplate:**
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Task
+metadata:
+  name: fix-issue-123
+spec:
+  taskTemplateRef:
+    name: pr-task-template
+    # namespace: other-ns  # Optional cross-namespace reference
+  # Override template's description
+  description: |
+    Fix issue #123: Login button not working on mobile.
+  # Additional contexts (appended to template's)
+  contexts:
+    - type: Text
+      text: "Focus on mobile responsiveness"
+```
+
+**Merge Strategy:**
+- `agentRef`: Task takes precedence
+- `contexts`: Template contexts first, then Task contexts (both included)
+- `outputs`: Merged by parameter name (Task takes precedence for same-named params)
+- `description`: Task takes precedence (if Task doesn't specify, uses Template's)
+
 ## Kubernetes Integration
 
 ### RBAC
@@ -626,10 +691,13 @@ The controller requires permissions for:
 
 ### Updating Documentation
 
-1. **Architecture changes**: Update `docs/architecture.md`
-2. **API changes**: Update inline godoc comments
-3. **Helm chart**: Update `charts/kubeopencode/README.md`
-4. **Decisions**: Add ADR in `docs/adr/`
+> **IMPORTANT**: Always update ALL relevant documentation when making changes. Do not forget the README.
+
+1. **README**: Update `README.md` for user-facing changes (new features, API changes)
+2. **Architecture changes**: Update `docs/architecture.md`
+3. **API changes**: Update inline godoc comments AND this file (`CLAUDE.md`)
+4. **Helm chart**: Update `charts/kubeopencode/README.md`
+5. **Decisions**: Add ADR in `docs/adr/`
 
 ### Architecture Decision Records (ADRs)
 

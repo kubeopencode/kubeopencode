@@ -14,6 +14,7 @@ rules:
   - cronworkflows
   - kubeopencodeconfigs
   - tasks
+  - tasktemplates
   - webhooktriggers
   - workflows
   - workflowruns
@@ -34,6 +35,7 @@ rules:
   - cronworkflows/status
   - kubeopencodeconfigs/status
   - tasks/status
+  - tasktemplates/status
   - webhooktriggers/status
   - workflows/status
   - workflowruns/status

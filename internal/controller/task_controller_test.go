@@ -1812,4 +1812,366 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})
+
+	Context("TaskTemplate", func() {
+		It("Should merge TaskTemplate contexts with Task contexts", func() {
+			taskName := "test-task-with-template"
+			templateName := "test-task-template"
+			agentName := "test-agent-template"
+			templateContext := "# Template Guidelines\n\nFollow these template rules."
+			taskContext := "# Task Guidelines\n\nFollow these task-specific rules."
+			templateDescription := "Default template description"
+			taskDescription := "Task-specific description"
+
+			By("Creating Agent")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating TaskTemplate")
+			template := &kubeopenv1alpha1.TaskTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskTemplateSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &templateDescription,
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Type: kubeopenv1alpha1.ContextTypeText,
+							Text: templateContext,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, template)).Should(Succeed())
+
+			By("Creating Task with TaskTemplateRef")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: templateName},
+					Description:     &taskDescription,
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Type: kubeopenv1alpha1.ContextTypeText,
+							Text: taskContext,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task status is Running")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			createdTask := &kubeopenv1alpha1.Task{}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Checking context ConfigMap contains both template and task contexts")
+			configMapName := taskName + ContextConfigMapSuffix
+			configMapLookupKey := types.NamespacedName{Name: configMapName, Namespace: taskNamespace}
+			createdConfigMap := &corev1.ConfigMap{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, configMapLookupKey, createdConfigMap) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			taskMdContent := createdConfigMap.Data["workspace-task.md"]
+			// Task description should be present (overrides template)
+			Expect(taskMdContent).Should(ContainSubstring(taskDescription))
+			// Both contexts should be present
+			Expect(taskMdContent).Should(ContainSubstring(templateContext))
+			Expect(taskMdContent).Should(ContainSubstring(taskContext))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, template)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should use TaskTemplate description when Task has no description", func() {
+			taskName := "test-task-template-desc"
+			templateName := "test-template-desc"
+			agentName := "test-agent-template-desc"
+			templateDescription := "This is the template default description"
+
+			By("Creating Agent")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating TaskTemplate with description")
+			template := &kubeopenv1alpha1.TaskTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskTemplateSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &templateDescription,
+				},
+			}
+			Expect(k8sClient.Create(ctx, template)).Should(Succeed())
+
+			By("Creating Task without description (should use template's)")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: templateName},
+					// No Description - should use template's
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task status is Running")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Checking context ConfigMap contains template description")
+			configMapName := taskName + ContextConfigMapSuffix
+			configMapLookupKey := types.NamespacedName{Name: configMapName, Namespace: taskNamespace}
+			createdConfigMap := &corev1.ConfigMap{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, configMapLookupKey, createdConfigMap) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			taskMdContent := createdConfigMap.Data["workspace-task.md"]
+			Expect(taskMdContent).Should(ContainSubstring(templateDescription))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, template)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should use TaskTemplate agentRef when Task has no agentRef", func() {
+			taskName := "test-task-template-agentref"
+			templateName := "test-template-agentref"
+			agentName := "test-agent-from-template"
+			customAgentImage := "custom-agent-image:v1.0.0"
+			description := "Test task using template agentRef"
+
+			By("Creating Agent with custom image")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					AgentImage:         customAgentImage,
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating TaskTemplate with agentRef")
+			template := &kubeopenv1alpha1.TaskTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskTemplateSpec{
+					AgentRef: &kubeopenv1alpha1.AgentReference{Name: agentName},
+				},
+			}
+			Expect(k8sClient.Create(ctx, template)).Should(Succeed())
+
+			By("Creating Task without agentRef (should use template's)")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: templateName},
+					Description:     &description,
+					// No AgentRef - should use template's
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Pod uses agent from template")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() string {
+				if err := k8sClient.Get(ctx, podLookupKey, createdPod); err != nil {
+					return ""
+				}
+				if len(createdPod.Spec.InitContainers) == 0 {
+					return ""
+				}
+				return createdPod.Spec.InitContainers[0].Image
+			}, timeout, interval).Should(Equal(customAgentImage))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, template)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should fail when TaskTemplate is not found", func() {
+			taskName := "test-task-missing-template"
+			description := "Test task with missing template"
+
+			By("Creating Task with non-existent TaskTemplateRef")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: "non-existent-template"},
+					Description:     &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task status is Failed")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			createdTask := &kubeopenv1alpha1.Task{}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseFailed))
+
+			By("Checking error message mentions TaskTemplate not found")
+			var readyCondition *metav1.Condition
+			for i := range createdTask.Status.Conditions {
+				if createdTask.Status.Conditions[i].Type == "Ready" {
+					readyCondition = &createdTask.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(readyCondition).ShouldNot(BeNil())
+			Expect(readyCondition.Reason).Should(Equal("TaskTemplateError"))
+			Expect(readyCondition.Message).Should(ContainSubstring("TaskTemplate"))
+			Expect(readyCondition.Message).Should(ContainSubstring("not found"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+		})
+
+		It("Should merge TaskTemplate outputs with Task outputs", func() {
+			taskName := "test-task-template-outputs"
+			templateName := "test-template-outputs"
+			agentName := "test-agent-outputs-template"
+			description := "Test output merging"
+
+			By("Creating Agent")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating TaskTemplate with outputs")
+			template := &kubeopenv1alpha1.TaskTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskTemplateSpec{
+					AgentRef: &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Outputs: &kubeopenv1alpha1.OutputSpec{
+						Parameters: []kubeopenv1alpha1.OutputParameterSpec{
+							{Name: "pr-url", Path: ".outputs/pr-url"},
+							{Name: "commit-sha", Path: ".outputs/commit-sha"},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, template)).Should(Succeed())
+
+			By("Creating Task with additional outputs")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: templateName},
+					Description:     &description,
+					Outputs: &kubeopenv1alpha1.OutputSpec{
+						Parameters: []kubeopenv1alpha1.OutputParameterSpec{
+							{Name: "summary", Path: ".outputs/summary"}, // New param
+							{Name: "pr-url", Path: ".outputs/pr-link"},  // Override path
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Pod is created with output-collector sidecar")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, podLookupKey, createdPod); err != nil {
+					return false
+				}
+				return len(createdPod.Spec.Containers) >= 2
+			}, timeout, interval).Should(BeTrue())
+
+			var hasOutputCollector bool
+			for _, c := range createdPod.Spec.Containers {
+				if c.Name == "output-collector" {
+					hasOutputCollector = true
+					break
+				}
+			}
+			Expect(hasOutputCollector).Should(BeTrue())
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, template)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
 })

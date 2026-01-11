@@ -59,7 +59,8 @@ spec:
                   Supports cross-namespace references: when Agent is in a different namespace,
                   the Pod runs in the Agent's namespace to keep credentials isolated.
 
-                  If not specified, uses the "default" Agent in the same namespace.
+                  If not specified and taskTemplateRef is set, uses the template's agentRef.
+                  If neither is specified, uses the "default" Agent in the same namespace.
                 properties:
                   name:
                     description: Name of the Agent.
@@ -81,8 +82,9 @@ spec:
 
                   Context priority (lowest to highest):
                     1. Agent.contexts (Agent-level defaults)
-                    2. Task.contexts (Task-specific contexts)
-                    3. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
+                    2. TaskTemplate.contexts (Template-level defaults, if taskTemplateRef is set)
+                    3. Task.contexts (Task-specific contexts)
+                    4. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
 
                   Example:
                     contexts:
@@ -292,6 +294,9 @@ spec:
                   (where WORKSPACE_DIR is configured in Agent.spec.workspaceDir, defaulting to "/workspace").
                   This is the primary way to tell the agent what to do.
 
+                  If taskTemplateRef is specified and description is not set,
+                  the template's description is used.
+
                   Example:
                     description: "Update all dependencies and create a PR"
                 type: string
@@ -299,6 +304,9 @@ spec:
                 description: |-
                   Outputs defines output parameters to capture from this Task.
                   The controller creates a sidecar to capture these outputs from files.
+
+                  If taskTemplateRef is specified, outputs are merged with the template's outputs.
+                  Task outputs take precedence for same-named parameters.
 
                   Example:
                     outputs:
@@ -338,6 +346,33 @@ spec:
                       - path
                       type: object
                     type: array
+                type: object
+              taskTemplateRef:
+                description: |-
+                  TaskTemplateRef references a TaskTemplate to use as base configuration.
+                  The template's settings are merged with this Task's settings.
+
+                  When using a template:
+                    - TaskTemplate.agentRef is used if Task.agentRef is not specified
+                    - TaskTemplate.contexts are prepended to Task.contexts
+                    - TaskTemplate.outputs are merged with Task.outputs (Task takes precedence)
+                    - TaskTemplate.description is used if Task.description is not specified
+
+                  Example:
+                    taskTemplateRef:
+                      name: pr-task-template
+                      namespace: platform-templates
+                properties:
+                  name:
+                    description: Name of the TaskTemplate.
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace of the TaskTemplate.
+                      If empty, defaults to the Task's namespace.
+                    type: string
+                required:
+                - name
                 type: object
             type: object
           status:

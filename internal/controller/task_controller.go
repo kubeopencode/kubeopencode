@@ -154,9 +154,34 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alpha1.Task) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
+	// Resolve TaskTemplate if referenced and merge specs
+	mergedSpec, err := r.resolveTaskTemplate(ctx, task)
+	if err != nil {
+		log.Error(err, "unable to resolve TaskTemplate")
+		// Update task status to Failed
+		task.Status.ObservedGeneration = task.Generation
+		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
+		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+			Type:    "Ready",
+			Status:  metav1.ConditionFalse,
+			Reason:  "TaskTemplateError",
+			Message: err.Error(),
+		})
+		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			log.Error(updateErr, "unable to update Task status")
+			return ctrl.Result{}, updateErr
+		}
+		return ctrl.Result{}, nil // Don't requeue, user needs to fix TaskTemplate
+	}
+
+	// Create a working copy of the task with merged spec for Pod creation
+	// This ensures the original task object's spec is not modified
+	workingTask := task.DeepCopy()
+	workingTask.Spec = *mergedSpec
+
 	// Get agent configuration with name and namespace
 	// agentNamespace is where the Pod will run (may differ from Task namespace)
-	agentConfig, agentName, agentNamespace, err := r.getAgentConfigWithName(ctx, task)
+	agentConfig, agentName, agentNamespace, err := r.getAgentConfigWithName(ctx, workingTask)
 	if err != nil {
 		log.Error(err, "unable to get Agent")
 		// Update task status to Failed
@@ -267,11 +292,13 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	// Process all contexts using priority-based resolution
 	// Priority (lowest to highest):
 	//   1. Agent.contexts (Agent-level Context CRD references)
-	//   2. Task.contexts (Task-specific Context CRD references)
-	//   3. Task.description (highest, becomes start of ${WORKSPACE_DIR}/task.md)
+	//   2. TaskTemplate.contexts (Template-level defaults, if taskTemplateRef is set)
+	//   3. Task.contexts (Task-specific Context CRD references)
+	//   4. Task.description (highest, becomes start of ${WORKSPACE_DIR}/task.md)
+	// Note: workingTask has merged spec from TaskTemplate (if any)
 	// Note: For cross-namespace, Task ConfigMap contexts are read from Task namespace
 	// and embedded into the ConfigMap created in Agent namespace
-	contextConfigMap, fileMounts, dirMounts, gitMounts, err := r.processAllContexts(ctx, task, agentConfig, agentNamespace)
+	contextConfigMap, fileMounts, dirMounts, gitMounts, err := r.processAllContexts(ctx, workingTask, agentConfig, agentNamespace)
 	if err != nil {
 		log.Error(err, "unable to process contexts")
 		// Update task status to Failed - context errors are user configuration issues
@@ -306,7 +333,8 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 
 	// Create Pod with agent configuration, context mounts, and output collector sidecar
 	// Pod is created in Agent's namespace
-	pod := buildPod(task, podName, agentNamespace, agentConfig, contextConfigMap, fileMounts, dirMounts, gitMounts, task.Spec.Outputs, sysCfg)
+	// Use workingTask which has merged spec from TaskTemplate (if any)
+	pod := buildPod(workingTask, podName, agentNamespace, agentConfig, contextConfigMap, fileMounts, dirMounts, gitMounts, workingTask.Spec.Outputs, sysCfg)
 
 	if err := r.Create(ctx, pod); err != nil {
 		log.Error(err, "unable to create Pod", "pod", podName, "namespace", agentNamespace)
@@ -482,6 +510,120 @@ func (r *TaskReconciler) validateNamespaceAccess(agent *kubeopenv1alpha1.Agent, 
 	}
 
 	return fmt.Errorf("namespace %q is not allowed to use Agent %q (allowed: %v)", taskNamespace, agent.Name, agent.Spec.AllowedNamespaces)
+}
+
+// resolveTaskTemplate fetches the TaskTemplate if referenced and returns a merged TaskSpec.
+// If no template is referenced, returns the original task spec unchanged.
+// The merge strategy is:
+//   - agentRef: Task takes precedence over Template
+//   - contexts: Template contexts are prepended to Task contexts
+//   - outputs: Parameters are merged, Task takes precedence for same-named params
+//   - description: Task takes precedence over Template
+func (r *TaskReconciler) resolveTaskTemplate(ctx context.Context, task *kubeopenv1alpha1.Task) (*kubeopenv1alpha1.TaskSpec, error) {
+	if task.Spec.TaskTemplateRef == nil {
+		// No template reference, return original spec
+		return &task.Spec, nil
+	}
+
+	log := log.FromContext(ctx)
+
+	// Determine template namespace
+	templateNamespace := task.Namespace
+	if task.Spec.TaskTemplateRef.Namespace != "" {
+		templateNamespace = task.Spec.TaskTemplateRef.Namespace
+	}
+
+	// Fetch the TaskTemplate
+	template := &kubeopenv1alpha1.TaskTemplate{}
+	templateKey := types.NamespacedName{
+		Name:      task.Spec.TaskTemplateRef.Name,
+		Namespace: templateNamespace,
+	}
+
+	if err := r.Get(ctx, templateKey, template); err != nil {
+		if errors.IsNotFound(err) {
+			return nil, fmt.Errorf("TaskTemplate %q not found in namespace %q", task.Spec.TaskTemplateRef.Name, templateNamespace)
+		}
+		return nil, fmt.Errorf("failed to get TaskTemplate: %w", err)
+	}
+
+	log.Info("merging Task with TaskTemplate", "template", templateKey)
+
+	// Merge the specs
+	merged := &kubeopenv1alpha1.TaskSpec{}
+
+	// 1. AgentRef: Task takes precedence
+	if task.Spec.AgentRef != nil {
+		merged.AgentRef = task.Spec.AgentRef.DeepCopy()
+	} else if template.Spec.AgentRef != nil {
+		merged.AgentRef = template.Spec.AgentRef.DeepCopy()
+	}
+
+	// 2. Contexts: Template contexts first, then Task contexts
+	merged.Contexts = make([]kubeopenv1alpha1.ContextItem, 0, len(template.Spec.Contexts)+len(task.Spec.Contexts))
+	for _, c := range template.Spec.Contexts {
+		merged.Contexts = append(merged.Contexts, *c.DeepCopy())
+	}
+	for _, c := range task.Spec.Contexts {
+		merged.Contexts = append(merged.Contexts, *c.DeepCopy())
+	}
+
+	// 3. Outputs: Merge parameters, Task takes precedence for same-named params
+	merged.Outputs = mergeOutputSpecs(template.Spec.Outputs, task.Spec.Outputs)
+
+	// 4. Description: Task takes precedence
+	if task.Spec.Description != nil {
+		merged.Description = task.Spec.Description
+	} else if template.Spec.Description != nil {
+		merged.Description = template.Spec.Description
+	}
+
+	// Keep the TaskTemplateRef reference in merged spec
+	merged.TaskTemplateRef = task.Spec.TaskTemplateRef
+
+	return merged, nil
+}
+
+// mergeOutputSpecs merges two OutputSpecs, with override taking precedence for same-named params.
+func mergeOutputSpecs(base, override *kubeopenv1alpha1.OutputSpec) *kubeopenv1alpha1.OutputSpec {
+	if base == nil && override == nil {
+		return nil
+	}
+	if base == nil {
+		return override.DeepCopy()
+	}
+	if override == nil {
+		return base.DeepCopy()
+	}
+
+	// Build parameter map: base first, then override
+	paramMap := make(map[string]kubeopenv1alpha1.OutputParameterSpec)
+	for _, p := range base.Parameters {
+		paramMap[p.Name] = p
+	}
+	for _, p := range override.Parameters {
+		paramMap[p.Name] = p
+	}
+
+	// Convert back to slice, maintaining stable order
+	result := &kubeopenv1alpha1.OutputSpec{
+		Parameters: make([]kubeopenv1alpha1.OutputParameterSpec, 0, len(paramMap)),
+	}
+
+	// First add base params in order (preserving order for those not overridden)
+	seen := make(map[string]bool)
+	for _, p := range base.Parameters {
+		result.Parameters = append(result.Parameters, paramMap[p.Name])
+		seen[p.Name] = true
+	}
+	// Then add any new params from override
+	for _, p := range override.Parameters {
+		if !seen[p.Name] {
+			result.Parameters = append(result.Parameters, p)
+		}
+	}
+
+	return result
 }
 
 // handleTaskDeletion handles Task deletion, cleaning up cross-namespace Pods.

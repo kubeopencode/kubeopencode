@@ -4,24 +4,21 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
-  name: tasks.kubeopencode.io
+  name: tasktemplates.kubeopencode.io
 spec:
   group: kubeopencode.io
   names:
-    kind: Task
-    listKind: TaskList
-    plural: tasks
+    kind: TaskTemplate
+    listKind: TaskTemplateList
+    plural: tasktemplates
     shortNames:
-    - tk
-    singular: task
+    - tt
+    singular: tasktemplate
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.phase
-      name: Phase
-      type: string
-    - jsonPath: .status.podName
-      name: Pod
+    - jsonPath: .spec.agentRef.name
+      name: Agent
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -30,8 +27,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Task represents a single task execution.
-          Task is the primary API for users who want to execute AI-powered tasks.
+          TaskTemplate defines a reusable template for Task creation.
+          TaskTemplates allow users to define common Task configurations (contexts, outputs, agentRef)
+          that can be shared across multiple Tasks. Similar to Argo WorkflowTemplate.
         properties:
           apiVersion:
             description: |-
@@ -51,16 +49,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: Spec defines the desired state of Task
+            description: Spec defines the template configuration
             properties:
               agentRef:
                 description: |-
-                  AgentRef references an Agent for this task.
-                  Supports cross-namespace references: when Agent is in a different namespace,
-                  the Pod runs in the Agent's namespace to keep credentials isolated.
-
-                  If not specified and taskTemplateRef is set, uses the template's agentRef.
-                  If neither is specified, uses the "default" Agent in the same namespace.
+                  AgentRef references an Agent for tasks using this template.
+                  Can be overridden by Task.spec.agentRef.
                 properties:
                   name:
                     description: Name of the Agent.
@@ -77,24 +71,14 @@ spec:
                 type: object
               contexts:
                 description: |-
-                  Contexts provides additional context for the task.
-                  Contexts are processed in array order, with later contexts taking precedence.
+                  Contexts provides default contexts for tasks using this template.
+                  These are merged with Task.spec.contexts (Task contexts appended after template contexts).
 
                   Context priority (lowest to highest):
                     1. Agent.contexts (Agent-level defaults)
-                    2. TaskTemplate.contexts (Template-level defaults, if taskTemplateRef is set)
+                    2. TaskTemplate.contexts (Template-level defaults)
                     3. Task.contexts (Task-specific contexts)
                     4. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
-
-                  Example:
-                    contexts:
-                      - type: Text
-                        text: "Always use conventional commits"
-                      - type: Git
-                        mountPath: src
-                        git:
-                          repository: https://github.com/org/repo
-                          ref: main
                 items:
                   description: |-
                     ContextItem defines context with content and mount path.
@@ -289,33 +273,14 @@ spec:
                 type: array
               description:
                 description: |-
-                  Description is the task instruction/prompt.
-                  The controller creates ${WORKSPACE_DIR}/task.md with this content
-                  (where WORKSPACE_DIR is configured in Agent.spec.workspaceDir, defaulting to "/workspace").
-                  This is the primary way to tell the agent what to do.
-
-                  If taskTemplateRef is specified and description is not set,
-                  the template's description is used.
-
-                  Example:
-                    description: "Update all dependencies and create a PR"
+                  Description is the default task instruction/prompt.
+                  Can be overridden by Task.spec.description.
+                  If Task doesn't specify description, this value is used.
                 type: string
               outputs:
                 description: |-
-                  Outputs defines output parameters to capture from this Task.
-                  The controller creates a sidecar to capture these outputs from files.
-
-                  If taskTemplateRef is specified, outputs are merged with the template's outputs.
-                  Task outputs take precedence for same-named parameters.
-
-                  Example:
-                    outputs:
-                      parameters:
-                        - name: pr-url
-                          path: ".outputs/pr-url"
-                        - name: summary
-                          path: ".outputs/summary"
-                          default: "No summary provided"
+                  Outputs defines default output parameters for tasks using this template.
+                  Parameters are merged with Task.spec.outputs (Task takes precedence for same-named params).
                 properties:
                   parameters:
                     description: |-
@@ -347,151 +312,10 @@ spec:
                       type: object
                     type: array
                 type: object
-              taskTemplateRef:
-                description: |-
-                  TaskTemplateRef references a TaskTemplate to use as base configuration.
-                  The template's settings are merged with this Task's settings.
-
-                  When using a template:
-                    - TaskTemplate.agentRef is used if Task.agentRef is not specified
-                    - TaskTemplate.contexts are prepended to Task.contexts
-                    - TaskTemplate.outputs are merged with Task.outputs (Task takes precedence)
-                    - TaskTemplate.description is used if Task.description is not specified
-
-                  Example:
-                    taskTemplateRef:
-                      name: pr-task-template
-                      namespace: platform-templates
-                properties:
-                  name:
-                    description: Name of the TaskTemplate.
-                    type: string
-                  namespace:
-                    description: |-
-                      Namespace of the TaskTemplate.
-                      If empty, defaults to the Task's namespace.
-                    type: string
-                required:
-                - name
-                type: object
-            type: object
-          status:
-            description: Status represents the current status of the Task
-            properties:
-              completionTime:
-                description: Completion time
-                format: date-time
-                type: string
-              conditions:
-                description: Kubernetes standard conditions
-                items:
-                  description: Condition contains details for one aspect of the current
-                    state of this API Resource.
-                  properties:
-                    lastTransitionTime:
-                      description: |-
-                        lastTransitionTime is the last time the condition transitioned from one status to another.
-                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
-                      format: date-time
-                      type: string
-                    message:
-                      description: |-
-                        message is a human readable message indicating details about the transition.
-                        This may be an empty string.
-                      maxLength: 32768
-                      type: string
-                    observedGeneration:
-                      description: |-
-                        observedGeneration represents the .metadata.generation that the condition was set based upon.
-                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
-                        with respect to the current state of the instance.
-                      format: int64
-                      minimum: 0
-                      type: integer
-                    reason:
-                      description: |-
-                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
-                        Producers of specific condition types may define expected values and meanings for this field,
-                        and whether the values are considered a guaranteed API.
-                        The value should be a CamelCase string.
-                        This field may not be empty.
-                      maxLength: 1024
-                      minLength: 1
-                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
-                      type: string
-                    status:
-                      description: status of the condition, one of True, False, Unknown.
-                      enum:
-                      - "True"
-                      - "False"
-                      - Unknown
-                      type: string
-                    type:
-                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
-                      maxLength: 316
-                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
-                      type: string
-                  required:
-                  - lastTransitionTime
-                  - message
-                  - reason
-                  - status
-                  - type
-                  type: object
-                type: array
-                x-kubernetes-list-map-keys:
-                - type
-                x-kubernetes-list-type: map
-              observedGeneration:
-                description: ObservedGeneration is the most recent generation observed
-                  by the controller.
-                format: int64
-                type: integer
-              outputs:
-                description: |-
-                  Outputs contains results captured from task execution.
-                  This is populated when the task completes (either success or failure).
-                properties:
-                  parameters:
-                    additionalProperties:
-                      type: string
-                    description: |-
-                      Parameters is a key-value map of outputs captured from files.
-                      Keys are defined in Task.spec.outputs.
-                      Values are read from the corresponding file paths by the sidecar.
-
-                      Example usage:
-                        kubectl get task my-task -o jsonpath='{.status.outputs.parameters.pr-url}'
-                    type: object
-                type: object
-              phase:
-                description: Execution phase
-                enum:
-                - Pending
-                - Queued
-                - Running
-                - Completed
-                - Failed
-                type: string
-              podName:
-                description: Kubernetes Pod name
-                type: string
-              podNamespace:
-                description: |-
-                  PodNamespace indicates where the Pod is running.
-                  This may differ from Task's namespace when using cross-namespace Agent reference.
-                  When Agent is in a different namespace, the Pod runs in the Agent's namespace
-                  to keep credentials isolated from Task creators.
-                type: string
-              startTime:
-                description: Start time
-                format: date-time
-                type: string
             type: object
         required:
         - spec
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}
+    subresources: {}

@@ -29,6 +29,7 @@ KubeOpenCode enables you to execute AI agent tasks using Kubernetes Custom Resou
 - **Flexible Context System**: Support for Text, ConfigMaps, Git, Runtime, and URLs
 - **Cross-Namespace Separation**: Platform teams manage Agents with credentials; dev teams create Tasks
 - **Task Outputs**: Capture results from task execution into status
+- **TaskTemplate**: Reusable templates for Task configurations (like Argo WorkflowTemplate)
 - **Concurrency Control**: Limit concurrent tasks per Agent
 - **Event-Driven**: Integrates with Argo Events for webhook-triggered Tasks
 - **Batch Operations**: Use Helm/Kustomize for multiple Tasks (Kubernetes-native approach)
@@ -61,6 +62,7 @@ KubeOpenCode enables you to execute AI agent tasks using Kubernetes Custom Resou
 ### Core Concepts
 
 - **Task**: Single task execution (the primary API)
+- **TaskTemplate**: Reusable template for Task creation (similar to Argo WorkflowTemplate)
 - **Agent**: AI agent configuration (HOW to execute)
 - **KubeOpenCodeConfig**: System-level configuration (optional)
 
@@ -153,6 +155,41 @@ kubectl describe task update-service-a -n kubeopencode-system
 
 # View task logs
 kubectl logs $(kubectl get task update-service-a -o jsonpath='{.status.podName}') -n kubeopencode-system
+```
+
+#### 4. Use TaskTemplate for Reusable Configurations
+
+TaskTemplates let you define common Task configurations that can be shared across multiple Tasks:
+
+```yaml
+# Create a TaskTemplate with shared configuration
+apiVersion: kubeopencode.io/v1alpha1
+kind: TaskTemplate
+metadata:
+  name: pr-task-template
+  namespace: kubeopencode-system
+spec:
+  agentRef:
+    name: default
+  contexts:
+    - type: ConfigMap
+      configMap:
+        name: coding-standards
+  outputs:
+    parameters:
+      - name: pr-url
+        path: .outputs/pr-url
+---
+# Create Tasks that reference the template
+apiVersion: kubeopencode.io/v1alpha1
+kind: Task
+metadata:
+  name: fix-issue-123
+spec:
+  taskTemplateRef:
+    name: pr-task-template
+  description: |
+    Fix issue #123: Login button not working on mobile.
 ```
 
 ### Batch Operations with Helm
