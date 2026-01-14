@@ -20,7 +20,9 @@ spec:
     {
       "$schema": "https://opencode.ai/config.json",
       "model": "opencode/minimax-m2.1-free",
-      "small_model": "opencode/minimax-m2.1-free"
+      "small_model": "opencode/minimax-m2.1-free",
+      "share": "disabled",
+      "autoupdate": false
     }
   credentials:
     # Mount entire secret - all keys become env vars automatically
