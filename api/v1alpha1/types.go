@@ -566,6 +566,36 @@ type Agent struct {
 	Status AgentStatus `json:"status,omitempty"`
 }
 
+// QuotaConfig defines rate limiting for Task starts within a sliding time window.
+// This is different from maxConcurrentTasks which limits concurrent running Tasks.
+// Quota limits the RATE at which new Tasks can start.
+type QuotaConfig struct {
+	// MaxTaskStarts is the maximum number of Task starts allowed within the window.
+	// +kubebuilder:validation:Minimum=1
+	// +required
+	MaxTaskStarts int32 `json:"maxTaskStarts"`
+
+	// WindowSeconds defines the sliding window duration in seconds.
+	// For example, 3600 (1 hour) means "max N tasks per hour".
+	// +kubebuilder:validation:Minimum=60
+	// +kubebuilder:validation:Maximum=86400
+	// +required
+	WindowSeconds int32 `json:"windowSeconds"`
+}
+
+// TaskStartRecord represents a record of a Task start for quota tracking.
+// Stored in AgentStatus to persist across controller restarts.
+type TaskStartRecord struct {
+	// TaskName is the name of the Task that was started.
+	TaskName string `json:"taskName"`
+
+	// TaskNamespace is the namespace of the Task.
+	TaskNamespace string `json:"taskNamespace"`
+
+	// StartTime is when the Task transitioned to Running phase.
+	StartTime metav1.Time `json:"startTime"`
+}
+
 // AgentSpec defines agent configuration
 type AgentSpec struct {
 	// AgentImage specifies the OpenCode init container image.
@@ -694,6 +724,19 @@ type AgentSpec struct {
 	//   maxConcurrentTasks: 3  # Only 3 Tasks can run at once
 	// +optional
 	MaxConcurrentTasks *int32 `json:"maxConcurrentTasks,omitempty"`
+
+	// Quota defines rate limiting for Task starts within a sliding time window.
+	// When configured, Tasks will be queued if the quota is exceeded.
+	// This is complementary to maxConcurrentTasks:
+	//   - maxConcurrentTasks: limits how many Tasks run at once
+	//   - quota: limits how quickly new Tasks can start
+	//
+	// Example:
+	//   quota:
+	//     maxTaskStarts: 10
+	//     windowSeconds: 3600  # 10 tasks per hour
+	// +optional
+	Quota *QuotaConfig `json:"quota,omitempty"`
 }
 
 // AgentStatus defines the observed state of Agent
@@ -707,6 +750,13 @@ type AgentStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// TaskStartHistory tracks recent Task starts for quota enforcement.
+	// The controller prunes entries older than the quota window automatically.
+	// This is only populated when quota is configured on the Agent.
+	// +optional
+	// +listType=atomic
+	TaskStartHistory []TaskStartRecord `json:"taskStartHistory,omitempty"`
 }
 
 // AgentPodSpec defines advanced Pod configuration for agent pods.

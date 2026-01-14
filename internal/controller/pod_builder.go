@@ -26,6 +26,7 @@ type agentConfig struct {
 	podSpec            *kubeopenv1alpha1.AgentPodSpec
 	serviceAccountName string
 	maxConcurrentTasks *int32
+	quota              *kubeopenv1alpha1.QuotaConfig
 }
 
 // systemConfig holds resolved system-level configuration from KubeOpenCodeConfig.

@@ -2628,4 +2628,223 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})
+
+	Context("When Agent has quota configured", func() {
+		It("Should queue Tasks when quota is exceeded", func() {
+			agentName := "test-agent-quota"
+			maxTaskStarts := int32(2)
+			windowSeconds := int32(60)
+			description1 := "# Task 1"
+			description2 := "# Task 2"
+			description3 := "# Task 3"
+
+			By("Creating Agent with quota: maxTaskStarts=2, windowSeconds=60")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
+					Quota: &kubeopenv1alpha1.QuotaConfig{
+						MaxTaskStarts: maxTaskStarts,
+						WindowSeconds: windowSeconds,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating first Task")
+			task1 := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-quota-1",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description1,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task1)).Should(Succeed())
+
+			By("Waiting for first Task to be Running")
+			task1LookupKey := types.NamespacedName{Name: "test-task-quota-1", Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task1LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Creating second Task")
+			task2 := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-quota-2",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description2,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task2)).Should(Succeed())
+
+			By("Waiting for second Task to be Running")
+			task2LookupKey := types.NamespacedName{Name: "test-task-quota-2", Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Creating third Task (should exceed quota)")
+			task3 := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-quota-3",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description3,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task3)).Should(Succeed())
+
+			By("Checking third Task is Queued due to quota")
+			task3LookupKey := types.NamespacedName{Name: "test-task-quota-3", Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task3LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseQueued))
+
+			By("Verifying third Task has Queued condition with QuotaExceeded reason")
+			task3Updated := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, task3LookupKey, task3Updated)).Should(Succeed())
+
+			var queuedCondition *metav1.Condition
+			for i := range task3Updated.Status.Conditions {
+				if task3Updated.Status.Conditions[i].Type == "Queued" {
+					queuedCondition = &task3Updated.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(queuedCondition).ShouldNot(BeNil())
+			Expect(queuedCondition.Status).Should(Equal(metav1.ConditionTrue))
+			Expect(queuedCondition.Reason).Should(Equal("QuotaExceeded"))
+
+			By("Verifying Agent has TaskStartHistory populated")
+			agentLookupKey := types.NamespacedName{Name: agentName, Namespace: taskNamespace}
+			agentUpdated := &kubeopenv1alpha1.Agent{}
+			Expect(k8sClient.Get(ctx, agentLookupKey, agentUpdated)).Should(Succeed())
+			Expect(len(agentUpdated.Status.TaskStartHistory)).Should(Equal(2))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, task2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, task3)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should work with both maxConcurrentTasks and quota", func() {
+			agentName := "test-agent-quota-capacity"
+			maxConcurrent := int32(1)
+			maxTaskStarts := int32(5)
+			windowSeconds := int32(60)
+			description1 := "# Task 1"
+			description2 := "# Task 2"
+
+			By("Creating Agent with maxConcurrentTasks=1 and quota: maxTaskStarts=5")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo test"},
+					MaxConcurrentTasks: &maxConcurrent,
+					Quota: &kubeopenv1alpha1.QuotaConfig{
+						MaxTaskStarts: maxTaskStarts,
+						WindowSeconds: windowSeconds,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating first Task")
+			task1 := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-both-limits-1",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description1,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task1)).Should(Succeed())
+
+			By("Waiting for first Task to be Running")
+			task1LookupKey := types.NamespacedName{Name: "test-task-both-limits-1", Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task1LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Creating second Task (should be queued due to capacity, not quota)")
+			task2 := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-both-limits-2",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description2,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task2)).Should(Succeed())
+
+			By("Checking second Task is Queued due to capacity")
+			task2LookupKey := types.NamespacedName{Name: "test-task-both-limits-2", Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseQueued))
+
+			By("Verifying second Task is queued due to capacity (not quota)")
+			task2Updated := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, task2LookupKey, task2Updated)).Should(Succeed())
+
+			var queuedCondition *metav1.Condition
+			for i := range task2Updated.Status.Conditions {
+				if task2Updated.Status.Conditions[i].Type == "Queued" {
+					queuedCondition = &task2Updated.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(queuedCondition).ShouldNot(BeNil())
+			Expect(queuedCondition.Status).Should(Equal(metav1.ConditionTrue))
+			Expect(queuedCondition.Reason).Should(Equal("AgentAtCapacity"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, task2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
 })

@@ -134,7 +134,10 @@ Agent (execution configuration)
     ├── podSpec: *AgentPodSpec
     ├── serviceAccountName: string
     ├── allowedNamespaces: []string  (restrict cross-namespace access)
-    └── maxConcurrentTasks: *int32   (limit concurrent Tasks, nil/0 = unlimited)
+    ├── maxConcurrentTasks: *int32   (limit concurrent Tasks, nil/0 = unlimited)
+    └── quota: *QuotaConfig          (rate limiting for Task starts)
+        ├── maxTaskStarts: int32     (max starts within window)
+        └── windowSeconds: int32     (sliding window duration in seconds)
 
 KubeOpenCodeConfig (system configuration)
 └── KubeOpenCodeConfigSpec
@@ -596,6 +599,9 @@ spec:
 | `spec.podSpec` | *AgentPodSpec | No | Advanced Pod configuration (labels, scheduling, runtimeClass) |
 | `spec.allowedNamespaces` | []String | No | Restrict which namespaces can use this Agent (empty = all allowed) |
 | `spec.maxConcurrentTasks` | *int32 | No | Limit concurrent Tasks (nil/0 = unlimited) |
+| `spec.quota` | *QuotaConfig | No | Rate limiting for Task starts |
+| `spec.quota.maxTaskStarts` | int32 | Yes (if quota set) | Maximum Task starts within the window |
+| `spec.quota.windowSeconds` | int32 | Yes (if quota set) | Sliding window duration in seconds (60-86400) |
 | `spec.serviceAccountName` | String | Yes | ServiceAccount for agent pods |
 
 **Task Stop:**
@@ -777,6 +783,55 @@ Task Created
                                     │
                                     └─── Still at capacity ──► Remain Queued
 ```
+
+### Quota (Rate Limiting)
+
+In addition to concurrent Task limits, Agents support rate limiting via `quota`:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: rate-limited-agent
+spec:
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  command: ["sh", "-c", "/tools/opencode run \"$(cat /workspace/task.md)\""]
+  serviceAccountName: kubeopencode-agent
+  quota:
+    maxTaskStarts: 10     # Maximum 10 task starts
+    windowSeconds: 3600   # Per hour (sliding window)
+```
+
+**Quota vs MaxConcurrentTasks:**
+
+| Feature | `maxConcurrentTasks` | `quota` |
+|---------|----------------------|---------|
+| What it limits | Simultaneous running Tasks | Rate of new Task starts |
+| Time component | No (instant check) | Yes (sliding window) |
+| State tracking | None (counts Running Tasks) | `Agent.status.taskStartHistory` |
+| Queued Reason | `AgentAtCapacity` | `QuotaExceeded` |
+| Use case | Limit resource usage | API rate limiting |
+
+Both can be used together for comprehensive control.
+
+**Agent Status with Quota:**
+
+When quota is configured, the Agent's status tracks recent Task starts:
+
+```yaml
+status:
+  taskStartHistory:
+    - taskName: "task-1"
+      taskNamespace: "default"
+      startTime: "2024-01-15T10:00:00Z"
+    - taskName: "task-2"
+      taskNamespace: "default"
+      startTime: "2024-01-15T10:05:00Z"
+```
+
+Records are automatically pruned when they fall outside the sliding window.
 
 ### Output System
 

@@ -1465,6 +1465,37 @@ spec:
                         type: array
                     type: object
                 type: object
+              quota:
+                description: |-
+                  Quota defines rate limiting for Task starts within a sliding time window.
+                  When configured, Tasks will be queued if the quota is exceeded.
+                  This is complementary to maxConcurrentTasks:
+                    - maxConcurrentTasks: limits how many Tasks run at once
+                    - quota: limits how quickly new Tasks can start
+
+                  Example:
+                    quota:
+                      maxTaskStarts: 10
+                      windowSeconds: 3600  # 10 tasks per hour
+                properties:
+                  maxTaskStarts:
+                    description: MaxTaskStarts is the maximum number of Task starts
+                      allowed within the window.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  windowSeconds:
+                    description: |-
+                      WindowSeconds defines the sliding window duration in seconds.
+                      For example, 3600 (1 hour) means "max N tasks per hour".
+                    format: int32
+                    maximum: 86400
+                    minimum: 60
+                    type: integer
+                required:
+                - maxTaskStarts
+                - windowSeconds
+                type: object
               serviceAccountName:
                 description: |-
                   ServiceAccountName specifies the Kubernetes ServiceAccount to use for agent pods.
@@ -1556,6 +1587,34 @@ spec:
                   by the controller.
                 format: int64
                 type: integer
+              taskStartHistory:
+                description: |-
+                  TaskStartHistory tracks recent Task starts for quota enforcement.
+                  The controller prunes entries older than the quota window automatically.
+                  This is only populated when quota is configured on the Agent.
+                items:
+                  description: |-
+                    TaskStartRecord represents a record of a Task start for quota tracking.
+                    Stored in AgentStatus to persist across controller restarts.
+                  properties:
+                    startTime:
+                      description: StartTime is when the Task transitioned to Running
+                        phase.
+                      format: date-time
+                      type: string
+                    taskName:
+                      description: TaskName is the name of the Task that was started.
+                      type: string
+                    taskNamespace:
+                      description: TaskNamespace is the namespace of the Task.
+                      type: string
+                  required:
+                  - startTime
+                  - taskName
+                  - taskNamespace
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
             type: object
         required:
         - spec

@@ -44,6 +44,9 @@ const (
 	// DefaultQueuedRequeueDelay is the default delay for requeuing queued Tasks
 	DefaultQueuedRequeueDelay = 10 * time.Second
 
+	// DefaultQuotaRequeueDelay is the minimum delay for requeuing quota-blocked Tasks
+	DefaultQuotaRequeueDelay = 30 * time.Second
+
 	// AnnotationStop is the annotation key for user-initiated task stop
 	AnnotationStop = "kubeopencode.io/stop"
 
@@ -93,6 +96,7 @@ type TaskReconciler struct {
 // +kubebuilder:rbac:groups=kubeopencode.io,resources=tasks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kubeopencode.io,resources=tasks/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kubeopencode.io,resources=agents,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kubeopencode.io,resources=agents/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kubeopencode.io,resources=kubeopencodeconfigs,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -270,6 +274,48 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		}
 	}
 
+	// Check agent quota if configured
+	// Note: This checks rate limiting for task starts within a sliding window
+	if agentConfig.quota != nil {
+		agent, err := r.getAgentForQuota(ctx, agentName, agentNamespace)
+		if err != nil {
+			log.Error(err, "unable to get Agent for quota check")
+			return ctrl.Result{}, err
+		}
+
+		hasQuota, requeueDelay, err := r.checkAgentQuota(ctx, agent)
+		if err != nil {
+			log.Error(err, "unable to check agent quota")
+			return ctrl.Result{}, err
+		}
+
+		if !hasQuota {
+			// Quota exceeded, queue the task
+			log.Info("agent quota exceeded, queueing task",
+				"agent", agentName,
+				"maxTaskStarts", agentConfig.quota.MaxTaskStarts,
+				"windowSeconds", agentConfig.quota.WindowSeconds)
+
+			task.Status.ObservedGeneration = task.Generation
+			task.Status.Phase = kubeopenv1alpha1.TaskPhaseQueued
+
+			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+				Type:   "Queued",
+				Status: metav1.ConditionTrue,
+				Reason: "QuotaExceeded",
+				Message: fmt.Sprintf("Waiting for agent %q quota (max: %d per %ds)",
+					agentName, agentConfig.quota.MaxTaskStarts, agentConfig.quota.WindowSeconds),
+			})
+
+			if err := r.Status().Update(ctx, task); err != nil {
+				log.Error(err, "unable to update Task status")
+				return ctrl.Result{}, err
+			}
+
+			return ctrl.Result{RequeueAfter: requeueDelay}, nil
+		}
+	}
+
 	// Generate Pod name
 	// For cross-namespace, include Task namespace to avoid name conflicts
 	var podName string
@@ -345,6 +391,20 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	if err := r.Create(ctx, pod); err != nil {
 		log.Error(err, "unable to create Pod", "pod", podName, "namespace", agentNamespace)
 		return ctrl.Result{}, err
+	}
+
+	// Record task start for quota tracking (if quota is configured)
+	if agentConfig.quota != nil {
+		agent, err := r.getAgentForQuota(ctx, agentName, agentNamespace)
+		if err != nil {
+			log.Error(err, "unable to get Agent for quota recording")
+			// Non-fatal: Pod is already created, quota tracking may be incomplete
+		} else {
+			if err := r.recordTaskStart(ctx, agent, task); err != nil {
+				log.Error(err, "failed to record task start for quota")
+				// Non-fatal: Pod is already created, quota tracking may be incomplete
+			}
+		}
 	}
 
 	// Update status
@@ -493,7 +553,25 @@ func (r *TaskReconciler) getAgentConfigWithName(ctx context.Context, task *kubeo
 		podSpec:            agent.Spec.PodSpec,
 		serviceAccountName: agent.Spec.ServiceAccountName,
 		maxConcurrentTasks: agent.Spec.MaxConcurrentTasks,
+		quota:              agent.Spec.Quota,
 	}, agentName, agentNamespace, nil
+}
+
+// getAgentForQuota fetches the Agent object for quota operations.
+// This is separate from getAgentConfigWithName to allow quota status updates
+// while minimizing changes to existing code paths.
+func (r *TaskReconciler) getAgentForQuota(ctx context.Context, agentName, agentNamespace string) (*kubeopenv1alpha1.Agent, error) {
+	agent := &kubeopenv1alpha1.Agent{}
+	agentKey := types.NamespacedName{
+		Name:      agentName,
+		Namespace: agentNamespace,
+	}
+
+	if err := r.Get(ctx, agentKey, agent); err != nil {
+		return nil, err
+	}
+
+	return agent, nil
 }
 
 // validateNamespaceAccess checks if a Task's namespace is allowed to use the Agent.
@@ -791,9 +869,9 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 				Name:      configMapName,
 				Namespace: agentNamespace, // Create in Agent's namespace
 				Labels: map[string]string{
-					"app":                   "kubeopencode",
-					"kubeopencode.io/task":  task.Name,
-					TaskNamespaceLabelKey:   task.Namespace, // Track source Task namespace
+					"app":                  "kubeopencode",
+					"kubeopencode.io/task": task.Name,
+					TaskNamespaceLabelKey:  task.Namespace, // Track source Task namespace
 				},
 			},
 			Data: configMapData,
@@ -1103,15 +1181,18 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 	}
 
 	// Check if agent still has MaxConcurrentTasks set
-	if agentConfig.maxConcurrentTasks == nil || *agentConfig.maxConcurrentTasks <= 0 {
-		// Limit removed, proceed to initialize
-		log.Info("agent capacity limit removed, proceeding with task", "agent", agentName)
+	hasCapacityLimit := agentConfig.maxConcurrentTasks != nil && *agentConfig.maxConcurrentTasks > 0
+	hasQuotaLimit := agentConfig.quota != nil
+
+	// If neither limit is configured, proceed to initialize
+	if !hasCapacityLimit && !hasQuotaLimit {
+		log.Info("no limits configured, proceeding with task", "agent", agentName)
 		task.Status.Phase = ""
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    "Queued",
 			Status:  metav1.ConditionFalse,
-			Reason:  "CapacityAvailable",
-			Message: fmt.Sprintf("Agent %q capacity limit removed", agentName),
+			Reason:  "NoLimits",
+			Message: fmt.Sprintf("Agent %q has no capacity or quota limits", agentName),
 		})
 		if err := r.Status().Update(ctx, task); err != nil {
 			return ctrl.Result{}, err
@@ -1119,17 +1200,57 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// Check if capacity is now available (check in Agent's namespace)
-	hasCapacity, err := r.checkAgentCapacity(ctx, agentNamespace, agentName, *agentConfig.maxConcurrentTasks)
-	if err != nil {
-		log.Error(err, "unable to check agent capacity")
-		return ctrl.Result{}, err
+	// Check capacity if limit is set
+	if hasCapacityLimit {
+		hasCapacity, err := r.checkAgentCapacity(ctx, agentNamespace, agentName, *agentConfig.maxConcurrentTasks)
+		if err != nil {
+			log.Error(err, "unable to check agent capacity")
+			return ctrl.Result{}, err
+		}
+
+		if !hasCapacity {
+			// Still at capacity, requeue
+			log.V(1).Info("agent still at capacity, remaining queued", "agent", agentName)
+			return ctrl.Result{RequeueAfter: DefaultQueuedRequeueDelay}, nil
+		}
 	}
 
-	if !hasCapacity {
-		// Still at capacity, requeue
-		log.V(1).Info("agent still at capacity, remaining queued", "agent", agentName)
-		return ctrl.Result{RequeueAfter: DefaultQueuedRequeueDelay}, nil
+	// Check agent quota if configured
+	if agentConfig.quota != nil {
+		agent, err := r.getAgentForQuota(ctx, agentName, agentNamespace)
+		if err != nil {
+			log.Error(err, "unable to get Agent for quota check")
+			return ctrl.Result{}, err
+		}
+
+		hasQuota, requeueDelay, err := r.checkAgentQuota(ctx, agent)
+		if err != nil {
+			log.Error(err, "unable to check agent quota")
+			return ctrl.Result{}, err
+		}
+
+		if !hasQuota {
+			// Quota still exceeded, update condition and requeue
+			log.V(1).Info("agent quota still exceeded, remaining queued",
+				"agent", agentName,
+				"maxTaskStarts", agentConfig.quota.MaxTaskStarts,
+				"windowSeconds", agentConfig.quota.WindowSeconds)
+
+			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+				Type:   "Queued",
+				Status: metav1.ConditionTrue,
+				Reason: "QuotaExceeded",
+				Message: fmt.Sprintf("Waiting for agent %q quota (max: %d per %ds)",
+					agentName, agentConfig.quota.MaxTaskStarts, agentConfig.quota.WindowSeconds),
+			})
+
+			if err := r.Status().Update(ctx, task); err != nil {
+				log.Error(err, "unable to update queued task status")
+				return ctrl.Result{}, err
+			}
+
+			return ctrl.Result{RequeueAfter: requeueDelay}, nil
+		}
 	}
 
 	// Capacity available, transition to empty phase to trigger initializeTask
@@ -1438,4 +1559,136 @@ func (r *TaskReconciler) checkRetentionCleanup(ctx context.Context, namespace st
 	}
 
 	return nil
+}
+
+// pruneTaskStartHistory removes expired records from TaskStartHistory.
+// Records older than the quota window are removed.
+func pruneTaskStartHistory(history []kubeopenv1alpha1.TaskStartRecord, windowSeconds int32) []kubeopenv1alpha1.TaskStartRecord {
+	windowStart := time.Now().Add(-time.Duration(windowSeconds) * time.Second)
+	var pruned []kubeopenv1alpha1.TaskStartRecord
+	for _, record := range history {
+		if record.StartTime.Time.After(windowStart) {
+			pruned = append(pruned, record)
+		}
+	}
+	return pruned
+}
+
+// getActiveRecordsInWindow returns records within the sliding window.
+func getActiveRecordsInWindow(history []kubeopenv1alpha1.TaskStartRecord, windowSeconds int32) []kubeopenv1alpha1.TaskStartRecord {
+	return pruneTaskStartHistory(history, windowSeconds)
+}
+
+// calculateQuotaRequeueDelay calculates when the next quota slot becomes available.
+// Returns the time until the oldest record in the window expires, with a minimum
+// of DefaultQuotaRequeueDelay.
+func calculateQuotaRequeueDelay(history []kubeopenv1alpha1.TaskStartRecord, windowSeconds int32) time.Duration {
+	if len(history) == 0 {
+		return DefaultQuotaRequeueDelay
+	}
+
+	// Find the oldest record in the window
+	activeRecords := getActiveRecordsInWindow(history, windowSeconds)
+	if len(activeRecords) == 0 {
+		return DefaultQuotaRequeueDelay
+	}
+
+	// Sort by StartTime to find the oldest
+	sort.Slice(activeRecords, func(i, j int) bool {
+		return activeRecords[i].StartTime.Time.Before(activeRecords[j].StartTime.Time)
+	})
+
+	// Calculate when the oldest record expires
+	oldestRecord := activeRecords[0]
+	windowDuration := time.Duration(windowSeconds) * time.Second
+	expiresAt := oldestRecord.StartTime.Time.Add(windowDuration)
+	delay := time.Until(expiresAt)
+
+	// Ensure minimum delay
+	if delay < DefaultQuotaRequeueDelay {
+		delay = DefaultQuotaRequeueDelay
+	}
+
+	return delay
+}
+
+// checkAgentQuota checks if a new Task can start based on the Agent's quota.
+// Returns (hasQuota, requeueAfter, error):
+//   - hasQuota=true: Task can start immediately
+//   - hasQuota=false: Task should be queued, requeueAfter is the suggested delay
+func (r *TaskReconciler) checkAgentQuota(ctx context.Context, agent *kubeopenv1alpha1.Agent) (bool, time.Duration, error) {
+	log := log.FromContext(ctx)
+
+	if agent.Spec.Quota == nil {
+		return true, 0, nil
+	}
+
+	quota := agent.Spec.Quota
+	activeRecords := getActiveRecordsInWindow(agent.Status.TaskStartHistory, quota.WindowSeconds)
+	currentCount := int32(len(activeRecords))
+
+	log.V(1).Info("quota check",
+		"agent", agent.Name,
+		"activeCount", currentCount,
+		"maxTaskStarts", quota.MaxTaskStarts,
+		"windowSeconds", quota.WindowSeconds)
+
+	if currentCount >= quota.MaxTaskStarts {
+		requeueDelay := calculateQuotaRequeueDelay(agent.Status.TaskStartHistory, quota.WindowSeconds)
+		return false, requeueDelay, nil
+	}
+
+	return true, 0, nil
+}
+
+// recordTaskStart adds a TaskStartRecord to the Agent's status.
+// Uses retry logic for optimistic concurrency conflicts in HA mode.
+func (r *TaskReconciler) recordTaskStart(ctx context.Context, agent *kubeopenv1alpha1.Agent, task *kubeopenv1alpha1.Task) error {
+	log := log.FromContext(ctx)
+
+	if agent.Spec.Quota == nil {
+		return nil
+	}
+
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		// Fetch fresh Agent
+		freshAgent := &kubeopenv1alpha1.Agent{}
+		if err := r.Get(ctx, types.NamespacedName{Name: agent.Name, Namespace: agent.Namespace}, freshAgent); err != nil {
+			return err
+		}
+
+		// Check if quota is still configured (could be removed between retries)
+		if freshAgent.Spec.Quota == nil {
+			return nil
+		}
+
+		// Prune old records and add new one
+		freshAgent.Status.TaskStartHistory = pruneTaskStartHistory(
+			freshAgent.Status.TaskStartHistory,
+			freshAgent.Spec.Quota.WindowSeconds,
+		)
+		freshAgent.Status.TaskStartHistory = append(freshAgent.Status.TaskStartHistory, kubeopenv1alpha1.TaskStartRecord{
+			TaskName:      task.Name,
+			TaskNamespace: task.Namespace,
+			StartTime:     metav1.Now(),
+		})
+
+		// Update status
+		if err := r.Status().Update(ctx, freshAgent); err != nil {
+			if errors.IsConflict(err) {
+				log.V(1).Info("conflict updating agent status, retrying", "retry", i+1)
+				continue
+			}
+			return err
+		}
+
+		log.V(1).Info("recorded task start for quota",
+			"agent", agent.Name,
+			"task", task.Name,
+			"historySize", len(freshAgent.Status.TaskStartHistory))
+		return nil
+	}
+
+	return fmt.Errorf("failed to record task start after %d retries", maxRetries)
 }

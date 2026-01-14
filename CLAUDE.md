@@ -518,6 +518,40 @@ When the limit is reached:
 - Queued Tasks automatically transition to `Running` when capacity becomes available
 - Tasks are processed in approximate FIFO order
 
+**Quota (Rate Limiting):**
+
+In addition to `maxConcurrentTasks` (which limits simultaneous running Tasks),
+you can configure `quota` to limit the rate at which Tasks can start using a
+sliding time window:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: rate-limited-agent
+spec:
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  command:
+    - sh
+    - -c
+    - /tools/opencode run "$(cat ${WORKSPACE_DIR}/task.md)"
+  serviceAccountName: kubeopencode-agent
+  quota:
+    maxTaskStarts: 10     # Maximum 10 task starts
+    windowSeconds: 3600   # Per hour (sliding window)
+```
+
+**Quota vs MaxConcurrentTasks:**
+- `maxConcurrentTasks`: Limits how many Tasks run simultaneously (e.g., max 3 at once)
+- `quota`: Limits how quickly new Tasks can start (e.g., max 10 per hour)
+
+Both can be used together for comprehensive control. When quota is exceeded:
+- New Tasks enter `Queued` phase with reason `QuotaExceeded`
+- Task start history is tracked in `Agent.status.taskStartHistory`
+- Tasks automatically transition to `Running` when the sliding window allows
+
 **Task Stop:**
 
 Running Tasks can be stopped by setting the `kubeopencode.io/stop=true` annotation:
