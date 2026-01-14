@@ -112,6 +112,28 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | \
 RUN apt-get update && apt-get install -y --no-install-recommends zsh \
     && rm -rf /var/lib/apt/lists/*
 
+# === GitHub App Authentication Scripts ===
+# These scripts provide transparent GitHub authentication for gh CLI and git.
+# When GitHub App credentials are mounted to /etc/github-app/, the scripts
+# automatically generate and cache Installation Access Tokens.
+#
+# Scripts:
+#   - github-app-iat.sh: Generate IAT from GitHub App credentials
+#   - github-token-manager.sh: Cache and refresh tokens automatically
+#   - gh-wrapper.sh: Inject GH_TOKEN transparently for gh CLI
+#   - git-credential-github-app.sh: Git credential helper for transparent auth
+#
+# Usage: Just mount credentials to /etc/github-app/ and use gh/git normally
+COPY --chmod=755 scripts/*.sh /usr/local/bin/
+
+# Setup gh wrapper: gh command transparently gets token from GitHub App
+# Move real gh to gh-real, then link wrapper as gh
+RUN mv /usr/bin/gh /usr/bin/gh-real \
+    && ln -sf /usr/local/bin/gh-wrapper.sh /usr/bin/gh
+
+# Setup git credential helper: git push/pull transparently authenticated
+RUN git config --system credential.helper /usr/local/bin/git-credential-github-app.sh
+
 # === Workspace Setup ===
 ARG WORKSPACE_DIR=/workspace
 ENV WORKSPACE_DIR=${WORKSPACE_DIR}

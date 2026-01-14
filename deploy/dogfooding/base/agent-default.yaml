@@ -22,29 +22,17 @@ spec:
     - name: opencode
       secretRef:
         name: opencode-credentials
-    # GitHub App credentials for IAT generation (mounted as files)
-    - name: github-app-client-id
+    # GitHub App credentials mounted as directory
+    # The devbox image has built-in scripts that automatically use these
+    # for transparent gh CLI and git authentication
+    - name: github-app
       secretRef:
         name: github-app-credentials
-        key: client_id
-      mountPath: /etc/github-app/client_id
-    - name: github-app-installation-id
-      secretRef:
-        name: github-app-credentials
-        key: installation_id
-      mountPath: /etc/github-app/installation_id
-    - name: github-app-private-key
-      secretRef:
-        name: github-app-credentials
-        key: private_key
-      mountPath: /etc/github-app/private_key
-      fileMode: 0400
+      mountPath: /etc/github-app
   # Agent-level contexts (lowest priority, applied to all tasks)
   contexts:
     - type: Text
       text: |
-        
-
           ## Temporary Files
 
           **Do NOT use `/tmp` directory** - some AI agents have sandbox restrictions that prevent reading files outside the workspace.
@@ -63,99 +51,3 @@ spec:
           ```
 
           **Why inside the Git repo?** The Agent typically operates within the repo directory. Files created at `${WORKSPACE_DIR}/` level may be inaccessible when working inside a subdirectory.
-    - type: Text
-      text: |
-        # GitHub Operations
-
-        ## Quick Reference
-
-        Two scripts are available at `${WORKSPACE_DIR}/.github-app/`:
-
-        | Script | Purpose |
-        |--------|---------|
-        | `github.sh` | High-level operations (push, PR) - **use this for common tasks** |
-        | `github-app-iat.sh` | Generate token for custom `gh` commands |
-
-        ## Common Tasks (Recommended)
-
-        **Note**: Use `bash` to execute scripts (avoids permission issues):
-
-        ### Push and Create PR (One Command)
-
-        ```bash
-        bash ${WORKSPACE_DIR}/.github-app/github.sh push-and-pr <branch> "<title>" "[body]"
-        ```
-
-        Example:
-        ```bash
-        bash ${WORKSPACE_DIR}/.github-app/github.sh push-and-pr feature-branch "feat: add new feature" "Description here"
-        ```
-
-        ### Push Only
-
-        ```bash
-        bash ${WORKSPACE_DIR}/.github-app/github.sh push <branch>
-        ```
-
-        ### Create PR Only (branch must already be pushed)
-
-        ```bash
-        bash ${WORKSPACE_DIR}/.github-app/github.sh pr <branch> "<title>" "[body]"
-        ```
-
-        ## Custom GitHub Commands
-
-        For commands not covered by `github.sh`, generate a token first:
-
-        ```bash
-        export GH_TOKEN=$(bash ${WORKSPACE_DIR}/.github-app/github-app-iat.sh \
-          "$(cat /etc/github-app/client_id)" \
-          /etc/github-app/private_key \
-          "$(cat /etc/github-app/installation_id)")
-
-        # Now use any gh command
-        gh issue create --title "Bug report" --body "Description"
-        gh pr comment 123 --body "LGTM!"
-        gh api repos/{owner}/{repo}/issues
-        ```
-
-        **IMPORTANT**: Token generation and usage MUST be in the SAME shell command (connected with `&&`),
-        because each tool call runs in a separate shell session.
-
-        ## Troubleshooting
-
-        ### Permission Denied Error
-
-        If you see "Permission denied" when running scripts, fix permissions first:
-
-        ```bash
-        chmod +x ${WORKSPACE_DIR}/.github-app/*.sh
-        ```
-
-        Or use `bash` prefix (recommended - no permission needed):
-
-        ```bash
-        bash ${WORKSPACE_DIR}/.github-app/github.sh push-and-pr ...
-        ```
-
-        ### Script Path Issues
-
-        Always use the documented symlink path, not physical paths with timestamps:
-
-        - **Correct**: `${WORKSPACE_DIR}/.github-app/github.sh`
-        - **Wrong**: `/workspace/.github-app/..2025_12_21.../github.sh`
-
-        ## Notes
-
-        - Tokens are valid for 1 hour
-        - Scripts auto-detect repository from `git remote -v`
-        - Credentials are at `/etc/github-app/` (client_id, installation_id, private_key)
-        - Never echo or log token values
-    # GitHub scripts (from ConfigMap, mounted as executables)
-    # Note: Must be within workspace because init container copies ConfigMap content
-    - type: ConfigMap
-      configMap:
-        name: github-scripts
-        # No key specified = mount all keys as files in the directory
-      mountPath: .github-app
-      fileMode: 493  # 0755 in decimal
