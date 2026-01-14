@@ -161,6 +161,8 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		// Update task status to Failed
 		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
+		now := metav1.Now()
+		task.Status.CompletionTime = &now
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    "Ready",
 			Status:  metav1.ConditionFalse,
@@ -187,6 +189,8 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		// Update task status to Failed
 		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
+		now := metav1.Now()
+		task.Status.CompletionTime = &now
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    "Ready",
 			Status:  metav1.ConditionFalse,
@@ -304,6 +308,8 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		// Update task status to Failed - context errors are user configuration issues
 		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
+		now := metav1.Now()
+		task.Status.CompletionTime = &now
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    "Ready",
 			Status:  metav1.ConditionFalse,
@@ -1081,6 +1087,8 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 		log.Error(err, "unable to get Agent for queued task")
 		// Agent might be deleted, fail the task
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
+		now := metav1.Now()
+		task.Status.CompletionTime = &now
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    "Ready",
 			Status:  metav1.ConditionFalse,
