@@ -10,7 +10,6 @@ resources:
   - secrets.yaml
   - kubeopencodeconfig.yaml
   - agent-default.yaml
-  - configmap-github-scripts.yaml
 
 # Note: Webhook functionality has been migrated to Argo Events.
 # See ../argo-events/ for EventSource and Sensor configuration.

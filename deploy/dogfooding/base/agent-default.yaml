@@ -14,6 +14,14 @@ spec:
     - /tools/opencode run "$(cat ${WORKSPACE_DIR}/task.md)"
   serviceAccountName: kubeopencode-agent
   maxConcurrentTasks: 3
+  # OpenCode configuration using OpenCode Zen provider with MiniMax M2.1 (free)
+  # See: https://opencode.ai/docs/zen/
+  config: |
+    {
+      "$schema": "https://opencode.ai/config.json",
+      "model": "opencode/minimax-m2.1-free",
+      "small_model": "opencode/minimax-m2.1-free"
+    }
   credentials:
     # Mount entire secret - all keys become env vars automatically
     - name: git
@@ -29,25 +37,3 @@ spec:
       secretRef:
         name: github-app-credentials
       mountPath: /etc/github-app
-  # Agent-level contexts (lowest priority, applied to all tasks)
-  contexts:
-    - type: Text
-      text: |
-          ## Temporary Files
-
-          **Do NOT use `/tmp` directory** - some AI agents have sandbox restrictions that prevent reading files outside the workspace.
-
-          Create temporary files **WITHIN the Git repository directory** (not in `${WORKSPACE_DIR}` root):
-
-          ```bash
-          # Correct: Create temp files inside the Git repo
-          cd ${WORKSPACE_DIR}/kubeopencode  # Your repo's mountPath
-          mkdir -p .tmp
-          echo "some-value" > .tmp/my-temp-file
-          # Later read: cat .tmp/my-temp-file
-
-          # Wrong: Creating temp files in workspace root
-          # echo "value" > ${WORKSPACE_DIR}/branch_name  # May cause path confusion!
-          ```
-
-          **Why inside the Git repo?** The Agent typically operates within the repo directory. Files created at `${WORKSPACE_DIR}/` level may be inaccessible when working inside a subdirectory.
