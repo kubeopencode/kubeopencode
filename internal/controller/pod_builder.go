@@ -143,9 +143,6 @@ const (
 
 	// OpenCodeConfigEnvVar is the environment variable name for OpenCode config path
 	OpenCodeConfigEnvVar = "OPENCODE_CONFIG"
-
-	// OpenCodeConfigKey is the ConfigMap key for the OpenCode config content
-	OpenCodeConfigKey = "opencode-config"
 )
 
 // buildOpenCodeInitContainer creates an init container that copies OpenCode binary to /tools.

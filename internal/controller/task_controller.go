@@ -855,7 +855,9 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 		if err := json.Unmarshal([]byte(*cfg.config), &jsonCheck); err != nil {
 			return nil, nil, nil, nil, fmt.Errorf("invalid JSON in Agent config: %w", err)
 		}
-		configMapData[OpenCodeConfigKey] = *cfg.config
+		// Use sanitizeConfigMapKey to ensure consistent key naming with fileMount
+		configMapKey := sanitizeConfigMapKey(OpenCodeConfigPath)
+		configMapData[configMapKey] = *cfg.config
 		fileMounts = append(fileMounts, fileMount{filePath: OpenCodeConfigPath})
 	}
 

@@ -2236,8 +2236,9 @@ var _ = Describe("TaskController", func() {
 			Eventually(func() bool {
 				return k8sClient.Get(ctx, configMapLookupKey, createdConfigMap) == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(createdConfigMap.Data).Should(HaveKey(OpenCodeConfigKey))
-			Expect(createdConfigMap.Data[OpenCodeConfigKey]).Should(Equal(configJSON))
+			expectedConfigKey := sanitizeConfigMapKey(OpenCodeConfigPath)
+			Expect(createdConfigMap.Data).Should(HaveKey(expectedConfigKey))
+			Expect(createdConfigMap.Data[expectedConfigKey]).Should(Equal(configJSON))
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
