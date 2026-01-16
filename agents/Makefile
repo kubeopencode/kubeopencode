@@ -11,6 +11,9 @@ AGENT ?= devbox
 NO_CACHE ?=
 NO_CACHE_FLAG := $(if $(NO_CACHE),--no-cache,)
 
+# OpenCode version for opencode agent (usage: make AGENT=opencode OPENCODE_VERSION=1.1.23 build)
+OPENCODE_VERSION ?= 1.1.23
+
 # Image URL configuration
 IMG_REGISTRY ?= quay.io
 IMG_ORG ?= kubeopencode
@@ -61,7 +64,11 @@ build: ## Build agent docker image (AGENT=opencode|devbox|code-server)
 		echo "Use 'make base-build' to build the base image"; \
 		exit 1; \
 	fi
-	docker build $(NO_CACHE_FLAG) --build-arg BASE_IMAGE=$(BASE_IMG) -t $(IMG) $(AGENT)/
+	@if [ "$(AGENT)" = "opencode" ]; then \
+		docker build $(NO_CACHE_FLAG) --build-arg OPENCODE_VERSION=$(OPENCODE_VERSION) -t $(IMG) $(AGENT)/; \
+	else \
+		docker build $(NO_CACHE_FLAG) --build-arg BASE_IMAGE=$(BASE_IMG) -t $(IMG) $(AGENT)/; \
+	fi
 
 .PHONY: push
 push: ## Push the agent docker image
@@ -79,13 +86,23 @@ buildx: ## Build and push agent image for multiple architectures
 		exit 1; \
 	fi
 	@docker buildx use kubeopencode-builder 2>/dev/null || docker buildx create --use --name=kubeopencode-builder
-	docker buildx build \
-		$(NO_CACHE_FLAG) \
-		--build-arg BASE_IMAGE=$(BASE_IMG) \
-		--platform=$(PLATFORMS) \
-		--tag $(IMG) \
-		--push \
-		$(AGENT)/
+	@if [ "$(AGENT)" = "opencode" ]; then \
+		docker buildx build \
+			$(NO_CACHE_FLAG) \
+			--build-arg OPENCODE_VERSION=$(OPENCODE_VERSION) \
+			--platform=$(PLATFORMS) \
+			--tag $(IMG) \
+			--push \
+			$(AGENT)/; \
+	else \
+		docker buildx build \
+			$(NO_CACHE_FLAG) \
+			--build-arg BASE_IMAGE=$(BASE_IMG) \
+			--platform=$(PLATFORMS) \
+			--tag $(IMG) \
+			--push \
+			$(AGENT)/; \
+	fi
 
 ##@ Build All
 
@@ -127,11 +144,12 @@ help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "Examples:"
-	@echo "  make base-build               # Build the universal base image"
-	@echo "  make build                    # Build devbox (default) using base"
-	@echo "  make AGENT=opencode build     # Build opencode using base"
-	@echo "  make NO_CACHE=1 build         # Build without cache (fetch latest)"
-	@echo "  make NO_CACHE=1 build-all     # Rebuild all agents without cache"
-	@echo "  make build-all                # Build base + all agents"
-	@echo "  make buildx-all               # Multi-arch build base + all agents"
-	@echo "  make list                     # List available agents"
+	@echo "  make base-build                              # Build the universal base image"
+	@echo "  make build                                   # Build devbox (default) using base"
+	@echo "  make AGENT=opencode build                    # Build opencode agent"
+	@echo "  make AGENT=opencode OPENCODE_VERSION=1.2.0 build  # Build with specific OpenCode version"
+	@echo "  make NO_CACHE=1 build                        # Build without cache (fetch latest)"
+	@echo "  make NO_CACHE=1 build-all                    # Rebuild all agents without cache"
+	@echo "  make build-all                               # Build base + all agents"
+	@echo "  make buildx-all                              # Multi-arch build base + all agents"
+	@echo "  make list                                    # List available agents"

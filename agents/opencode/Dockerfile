@@ -30,8 +30,16 @@
 # Note: Using glibc variants for Debian-based executor (devbox) compatibility.
 # The init container uses Debian to ensure binary compatibility with glibc-based work containers.
 #
+# Version Management:
+#   Set OPENCODE_VERSION build arg to pin to a specific version.
+#   Example: docker build --build-arg OPENCODE_VERSION=1.1.23 -t opencode .
+#
 
 FROM debian:bookworm-slim
+
+# OpenCode version to download (use specific version to avoid cache issues)
+# Override with: --build-arg OPENCODE_VERSION=x.y.z
+ARG OPENCODE_VERSION=1.1.23
 
 # Install curl for downloading
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -48,8 +56,8 @@ RUN set -ex; \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac; \
     FILENAME="opencode-linux-${ARCH}.tar.gz"; \
-    URL="https://github.com/anomalyco/opencode/releases/latest/download/${FILENAME}"; \
-    echo "Downloading OpenCode from ${URL}..."; \
+    URL="https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/${FILENAME}"; \
+    echo "Downloading OpenCode v${OPENCODE_VERSION} from ${URL}..."; \
     curl -fsSL "${URL}" -o /tmp/opencode.tar.gz; \
     tar -xzf /tmp/opencode.tar.gz -C /tmp; \
     mv /tmp/opencode /opencode; \
