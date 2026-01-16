@@ -1,0 +1,84 @@
+# Copyright Contributors to the KubeOpenCode project
+# Sensor that creates KubeOpenCode Tasks in response to GitHub events.
+# This replaces the WebhookTrigger CRD functionality.
+#
+# Note: This bot agent has read-only GitHub permissions (no code write access).
+# All users are treated equally - the bot can answer questions and provide
+# guidance but cannot make code changes for anyone.
+#
+# Architecture:
+# - Filters are defined at the DEPENDENCY level, not trigger level
+# - Each dependency can only be used for one eventSourceName/eventName combo
+# - This sensor handles ONLY PR opened events (auto review)
+# - See sensor-bot-mentions.yaml for @kubeopencode-bot mention handling
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: github-bot-pr-opened
+spec:
+  eventBusName: default
+  template:
+    serviceAccountName: argo-events-sensor
+  dependencies:
+    - name: pr-opened
+      eventSourceName: github-bot
+      eventName: kubeopencode
+      filters:
+        # Filter for PR opened events only
+        # Filters use AND logic by default
+        data:
+          - path: headers.X-Github-Event
+            type: string
+            value:
+              - pull_request
+          - path: body.action
+            type: string
+            value:
+              - opened
+  triggers:
+    - template:
+        name: pr-opened
+        conditions: pr-opened
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: kubeopencode.io/v1alpha1
+              kind: Task
+              metadata:
+                generateName: github-pr-opened-
+              spec:
+                agentRef:
+                  name: bot
+                  namespace: kubeopencode-dogfooding
+                description: ""
+          parameters:
+            - src:
+                dependencyName: pr-opened
+                dataTemplate: |
+                  # GitHub Event: PR Opened
+
+                  ## Repository
+                  - Full Name: {{ .Input.body.repository.full_name }}
+                  - Clone URL: {{ .Input.body.repository.clone_url }}
+
+                  ## Pull Request
+                  - Number: {{ .Input.body.pull_request.number }}
+                  - Title: {{ .Input.body.pull_request.title }}
+                  - URL: {{ .Input.body.pull_request.html_url }}
+                  - Author: {{ .Input.body.sender.login }}
+                  - Base Branch: {{ .Input.body.pull_request.base.ref }}
+                  - Head Branch: {{ .Input.body.pull_request.head.ref }}
+
+                  ## Description
+                  {{ .Input.body.pull_request.body }}
+
+                  ---
+                  **Instructions**: Follow `.instructions/pr-review.md`
+
+                  Use the following variables in commands:
+                  - REPO={{ .Input.body.repository.full_name }}
+                  - PR_NUMBER={{ .Input.body.pull_request.number }}
+              dest: spec.description
+      retryStrategy:
+        steps: 3

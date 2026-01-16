@@ -14,7 +14,12 @@ resources:
   - rbac.yaml
   - eventsource-bot.yaml
   - eventsource-dev.yaml
-  - sensor-bot.yaml
+  # Sensors are split by event type for proper filtering:
+  # - sensor-bot.yaml: PR opened events (auto review)
+  # - sensor-bot-mentions.yaml: All @kubeopencode-bot mentions
+  # - sensor-dev.yaml: All @kubeopencode-dev mentions from privileged users
+  - sensor-bot-pr-opened.yaml
+  - sensor-bot-mentions.yaml
   - sensor-dev.yaml
   - deployment-smee-client.yaml
   - secrets.yaml

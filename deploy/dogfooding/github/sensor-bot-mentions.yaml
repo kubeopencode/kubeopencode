@@ -1,33 +1,31 @@
 # Copyright Contributors to the KubeOpenCode project
-# Sensor that creates KubeOpenCode Tasks in response to @kubeopencode-dev mentions.
+# Sensor that creates KubeOpenCode Tasks in response to @kubeopencode-bot mentions.
 #
-# This sensor handles privileged users (OWNER, MEMBER, CONTRIBUTOR, COLLABORATOR)
-# and uses the dev agent which has GitHub content write permissions.
-#
-# The sensor handles ALL comment types where @kubeopencode-dev is mentioned:
+# This sensor handles ALL comment types where @kubeopencode-bot is mentioned:
 # - Issue comments
 # - PR comments (issue-level)
 # - PR review comments (inline)
 # - Discussion comments
 #
-# IMPORTANT: This sensor requires BOTH:
-# 1. @kubeopencode-dev mention in comment body
-# 2. Commenter must be a privileged user (OWNER, MEMBER, CONTRIBUTOR, COLLABORATOR)
+# The template uses conditionals to include the appropriate context based on
+# the event type, and references the correct instruction file.
+#
+# Note: This bot agent has read-only GitHub permissions (no code write access).
 apiVersion: argoproj.io/v1alpha1
 kind: Sensor
 metadata:
-  name: github-dev-mentions
+  name: github-bot-mentions
 spec:
   eventBusName: default
   template:
     serviceAccountName: argo-events-sensor
   dependencies:
-    - name: dev-mention
-      eventSourceName: github-dev
+    - name: bot-mention
+      eventSourceName: github-bot
       eventName: kubeopencode
       filters:
-        # Filter for comment events with @kubeopencode-dev mention from privileged users
-        # All filters use AND logic by default
+        # Filter for any comment event with @kubeopencode-bot mention
+        # Using regex to match the mention anywhere in the comment body
         data:
           - path: body.action
             type: string
@@ -36,19 +34,12 @@ spec:
           - path: body.comment.body
             type: string
             value:
-              # Regex pattern to match @kubeopencode-dev anywhere in text
-              - ".*@kubeopencode-dev.*"
-          - path: body.comment.author_association
-            type: string
-            value:
-              - OWNER
-              - MEMBER
-              - CONTRIBUTOR
-              - COLLABORATOR
+              # Regex pattern to match @kubeopencode-bot anywhere in text
+              - ".*@kubeopencode-bot.*"
   triggers:
     - template:
-        name: dev-mention
-        conditions: dev-mention
+        name: bot-mention
+        conditions: bot-mention
         k8s:
           operation: create
           source:
@@ -56,17 +47,17 @@ spec:
               apiVersion: kubeopencode.io/v1alpha1
               kind: Task
               metadata:
-                generateName: github-dev-mention-
+                generateName: github-bot-mention-
               spec:
                 agentRef:
-                  name: dev
+                  name: bot
                   namespace: kubeopencode-dogfooding
                 description: ""
           parameters:
             - src:
-                dependencyName: dev-mention
+                dependencyName: bot-mention
                 dataTemplate: |
-                  # GitHub Event: @kubeopencode-dev Mention (Privileged User)
+                  # GitHub Event: @kubeopencode-bot Mention
 
                   ## Event Type
                   - GitHub Event: {{ index .Input.headers "X-Github-Event" }}
@@ -114,7 +105,6 @@ spec:
 
                   ## Comment
                   - Author: {{ .Input.body.comment.user.login }}
-                  - Author Association: {{ .Input.body.comment.author_association }}
                   - URL: {{ .Input.body.comment.html_url }}
 
                   ### Body
@@ -136,7 +126,6 @@ spec:
 
                   Use the following variables in commands:
                   - REPO={{ .Input.body.repository.full_name }}
-                  - CLONE_URL={{ .Input.body.repository.clone_url }}
                   - OWNER={{ .Input.body.repository.owner.login }}
                   - REPO_NAME={{ .Input.body.repository.name }}
                   {{ if .Input.body.issue }}
