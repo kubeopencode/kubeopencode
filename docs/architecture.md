@@ -174,7 +174,7 @@ type AgentReference struct {
 // ContextItem defines inline context content
 type ContextItem struct {
     Type      ContextType       // Text, ConfigMap, Git, or Runtime
-    MountPath string            // Empty = append to /workspace/task.md (ignored for Runtime)
+    MountPath string            // Empty = append to /workspace/AGENTS.md (ignored for Runtime)
     FileMode  *int32            // Optional file permission mode (e.g., 0755 for executable)
     Text      string            // Content when Type is Text
     ConfigMap *ConfigMapContext // ConfigMap when Type is ConfigMap
@@ -361,7 +361,7 @@ spec:
     - type: ConfigMap
       configMap:
         name: security-policy
-      # Empty mountPath = append to task.md with XML tags
+      # Empty mountPath = append to AGENTS.md with XML tags
 
   # Optional: Reference to Agent (defaults to "default")
   agentRef: my-agent
@@ -477,7 +477,7 @@ Contexts provide additional information to AI agents during task execution. They
 | `description` | string | No | Human-readable documentation for the context |
 | `optional` | *bool | No | If true, task proceeds even if context cannot be resolved |
 | `type` | ContextType | Yes | Type of context: Text, ConfigMap, Git, Runtime, or URL |
-| `mountPath` | string | No | Where to mount (empty = append to task.md with XML tags) |
+| `mountPath` | string | No | Where to mount (empty = append to AGENTS.md with XML tags) |
 | `fileMode` | *int32 | No | File permission mode (e.g., 0755 for executables) |
 | `text` | string | When type=Text | Text content |
 | `configMap` | ConfigMapContext | When type=ConfigMap | Reference to ConfigMap |
@@ -487,7 +487,7 @@ Contexts provide additional information to AI agents during task execution. They
 
 **Important Notes:**
 
-- **Empty MountPath behavior**: When mountPath is empty, content is appended to `/workspace/task.md` with XML tags
+- **Empty MountPath behavior**: When mountPath is empty, content is appended to `/workspace/AGENTS.md` with XML tags (loaded as system prompt by OpenCode, never compacted)
 - **Runtime context**: Provides KubeOpenCode platform awareness to agents, explaining environment variables, kubectl commands, and system concepts
 - **Path resolution**: Relative paths are prefixed with workspaceDir; absolute paths are used as-is
 - **URL context**: Fetches content at task execution time via an init container. Requires `mountPath` to be specified
@@ -497,7 +497,7 @@ Contexts provide additional information to AI agents during task execution. They
 
 1. Agent.contexts (array order)
 2. Task.contexts (array order)
-3. Task.description (becomes start of /workspace/task.md)
+3. Task.description (becomes /workspace/task.md)
 
 ### Agent (Execution Configuration)
 

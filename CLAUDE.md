@@ -78,7 +78,9 @@ Tasks and Agents use inline **ContextItem** to provide additional context:
 - `description`: Human-readable documentation for this context
 - `optional`: If true, task proceeds even if context cannot be resolved
 - `type`: Context type (Text, ConfigMap, Git, Runtime, URL)
-- `mountPath`: Where to mount (empty = append to task.md with XML tags)
+- `mountPath`: Where to mount (empty = append to AGENTS.md with XML tags)
+  - When empty: Content is aggregated into `${WORKSPACE_DIR}/AGENTS.md` which is loaded as
+    system prompt by OpenCode and won't be affected by conversation compaction
   - Path resolution follows Tekton conventions:
     - Absolute paths (`/etc/config`) are used as-is
     - Relative paths (`guides/readme.md`) are prefixed with workspaceDir
@@ -427,7 +429,7 @@ Key Agent spec fields:
 - `agentImage`: OpenCode init container image (copies binary to `/tools`)
 - `executorImage`: Main worker container image for task execution
 - `command`: Optional entrypoint command (defaults to `/tools/opencode run "$(cat ${WORKSPACE_DIR}/task.md)"`)
-- `workspaceDir`: **Required** - Working directory where task.md and context files are mounted
+- `workspaceDir`: **Required** - Working directory where task.md, AGENTS.md, and context files are mounted
 - `contexts`: Inline ContextItems applied to all tasks using this Agent
 - `config`: OpenCode configuration as inline JSON string (written to `/tools/opencode.json`)
 - `credentials`: Secrets as env vars or file mounts (supports single key or entire secret)

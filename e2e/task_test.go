@@ -267,7 +267,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 						{
 							Type: kubeopenv1alpha1.ContextTypeText,
 							Text: defaultContent,
-							// No mountPath - should be appended to task.md
+							// No mountPath - should be appended to AGENTS.md
 						},
 					},
 				},
@@ -287,7 +287,7 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 						{
 							Type: kubeopenv1alpha1.ContextTypeText,
 							Text: taskContextContent,
-							// No mountPath - should be appended to task.md
+							// No mountPath - should be appended to AGENTS.md
 						},
 					},
 				},

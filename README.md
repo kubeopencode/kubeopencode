@@ -270,7 +270,7 @@ contexts:
     mountPath: specs/openapi.yaml
 ```
 
-- **Content Aggregation**: Contexts without `mountPath` are aggregated into `/workspace/task.md` with XML tags
+- **Content Aggregation**: Contexts without `mountPath` are aggregated into `/workspace/AGENTS.md` with XML tags (loaded as system prompt, never compacted)
 
 ### Agent Configuration
 

@@ -77,8 +77,9 @@ To get Task status:
   kubectl get task ${TASK_NAME} -n ${TASK_NAMESPACE} -o jsonpath='{.status}'
 
 ### File Structure
-- ${WORKSPACE_DIR}/task.md: Your task instructions (this file)
-- Additional contexts may be mounted as separate files or appended below
+- ${WORKSPACE_DIR}/task.md: Your task instructions (description only)
+- ${WORKSPACE_DIR}/AGENTS.md: Context content (loaded as system prompt, never compacted)
+- Additional contexts may be mounted as separate files
 
 ### KubeOpenCode Concepts
 - Task: Single AI task execution (what you're running now)
@@ -815,15 +816,20 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 
 	// Build the final content
 	// - Separate contexts with mountPath (independent files)
-	// - Contexts without mountPath are appended to task.md with XML tags
+	// - Contexts without mountPath are appended to AGENTS.md with XML tags
+	//   (AGENTS.md is loaded as system prompt and won't be affected by compaction)
+	// - task.md contains only the description
 	configMapData := make(map[string]string)
 	var fileMounts []fileMount
 
-	// Build task.md content: description + contexts without mountPath
+	// Build task.md content: description only
 	var taskMdParts []string
 	if taskDescription != "" {
 		taskMdParts = append(taskMdParts, taskDescription)
 	}
+
+	// Build AGENTS.md content: contexts without mountPath
+	var agentsMdParts []string
 
 	for _, rc := range resolved {
 		if rc.mountPath != "" {
@@ -832,20 +838,30 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 			configMapData[configMapKey] = rc.content
 			fileMounts = append(fileMounts, fileMount{filePath: rc.mountPath, fileMode: rc.fileMode})
 		} else {
-			// No mountPath - append to task.md with XML tags
+			// No mountPath - append to AGENTS.md (not task.md) with XML tags
+			// AGENTS.md is loaded as system prompt by OpenCode and won't be affected by compaction
 			xmlTag := fmt.Sprintf("<context name=%q namespace=%q type=%q>\n%s\n</context>",
 				rc.name, rc.namespace, rc.ctxType, rc.content)
-			taskMdParts = append(taskMdParts, xmlTag)
+			agentsMdParts = append(agentsMdParts, xmlTag)
 		}
 	}
 
-	// Create task.md if there's any content
+	// Create task.md if there's any content (description only)
 	// Mount at the configured workspace directory
 	taskMdPath := cfg.workspaceDir + "/task.md"
 	if len(taskMdParts) > 0 {
 		taskMdContent := strings.Join(taskMdParts, "\n\n")
 		configMapData["workspace-task.md"] = taskMdContent
 		fileMounts = append(fileMounts, fileMount{filePath: taskMdPath})
+	}
+
+	// Create AGENTS.md if there's any context content
+	// AGENTS.md is loaded as system prompt by OpenCode and won't be affected by compaction
+	agentsMdPath := cfg.workspaceDir + "/AGENTS.md"
+	if len(agentsMdParts) > 0 {
+		agentsMdContent := strings.Join(agentsMdParts, "\n\n")
+		configMapData["workspace-AGENTS.md"] = agentsMdContent
+		fileMounts = append(fileMounts, fileMount{filePath: agentsMdPath})
 	}
 
 	// Add OpenCode config to ConfigMap if provided
