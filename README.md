@@ -1,11 +1,9 @@
 <p align="center">
-  <img src="docs/images/logo.png" alt="KubeOpenCode Logo" width="400">
+  <img src="docs/images/logo.png" alt="KubeOpenCode Logo" width="500">
 </p>
 
-<h1 align="center">KubeOpenCode</h1>
-
 <p align="center">
-  A Kubernetes-native system for executing AI-powered tasks.
+  <em>A Kubernetes-native system for executing AI-powered tasks</em>
 </p>
 
 > **Note**: This project uses [OpenCode](https://opencode.ai) as its AI coding agent. KubeOpenCode is not built by or affiliated with the OpenCode team.
