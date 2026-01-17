@@ -47,12 +47,45 @@ spec:
               kind: Task
               metadata:
                 generateName: github-pr-opened-
+                labels: {}
+                annotations: {}
               spec:
                 agentRef:
                   name: bot
                   namespace: kubeopencode-dogfooding
                 description: ""
           parameters:
+            # Labels for filtering
+            - src:
+                dependencyName: pr-opened
+                dataTemplate: "pull_request"
+              dest: metadata.labels.github\.kubeopencode\.io/event
+            - src:
+                dependencyName: pr-opened
+                dataTemplate: "{{ .Input.body.repository.name }}"
+              dest: metadata.labels.github\.kubeopencode\.io/repository
+            - src:
+                dependencyName: pr-opened
+                dataTemplate: "{{ .Input.body.pull_request.number }}"
+              dest: metadata.labels.github\.kubeopencode\.io/number
+            # Annotations for detailed info
+            - src:
+                dependencyName: pr-opened
+                dataTemplate: "{{ .Input.body.action }}"
+              dest: metadata.annotations.github\.kubeopencode\.io/action
+            - src:
+                dependencyName: pr-opened
+                dataTemplate: "{{ .Input.body.repository.full_name }}"
+              dest: metadata.annotations.github\.kubeopencode\.io/full-name
+            - src:
+                dependencyName: pr-opened
+                dataTemplate: "{{ .Input.body.sender.login }}"
+              dest: metadata.annotations.github\.kubeopencode\.io/author
+            - src:
+                dependencyName: pr-opened
+                dataTemplate: "{{ .Input.body.pull_request.html_url }}"
+              dest: metadata.annotations.github\.kubeopencode\.io/url
+            # Description
             - src:
                 dependencyName: pr-opened
                 dataTemplate: |

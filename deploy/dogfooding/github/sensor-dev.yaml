@@ -57,12 +57,45 @@ spec:
               kind: Task
               metadata:
                 generateName: github-dev-mention-
+                labels: {}
+                annotations: {}
               spec:
                 agentRef:
                   name: dev
                   namespace: kubeopencode-dogfooding
                 description: ""
           parameters:
+            # Labels for filtering
+            - src:
+                dependencyName: dev-mention
+                dataTemplate: "{{ index .Input.headers \"X-Github-Event\" }}"
+              dest: metadata.labels.github\.kubeopencode\.io/event
+            - src:
+                dependencyName: dev-mention
+                dataTemplate: "{{ .Input.body.repository.name }}"
+              dest: metadata.labels.github\.kubeopencode\.io/repository
+            - src:
+                dependencyName: dev-mention
+                dataTemplate: "{{ if .Input.body.issue }}{{ .Input.body.issue.number }}{{ else if .Input.body.pull_request }}{{ .Input.body.pull_request.number }}{{ else if .Input.body.discussion }}{{ .Input.body.discussion.number }}{{ end }}"
+              dest: metadata.labels.github\.kubeopencode\.io/number
+            # Annotations for detailed info
+            - src:
+                dependencyName: dev-mention
+                dataTemplate: "{{ .Input.body.action }}"
+              dest: metadata.annotations.github\.kubeopencode\.io/action
+            - src:
+                dependencyName: dev-mention
+                dataTemplate: "{{ .Input.body.repository.full_name }}"
+              dest: metadata.annotations.github\.kubeopencode\.io/full-name
+            - src:
+                dependencyName: dev-mention
+                dataTemplate: "{{ .Input.body.comment.user.login }}"
+              dest: metadata.annotations.github\.kubeopencode\.io/author
+            - src:
+                dependencyName: dev-mention
+                dataTemplate: "{{ .Input.body.comment.html_url }}"
+              dest: metadata.annotations.github\.kubeopencode\.io/url
+            # Description
             - src:
                 dependencyName: dev-mention
                 dataTemplate: |
