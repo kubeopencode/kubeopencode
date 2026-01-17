@@ -444,7 +444,7 @@ contexts:
     mountPath: /workspace/repo
     git:
       repository: https://github.com/org/contexts
-      path: .claude/
+      path: guides/
       ref: main
 ```
 
@@ -1032,7 +1032,7 @@ metadata:
   name: complex-task
   namespace: kubeopencode-system
 spec:
-  agentRef: claude
+  agentRef: default
   description: "Refactor the authentication module"
   contexts:
     # ConfigMap context (specific key)

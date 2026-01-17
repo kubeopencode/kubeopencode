@@ -189,7 +189,7 @@ spec:
   contexts:
     - name: coding-standards
       mountPath: /workspace/guides/standards.md
-  agentRef: claude
+  agentRef: default
 ```
 
 Result:
@@ -212,7 +212,7 @@ spec:
       # No mountPath - will be appended to task.md
     - name: security-policy
       # No mountPath - will be appended to task.md
-  agentRef: claude
+  agentRef: default
 ```
 
 Result `/workspace/task.md`:
@@ -240,7 +240,7 @@ kind: Agent
 metadata:
   name: default
 spec:
-  agentImage: quay.io/myorg/claude-agent:v1.0
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   serviceAccountName: kubeopencode-agent
   contexts:
     # Organization coding standards - applied to all tasks
@@ -277,7 +277,7 @@ kind: Agent
 metadata:
   name: default
 spec:
-  agentImage: quay.io/myorg/claude-agent:v1.0
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   serviceAccountName: kubeopencode-agent
   credentials:
     # GitHub token as environment variable

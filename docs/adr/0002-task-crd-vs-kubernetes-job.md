@@ -100,7 +100,7 @@ kind: Agent
 metadata:
   name: default
 spec:
-  agentImage: quay.io/myorg/claude-agent:v2.0
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   credentials:
     - name: github-token
       secretRef:

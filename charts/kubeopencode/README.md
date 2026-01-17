@@ -7,7 +7,7 @@ This Helm chart deploys KubeOpenCode, a Kubernetes-native system for executing A
 - Kubernetes 1.25+
 - Helm 3.8+
 - GitHub Personal Access Token (optional, for repository operations)
-- Anthropic Claude API key or Vertex AI credentials
+- AI provider API key (e.g., Anthropic, Google AI, OpenAI) for OpenCode
 
 ## Installing the Chart
 
@@ -103,14 +103,16 @@ metadata:
   name: default
   namespace: kubeopencode-system
 spec:
-  agentImage: quay.io/myorg/claude-agent:v1.0
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
   serviceAccountName: kubeopencode-agent
   credentials:
-    - name: anthropic-api-key
+    - name: opencode-api-key
       secretRef:
         name: ai-credentials
-        key: anthropic-key
-      env: ANTHROPIC_API_KEY
+        key: opencode-key
+      env: OPENCODE_API_KEY
     - name: github-token
       secretRef:
         name: github-creds

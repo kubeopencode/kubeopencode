@@ -15,22 +15,7 @@
 
 ## Overview
 
-KubeOpenCode enables you to execute AI agent tasks using Kubernetes Custom Resources. It provides a simple, declarative, GitOps-friendly approach to running AI agents as Kubernetes Pods.
-
-**Key Features:**
-
-- **Kubernetes-Native**: Built on CRDs and the Operator pattern
-- **Simple API**: Task (WHAT to do) + Agent (HOW to execute)
-- **AI-Agnostic**: Works with any AI agent (OpenCode, Claude, etc.)
-- **No External Dependencies**: Uses etcd for state, Pods for execution
-- **GitOps Ready**: Fully declarative resource definitions
-- **Flexible Context System**: Support for Text, ConfigMaps, Git, Runtime, and URLs
-- **Cross-Namespace Separation**: Platform teams manage Agents with credentials; dev teams create Tasks
-- **Task Outputs**: Capture results from task execution into status
-- **TaskTemplate**: Reusable templates for Task configurations (like Argo WorkflowTemplate)
-- **Concurrency Control**: Limit concurrent tasks per Agent
-- **Event-Driven**: Integrates with Argo Events for webhook-triggered Tasks
-- **Batch Operations**: Use Helm/Kustomize for multiple Tasks (Kubernetes-native approach)
+KubeOpenCode enables you to execute [OpenCode](https://opencode.ai) AI agent tasks using Kubernetes Custom Resources. It provides a simple, declarative, GitOps-friendly approach to running AI coding agents as Kubernetes Pods.
 
 ## Architecture
 
