@@ -378,7 +378,7 @@ status:
   phase: Running  # Pending|Queued|Running|Completed|Failed
 
   # Kubernetes Pod name
-  jobName: update-service-a-xyz123
+  podName: update-service-a-xyz123
 
   # Start and end times
   startTime: "2025-01-18T10:00:00Z"
@@ -914,6 +914,20 @@ spec:
 
 If the Task does not define outputs, no sidecar container is created, reducing resource overhead.
 
+**Implementation Details:**
+
+- **Process Detection**: Sidecar polls `/proc` to find processes other than PID 1 (init) and itself. When only init and sidecar remain, agent is considered exited.
+- **Size Limits**: Maximum 4KB total output (Kubernetes termination message limit). For larger outputs, use external storage solutions.
+- **Termination Log Format**:
+```json
+{
+  "parameters": {
+    "pr-url": "https://github.com/org/repo/pull/42",
+    "summary": "Updated 15 dependencies, all tests pass."
+  }
+}
+```
+
 ---
 
 ## System Configuration
@@ -1091,7 +1105,7 @@ kubectl get task update-service-a -n kubeopencode-system -w
 kubectl get task update-service-a -o yaml
 
 # View task logs
-kubectl logs job/$(kubectl get task update-service-a -o jsonpath='{.status.jobName}') -n kubeopencode-system
+kubectl logs $(kubectl get task update-service-a -o jsonpath='{.status.podName}') -n kubeopencode-system
 
 # Stop a running task (gracefully stops and marks as Completed with logs preserved)
 kubectl annotate task update-service-a kubeopencode.io/stop=true
@@ -1169,6 +1183,6 @@ kubectl get agent default -o yaml
 ---
 
 **Status**: FINAL
-**Date**: 2026-01-09
-**Version**: v7.0 (Cross-Namespace Task/Agent Separation)
+**Date**: 2026-01-17
+**Version**: v0.1.0
 **Maintainer**: KubeOpenCode Team

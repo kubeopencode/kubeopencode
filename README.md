@@ -108,6 +108,8 @@ spec:
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
+  # command is optional - uses default if not specified:
+  # ["sh", "-c", "/tools/opencode run \"$(cat ${WORKSPACE_DIR}/task.md)\""]
   command:
     - sh
     - -c
@@ -191,6 +193,15 @@ spec:
   description: |
     Fix issue #123: Login button not working on mobile.
 ```
+
+**Merge Strategy:**
+
+| Field | Merge Behavior |
+|-------|----------------|
+| `agentRef` | Task takes precedence; if not specified, uses Template's |
+| `description` | Task takes precedence; if not specified, uses Template's |
+| `contexts` | Template contexts first, then Task contexts (both included) |
+| `outputs` | Merged by parameter name; Task takes precedence for same-named params |
 
 ### Batch Operations with Helm
 
@@ -303,6 +314,30 @@ spec:
       mountPath: /home/agent/.ssh/id_rsa
       fileMode: 0400
 ```
+
+### OpenCode Configuration
+
+The `config` field allows you to provide OpenCode configuration as an inline JSON string:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: opencode-agent
+spec:
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  config: |
+    {
+      "$schema": "https://opencode.ai/config.json",
+      "model": "google/gemini-2.5-pro",
+      "small_model": "google/gemini-2.5-flash"
+    }
+```
+
+The configuration is written to `/tools/opencode.json` and the `OPENCODE_CONFIG` environment variable is set automatically. See [OpenCode configuration schema](https://opencode.ai/config.json) for available options.
 
 ### Multi-AI Support
 
@@ -446,6 +481,36 @@ When the limit is reached:
 - Queued Tasks automatically transition to `Running` when capacity becomes available
 - Tasks are processed in approximate FIFO order
 
+### Quota (Rate Limiting)
+
+In addition to `maxConcurrentTasks` (which limits simultaneous running Tasks), you can configure `quota` to limit the rate at which Tasks can start using a sliding time window:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: rate-limited-agent
+spec:
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  quota:
+    maxTaskStarts: 10     # Maximum 10 task starts
+    windowSeconds: 3600   # Per hour (sliding window)
+```
+
+**Quota vs MaxConcurrentTasks:**
+
+| Feature | `maxConcurrentTasks` | `quota` |
+|---------|----------------------|---------|
+| What it limits | Simultaneous running Tasks | Rate of new Task starts |
+| Time component | No (instant check) | Yes (sliding window) |
+| Queued Reason | `AgentAtCapacity` | `QuotaExceeded` |
+| Use case | Limit resource usage | API rate limiting |
+
+Both can be used together for comprehensive control. When quota is exceeded, new Tasks enter `Queued` phase with reason `QuotaExceeded`.
+
 ### Cross-Namespace Task/Agent Separation
 
 Enable separation of concerns between platform and dev teams:
@@ -576,6 +641,20 @@ KubeOpenCode uses a **two-container pattern**:
 | `code-server` | Worker (Executor) | Browser-based VSCode IDE |
 | `echo` | Testing | Minimal Alpine image for E2E testing |
 
+### Image Resolution
+
+When configuring an Agent, the controller resolves images as follows:
+
+| Configuration | Init Container | Worker Container |
+|--------------|----------------|------------------|
+| Both `agentImage` and `executorImage` set | `agentImage` | `executorImage` |
+| Only `agentImage` set (legacy) | Default OpenCode image | `agentImage` |
+| Neither set | Default OpenCode image | Default devbox image |
+
+**Default Images:**
+- OpenCode init: `quay.io/kubeopencode/kubeopencode-agent-opencode:latest`
+- Devbox executor: `quay.io/kubeopencode/kubeopencode-agent-devbox:latest`
+
 ### Building Agent Images
 
 ```bash
@@ -669,7 +748,7 @@ controller:
 ## Documentation
 
 - [Architecture](docs/architecture.md) - Detailed architecture and design decisions
-- [Agent Context Spec](docs/agent-context-spec.md) - How contexts are mounted
+- [Context System](docs/architecture.md#context-system) - How contexts are mounted
 - [Helm Chart](charts/kubeopencode/README.md) - Deployment and configuration guide
 - [ADRs](docs/adr/) - Architecture Decision Records
 

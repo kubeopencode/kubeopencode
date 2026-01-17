@@ -1,5 +1,11 @@
 # Agent Context Specification
 
+> **⚠️ DEPRECATED**: This document describes an **old design** that no longer exists.
+> The Context CRD has been replaced with **inline ContextItem** in Task and Agent specs.
+> For current documentation, see [Architecture - Context System](architecture.md#context-system).
+
+---
+
 This document defines how context is mounted and provided to AI agents in Kubernetes Pods.
 
 ## Overview
