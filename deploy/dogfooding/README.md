@@ -207,6 +207,167 @@ For production environments, consider:
 
 3. **Secure the webhook secret** using external secret management (e.g., Vault, Sealed Secrets)
 
+## Argo Workflow Integration
+
+KubeOpenCode Tasks can be integrated with [Argo Workflows](https://argoproj.github.io/workflows/) to build AI-powered pipelines. Argo Workflow's `resource` template can create Tasks, wait for completion, and extract results from Task annotations for use in subsequent steps.
+
+### How It Works
+
+1. **Create Task**: Argo's `resource` template creates a KubeOpenCode Task
+2. **Wait for Completion**: Polls `status.phase` until `Completed` or `Failed`
+3. **Extract Results**: Uses JQ filter or JSONPath to read Task annotations
+4. **Pass to Next Step**: Extracted values become available as workflow parameters
+
+### Passing Results via Annotations
+
+AI agents can write results to Task annotations using `kubectl annotate`. Argo Workflows can then extract these annotations using JQ filters or JSONPath expressions.
+
+**Agent writes results:**
+```bash
+# In the agent's task execution
+kubectl annotate task $TASK_NAME -n $TASK_NAMESPACE \
+  kubeopencode.io/pr-url="https://github.com/org/repo/pull/123" \
+  kubeopencode.io/summary="Fixed the login bug"
+```
+
+**Argo extracts results:**
+```yaml
+outputs:
+  parameters:
+    - name: pr-url
+      valueFrom:
+        jqFilter: '.metadata.annotations["kubeopencode.io/pr-url"]'
+    - name: summary
+      valueFrom:
+        jqFilter: '.metadata.annotations["kubeopencode.io/summary"]'
+```
+
+### Example: AI Pipeline with Annotation-Based Output
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ai-pipeline-
+spec:
+  entrypoint: main
+  templates:
+    - name: main
+      dag:
+        tasks:
+          - name: run-ai-task
+            template: execute-task
+
+          - name: use-result
+            template: process-result
+            dependencies: [run-ai-task]
+            arguments:
+              parameters:
+                - name: pr-url
+                  value: "{{tasks.run-ai-task.outputs.parameters.pr-url}}"
+                - name: summary
+                  value: "{{tasks.run-ai-task.outputs.parameters.summary}}"
+
+    - name: execute-task
+      resource:
+        action: create
+        manifest: |
+          apiVersion: kubeopencode.io/v1alpha1
+          kind: Task
+          metadata:
+            generateName: task-
+            namespace: kubeopencode-dogfooding
+          spec:
+            agentRef:
+              name: opencode-agent
+            description: |
+              Create a PR with the requested changes.
+              After completion, save results to Task annotations:
+              kubectl annotate task $TASK_NAME -n $TASK_NAMESPACE \
+                kubeopencode.io/pr-url="<pr-url>" \
+                kubeopencode.io/summary="<summary>"
+        successCondition: status.phase == Completed
+        failureCondition: status.phase == Failed
+      outputs:
+        parameters:
+          - name: pr-url
+            valueFrom:
+              jqFilter: '.metadata.annotations["kubeopencode.io/pr-url"] // "N/A"'
+          - name: summary
+            valueFrom:
+              jqFilter: '.metadata.annotations["kubeopencode.io/summary"] // "No summary"'
+
+    - name: process-result
+      inputs:
+        parameters:
+          - name: pr-url
+          - name: summary
+      container:
+        image: alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "PR URL: {{inputs.parameters.pr-url}}"
+            echo "Summary: {{inputs.parameters.summary}}"
+```
+
+### Extraction Methods
+
+Argo Workflows supports two methods for extracting annotation values:
+
+**JQ Filter (Recommended):**
+```yaml
+valueFrom:
+  jqFilter: '.metadata.annotations["kubeopencode.io/result"]'
+  # With default value:
+  jqFilter: '.metadata.annotations["kubeopencode.io/result"] // "default"'
+```
+
+**JSONPath:**
+```yaml
+valueFrom:
+  jsonPath: '{.metadata.annotations.kubeopencode\.io/result}'
+```
+
+JQ is recommended for annotations because:
+- Handles special characters in annotation keys more easily
+- Supports default values with `// "default"` syntax
+- Can parse JSON values: `.metadata.annotations["key"] | fromjson | .field`
+
+### Key Configuration
+
+| Field | Purpose |
+|-------|---------|
+| `successCondition: status.phase == Completed` | Workflow step succeeds when Task completes |
+| `failureCondition: status.phase == Failed` | Workflow step fails when Task fails |
+| `outputs.parameters[].valueFrom.jqFilter` | Extract values from Task annotations |
+| `{{tasks.<name>.outputs.parameters.<key>}}` | Reference outputs in subsequent steps |
+
+### Important Notes
+
+1. **RBAC Requirements**: The agent's ServiceAccount needs permission to annotate Tasks:
+   ```yaml
+   - apiGroups: ["kubeopencode.io"]
+     resources: ["tasks"]
+     verbs: ["get", "patch"]
+   ```
+
+2. **Annotation Size Limit**: Kubernetes annotations have a 256KB total limit per resource, which is much larger than the previous 4KB termination message limit.
+
+3. **JSON in Annotations**: For structured data, store JSON in a single annotation:
+   ```bash
+   kubectl annotate task $TASK_NAME \
+     kubeopencode.io/result='{"pr_url":"...","files_changed":5}'
+   ```
+   Extract with JQ:
+   ```yaml
+   jqFilter: '.metadata.annotations["kubeopencode.io/result"] | fromjson | .pr_url'
+   ```
+
+4. **Polling Mechanism**: Argo polls the Task status periodically (not event-driven). Consider setting a `timeout` on the resource template.
+
+5. **Task Cleanup**: Completed Tasks remain in the cluster. Configure `KubeOpenCodeConfig.spec.cleanup` or use Argo's `ttlStrategy`.
+
 ## Scheduled Refactoring (CronWorkflow)
 
 KubeOpenCode includes a daily automated refactoring workflow that identifies and implements small code improvements.
