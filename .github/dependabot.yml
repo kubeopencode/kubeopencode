@@ -4,7 +4,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    vendor: true
 
   - package-ecosystem: "github-actions"
     directory: "/"
