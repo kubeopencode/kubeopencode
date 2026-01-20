@@ -119,5 +119,4 @@ spec:
                   - REPO={{ .Input.body.repository.full_name }}
                   - PR_NUMBER={{ .Input.body.pull_request.number }}
               dest: spec.description
-      retryStrategy:
-        steps: 3
+
