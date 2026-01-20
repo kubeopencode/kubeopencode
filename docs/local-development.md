@@ -45,6 +45,7 @@ make docker-build
 # Build the agent images (two-container pattern)
 make agent-build AGENT=opencode    # OpenCode init container
 make agent-build AGENT=devbox      # Executor container
+make agent-build AGENT=attach      # Lightweight attach image (Server mode)
 ```
 
 **Note:** The unified kubeopencode image provides both controller and infrastructure utilities:
@@ -60,6 +61,7 @@ Load images into the Kind cluster (required because Kind cannot pull from local 
 kind load docker-image quay.io/kubeopencode/kubeopencode:latest --name kubeopencode
 kind load docker-image quay.io/kubeopencode/kubeopencode-agent-opencode:latest --name kubeopencode
 kind load docker-image quay.io/kubeopencode/kubeopencode-agent-devbox:latest --name kubeopencode
+kind load docker-image quay.io/kubeopencode/kubeopencode-agent-attach:latest --name kubeopencode
 ```
 
 ### 4. Deploy with Helm
