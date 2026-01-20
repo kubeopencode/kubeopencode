@@ -52,6 +52,7 @@ This design separates the AI tool (OpenCode) from the execution environment, all
 |-------|---------|----------------|
 | `opencode` | OpenCode CLI (AI coding agent) | Init Container |
 | `devbox` | Universal development environment | Worker (Executor) |
+| `attach` | Lightweight image for Server mode `--attach` | Worker (Server mode) |
 
 ## Devbox Image Contents
 
@@ -108,9 +109,13 @@ make AGENT=opencode build
 # Build devbox image (executor)
 make AGENT=devbox build
 
+# Build attach image (Server mode)
+make AGENT=attach build
+
 # Multi-arch build and push
 make AGENT=opencode buildx
 make AGENT=devbox buildx
+make AGENT=attach buildx
 ```
 
 From the project root:
@@ -119,6 +124,7 @@ From the project root:
 # Same commands via project Makefile
 make agent-build AGENT=opencode
 make agent-build AGENT=devbox
+make agent-build AGENT=attach
 ```
 
 ### Image Naming
@@ -303,5 +309,6 @@ If a tool is missing:
 |-------|-----------------|-------------|
 | `opencode` | ~500 MB | OpenCode CLI only |
 | `devbox` | ~2-3 GB | Full development environment |
+| `attach` | ~25 MB | Minimal image for Server mode (OpenCode binary + ca-certs) |
 
-The larger size of `devbox` is a trade-off for having a comprehensive development environment similar to GitHub Actions runners.
+The larger size of `devbox` is a trade-off for having a comprehensive development environment similar to GitHub Actions runners. The `attach` image is intentionally minimal as it only needs to connect to an OpenCode server and stream output.
