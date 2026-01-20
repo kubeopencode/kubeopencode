@@ -35,6 +35,12 @@ spec:
             type: string
             value:
               - opened
+          # Exclude Dependabot PRs
+          - path: body.sender.login
+            type: string
+            comparator: "!="
+            value:
+              - dependabot[bot]
   triggers:
     - template:
         name: pr-opened
@@ -113,5 +119,4 @@ spec:
                   - REPO={{ .Input.body.repository.full_name }}
                   - PR_NUMBER={{ .Input.body.pull_request.number }}
               dest: spec.description
-      retryStrategy:
-        steps: 3
+

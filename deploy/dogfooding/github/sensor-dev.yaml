@@ -68,7 +68,7 @@ spec:
             # Labels for filtering
             - src:
                 dependencyName: dev-mention
-                dataTemplate: "{{ index .Input.headers \"X-Github-Event\" }}"
+                dataTemplate: "{{ index (index .Input.headers \"X-Github-Event\") 0 }}"
               dest: metadata.labels.github\.kubeopencode\.io/event
             - src:
                 dependencyName: dev-mention
@@ -102,7 +102,7 @@ spec:
                   # GitHub Event: @kubeopencode-dev Mention (Privileged User)
 
                   ## Event Type
-                  - GitHub Event: {{ index .Input.headers "X-Github-Event" }}
+                  - GitHub Event: {{ index (index .Input.headers "X-Github-Event") 0 }}
                   - Action: {{ .Input.body.action }}
 
                   ## Repository
@@ -185,5 +185,3 @@ spec:
                   - LINE={{ .Input.body.comment.line }}
                   {{ end }}
               dest: spec.description
-      retryStrategy:
-        steps: 3
