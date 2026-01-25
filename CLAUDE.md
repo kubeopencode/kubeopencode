@@ -604,7 +604,7 @@ spec:
    - Creates a Pod with command: `opencode run --attach <server-url> "$(cat task.md)"`
    - Standard Pod status tracking (same as Pod mode)
    - Logs available via `kubectl logs` (same as Pod mode)
-4. Pod is deleted via OwnerReference when Task is deleted
+4. Pod is deleted via finalizer when Task is deleted
 
 **Server Mode Status:**
 The Agent status includes server information when in Server mode:
@@ -768,7 +768,7 @@ spec:
 - Cleanup is namespace-scoped (each namespace can have different policies)
 - No cleanup is performed if `KubeOpenCodeConfig` is not present (default behavior)
 
-**Note:** Deleting a Task cascades to its Pod and ConfigMap via OwnerReference or Finalizer.
+**Note:** Deleting a Task cascades to its Pod and ConfigMap via Finalizer.
 
 ### TaskTemplate
 

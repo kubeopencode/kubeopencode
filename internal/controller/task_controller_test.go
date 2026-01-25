@@ -65,9 +65,8 @@ var _ = Describe("TaskController", func() {
 			Expect(createdPod.Labels).Should(HaveKeyWithValue("app", "kubeopencode"))
 			Expect(createdPod.Labels).Should(HaveKeyWithValue("kubeopencode.io/task", taskName))
 
-			By("Verifying Pod has owner reference to Task")
-			Expect(createdPod.OwnerReferences).Should(HaveLen(1))
-			Expect(createdPod.OwnerReferences[0].Name).Should(Equal(taskName))
+			By("Verifying Pod cleanup is handled via finalizer (no OwnerReference)")
+			Expect(createdPod.OwnerReferences).Should(BeEmpty())
 
 			By("Verifying Pod uses default executor image")
 			Expect(createdPod.Spec.Containers).Should(HaveLen(1))

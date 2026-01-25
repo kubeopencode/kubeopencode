@@ -235,11 +235,9 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// Determine if this is a cross-namespace setup
-	isCrossNamespace := agentNamespace != task.Namespace
-
-	// Add finalizer for cross-namespace Pod cleanup
-	if isCrossNamespace && !controllerutil.ContainsFinalizer(task, TaskFinalizer) {
+	// Add finalizer for Pod cleanup (handles both same-namespace and cross-namespace)
+	// We use finalizer uniformly instead of OwnerReference for consistent cleanup behavior
+	if !controllerutil.ContainsFinalizer(task, TaskFinalizer) {
 		controllerutil.AddFinalizer(task, TaskFinalizer)
 		if err := r.Update(ctx, task); err != nil {
 			log.Error(err, "unable to add finalizer")
@@ -336,6 +334,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 
 	// Generate Pod name
 	// For cross-namespace, include Task namespace to avoid name conflicts
+	isCrossNamespace := agentNamespace != task.Namespace
 	var podName string
 	if isCrossNamespace {
 		podName = fmt.Sprintf("%s-%s-pod", task.Namespace, task.Name)
@@ -904,18 +903,8 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 			},
 			Data: configMapData,
 		}
-		// Only set OwnerReference if same namespace (cross-namespace owner refs not allowed)
-		if agentNamespace == task.Namespace {
-			configMap.OwnerReferences = []metav1.OwnerReference{
-				{
-					APIVersion: task.APIVersion,
-					Kind:       task.Kind,
-					Name:       task.Name,
-					UID:        task.UID,
-					Controller: boolPtr(true),
-				},
-			}
-		}
+		// ConfigMap cleanup is handled via finalizer on the Task (same as Pod cleanup).
+		// We don't use OwnerReference to keep cleanup behavior consistent.
 	}
 
 	// Validate mount path conflicts

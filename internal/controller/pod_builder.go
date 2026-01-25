@@ -764,20 +764,9 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 		Spec: podSpec,
 	}
 
-	// Only set OwnerReference when Pod is in the same namespace as Task.
-	// Cross-namespace owner references are not allowed in Kubernetes.
-	// For cross-namespace cleanup, the controller uses a finalizer on the Task.
-	if agentNamespace == task.Namespace {
-		pod.OwnerReferences = []metav1.OwnerReference{
-			{
-				APIVersion: task.APIVersion,
-				Kind:       task.Kind,
-				Name:       task.Name,
-				UID:        task.UID,
-				Controller: boolPtr(true),
-			},
-		}
-	}
+	// Pod cleanup is handled uniformly via finalizer on the Task.
+	// We don't use OwnerReference to keep cleanup behavior consistent
+	// across both same-namespace and cross-namespace scenarios.
 
 	return pod
 }
