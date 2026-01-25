@@ -164,6 +164,27 @@ const (
 	// This path is chosen to avoid conflicts with repository's AGENTS.md or CLAUDE.md files.
 	// OpenCode loads this file via the instructions config injected through OPENCODE_CONFIG_CONTENT.
 	ContextFileRelPath = ".kubeopencode/context.md"
+
+	// DefaultSecretFileMode is the default permission mode for secrets (read/write for owner only)
+	DefaultSecretFileMode int32 = 0600
+
+	// DefaultGitRef is the default Git reference to clone
+	DefaultGitRef = "HEAD"
+
+	// DefaultGitDepth is the default Git clone depth
+	DefaultGitDepth = 1
+
+	// DefaultGitRoot is the root directory for Git clones in init containers
+	DefaultGitRoot = "/git"
+
+	// DefaultGitLink is the default subdirectory name for Git clones
+	DefaultGitLink = "repo"
+
+	// DefaultHomeDir is the default HOME directory for SCC compatibility
+	DefaultHomeDir = "/tmp"
+
+	// DefaultShell is the default SHELL for SCC compatibility
+	DefaultShell = "/bin/bash"
 )
 
 // buildOpenCodeInitContainer creates an init container that copies OpenCode binary to /tools.
@@ -191,25 +212,25 @@ func buildGitInitContainer(gm gitMount, volumeName string, index int, sysCfg sys
 	// Set default depth to 1 (shallow clone) if not specified
 	depth := gm.depth
 	if depth <= 0 {
-		depth = 1
+		depth = DefaultGitDepth
 	}
 
 	// Set default ref to HEAD if not specified
 	ref := gm.ref
 	if ref == "" {
-		ref = "HEAD"
+		ref = DefaultGitRef
 	}
 
 	envVars := []corev1.EnvVar{
 		{Name: "GIT_REPO", Value: gm.repository},
 		{Name: "GIT_REF", Value: ref},
 		{Name: "GIT_DEPTH", Value: strconv.Itoa(depth)},
-		{Name: "GIT_ROOT", Value: "/git"},
-		{Name: "GIT_LINK", Value: "repo"},
+		{Name: "GIT_ROOT", Value: DefaultGitRoot},
+		{Name: "GIT_LINK", Value: DefaultGitLink},
 	}
 
 	volumeMounts := []corev1.VolumeMount{
-		{Name: volumeName, MountPath: "/git"},
+		{Name: volumeName, MountPath: DefaultGitRoot},
 	}
 
 	// Add secret environment variables for authentication if specified
@@ -365,8 +386,8 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 	// - SHELL=/sbin/nologin - terminals in interactive tools fail to start
 	// Setting these explicitly ensures containers work regardless of UID.
 	envVars = append(envVars,
-		corev1.EnvVar{Name: "HOME", Value: "/tmp"},
-		corev1.EnvVar{Name: "SHELL", Value: "/bin/bash"},
+		corev1.EnvVar{Name: "HOME", Value: DefaultHomeDir},
+		corev1.EnvVar{Name: "SHELL", Value: DefaultShell},
 		corev1.EnvVar{Name: "TASK_NAME", Value: task.Name},
 		corev1.EnvVar{Name: "TASK_NAMESPACE", Value: task.Namespace},
 		corev1.EnvVar{Name: "WORKSPACE_DIR", Value: cfg.workspaceDir},
@@ -420,7 +441,7 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 				volumeName := fmt.Sprintf("credential-%d", i)
 
 				// Default file mode is 0600 (read/write for owner only)
-				var fileMode int32 = 0600
+				fileMode := DefaultSecretFileMode
 				if cred.FileMode != nil {
 					fileMode = *cred.FileMode
 				}
@@ -472,7 +493,7 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 			volumeName := fmt.Sprintf("credential-%d", i)
 
 			// Default file mode is 0600 (read/write for owner only)
-			var fileMode int32 = 0600
+			fileMode := DefaultSecretFileMode
 			if cred.FileMode != nil {
 				fileMode = *cred.FileMode
 			}
@@ -631,9 +652,9 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 
 		// Add volume mount to agent container
 		// If repoPath is specified, use subPath to mount only that path
-		subPath := "repo"
+		subPath := DefaultGitLink
 		if gm.repoPath != "" {
-			subPath = "repo/" + strings.TrimPrefix(gm.repoPath, "/")
+			subPath = DefaultGitLink + "/" + strings.TrimPrefix(gm.repoPath, "/")
 		}
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      volumeName,
@@ -650,12 +671,12 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 		// which is shared via git-context-0 volume
 		envVars = append(envVars, corev1.EnvVar{
 			Name:  "GIT_CONFIG_GLOBAL",
-			Value: "/git/.gitconfig",
+			Value: DefaultGitRoot + "/.gitconfig",
 		})
 		// Mount the git volume root to access the .gitconfig
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "git-context-0",
-			MountPath: "/git/.gitconfig",
+			MountPath: DefaultGitRoot + "/.gitconfig",
 			SubPath:   ".gitconfig",
 		})
 	}
