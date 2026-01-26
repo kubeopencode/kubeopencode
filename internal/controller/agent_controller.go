@@ -10,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -306,25 +307,13 @@ func (r *AgentReconciler) cleanupServerResources(ctx context.Context, agent *kub
 
 // setAgentCondition sets a condition on the Agent.
 func setAgentCondition(agent *kubeopenv1alpha1.Agent, conditionType string, status metav1.ConditionStatus, reason, message string) {
-	condition := metav1.Condition{
+	meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
 		Type:               conditionType,
 		Status:             status,
 		ObservedGeneration: agent.Generation,
-		LastTransitionTime: metav1.Now(),
 		Reason:             reason,
 		Message:            message,
-	}
-
-	// Find and update existing condition or append
-	for i, c := range agent.Status.Conditions {
-		if c.Type == conditionType {
-			if c.Status != status {
-				agent.Status.Conditions[i] = condition
-			}
-			return
-		}
-	}
-	agent.Status.Conditions = append(agent.Status.Conditions, condition)
+	})
 }
 
 // SetupWithManager sets up the controller with the Manager.
