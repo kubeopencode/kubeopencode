@@ -21,6 +21,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
@@ -519,11 +520,17 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 	return nil
 }
 
-// SetupWithManager sets up the controller with the Manager
+// SetupWithManager sets up the controller with the Manager.
+// We use Watches instead of Owns for Pods because Pods don't have owner references
+// to Tasks (to support cross-namespace Agent scenarios). The custom handler maps
+// Pod events to Task reconciliation requests using labels.
 func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubeopenv1alpha1.Task{}).
-		Owns(&corev1.Pod{}).
+		Watches(
+			&corev1.Pod{},
+			handler.EnqueueRequestsFromMapFunc(podToTaskMapper),
+		).
 		Complete(r)
 }
 
@@ -1670,4 +1677,36 @@ func (r *TaskReconciler) recordTaskStart(ctx context.Context, agent *kubeopenv1a
 	}
 
 	return fmt.Errorf("failed to record task start after %d retries", maxRetries)
+}
+
+// podToTaskMapper maps Pod events to Task reconciliation requests.
+// Since Pods don't have owner references to Tasks (to support cross-namespace scenarios),
+// we use labels to find the owning Task.
+// It uses the kubeopencode.io/task label to find the Task name and
+// kubeopencode.io/task-namespace label for cross-namespace scenarios.
+func podToTaskMapper(_ context.Context, obj client.Object) []ctrl.Request {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return nil
+	}
+
+	// Check if this is a KubeOpenCode Pod
+	taskName, hasLabel := pod.Labels["kubeopencode.io/task"]
+	if !hasLabel {
+		return nil
+	}
+
+	// Determine Task namespace: use task-namespace label for cross-namespace,
+	// otherwise use Pod's namespace
+	taskNamespace := pod.Namespace
+	if ns, ok := pod.Labels[TaskNamespaceLabelKey]; ok && ns != "" {
+		taskNamespace = ns
+	}
+
+	return []ctrl.Request{{
+		NamespacedName: types.NamespacedName{
+			Name:      taskName,
+			Namespace: taskNamespace,
+		},
+	}}
 }
