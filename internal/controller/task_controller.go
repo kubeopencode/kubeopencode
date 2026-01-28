@@ -263,6 +263,10 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 
 			task.Status.ObservedGeneration = task.Generation
 			task.Status.Phase = kubeopenv1alpha1.TaskPhaseQueued
+			task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
+				Name:      agentName,
+				Namespace: agentNamespace,
+			}
 
 			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 				Type:    kubeopenv1alpha1.ConditionTypeQueued,
@@ -305,6 +309,10 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 
 			task.Status.ObservedGeneration = task.Generation
 			task.Status.Phase = kubeopenv1alpha1.TaskPhaseQueued
+			task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
+				Name:      agentName,
+				Namespace: agentNamespace,
+			}
 
 			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 				Type:   kubeopenv1alpha1.ConditionTypeQueued,
@@ -462,6 +470,10 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	task.Status.PodName = podName
 	task.Status.PodNamespace = agentNamespace
 	task.Status.Phase = kubeopenv1alpha1.TaskPhaseRunning
+	task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
+		Name:      agentName,
+		Namespace: agentNamespace,
+	}
 	now := metav1.Now()
 	task.Status.StartTime = &now
 
@@ -1277,6 +1289,14 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 				"agent", agentName,
 				"maxTaskStarts", agentConfig.quota.MaxTaskStarts,
 				"windowSeconds", agentConfig.quota.WindowSeconds)
+
+			// Ensure AgentRef is set (may be missing from older tasks)
+			if task.Status.AgentRef == nil {
+				task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				}
+			}
 
 			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 				Type:   kubeopenv1alpha1.ConditionTypeQueued,

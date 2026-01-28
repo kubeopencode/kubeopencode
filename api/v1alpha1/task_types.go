@@ -63,8 +63,8 @@ const (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope="Namespaced",shortName=tk
 // +kubebuilder:printcolumn:JSONPath=`.status.phase`,name="Phase",type=string
-// +kubebuilder:printcolumn:JSONPath=`.spec.agentRef.namespace`,name="Agent-NS",type=string
-// +kubebuilder:printcolumn:JSONPath=`.spec.agentRef.name`,name="Agent",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.agentRef.namespace`,name="Agent-NS",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.agentRef.name`,name="Agent",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.podName`,name="Pod",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.podNamespace`,name="Pod-NS",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
@@ -170,6 +170,12 @@ type TaskExecutionStatus struct {
 	// Execution phase
 	// +optional
 	Phase TaskPhase `json:"phase,omitempty"`
+
+	// AgentRef is the resolved Agent reference used for this task.
+	// This may come from Task.spec.agentRef, TaskTemplate.spec.agentRef,
+	// or the default Agent in the Task's namespace.
+	// +optional
+	AgentRef *AgentReference `json:"agentRef,omitempty"`
 
 	// Kubernetes Pod name
 	// +optional
