@@ -297,7 +297,7 @@ func buildContextInitContainer(workspaceDir string, fileMounts []fileMount, dirM
 
 	// Build file mappings JSON
 	if len(fileMounts) > 0 {
-		var mappings []contextInitFileMapping
+		mappings := make([]contextInitFileMapping, 0, len(fileMounts))
 		for _, mount := range fileMounts {
 			mappings = append(mappings, contextInitFileMapping{
 				Key:        sanitizeConfigMapKey(mount.filePath),
@@ -314,7 +314,7 @@ func buildContextInitContainer(workspaceDir string, fileMounts []fileMount, dirM
 
 	// Build directory mappings JSON
 	if len(dirMounts) > 0 {
-		var mappings []contextInitDirMapping
+		mappings := make([]contextInitDirMapping, 0, len(dirMounts))
 		for i, dm := range dirMounts {
 			mappings = append(mappings, contextInitDirMapping{
 				SourcePath: fmt.Sprintf("/configmap-dir-%d", i),
