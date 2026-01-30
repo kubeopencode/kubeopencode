@@ -10,6 +10,7 @@
 6. [System Configuration](#system-configuration)
 7. [Complete Examples](#complete-examples)
 8. [kubectl Usage](#kubectl-usage)
+9. [Web UI](#web-ui)
 
 ---
 
@@ -1087,6 +1088,83 @@ kubectl apply -f agent.yaml
 
 # View agent details
 kubectl get agent my-agent -o yaml
+```
+
+---
+
+## Web UI
+
+KubeOpenCode includes a web-based UI for managing Tasks and viewing Agents.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    kubeopencode server                       │
+│  ┌─────────────────────┐    ┌─────────────────────────────┐ │
+│  │     REST API        │    │    Embedded React UI        │ │
+│  │  /api/v1/tasks      │    │    (TypeScript + React)     │ │
+│  │  /api/v1/agents     │    │                             │ │
+│  └──────────┬──────────┘    └─────────────────────────────┘ │
+└─────────────┼───────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Kubernetes API                            │
+│         Tasks, Agents, Pods, Namespaces                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Design:**
+- Single server binary (`kubeopencode server` subcommand)
+- React UI embedded in Go binary via `embed` package
+- REST API with JSON responses
+- ServiceAccount token authentication (Kubernetes RBAC)
+- No external dependencies (no database)
+
+### REST API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/namespaces/{ns}/tasks` | List Tasks |
+| GET | `/api/v1/namespaces/{ns}/tasks/{name}` | Get Task |
+| POST | `/api/v1/namespaces/{ns}/tasks` | Create Task |
+| DELETE | `/api/v1/namespaces/{ns}/tasks/{name}` | Delete Task |
+| POST | `/api/v1/namespaces/{ns}/tasks/{name}/stop` | Stop Task |
+| GET | `/api/v1/namespaces/{ns}/tasks/{name}/logs` | Stream logs (SSE) |
+| GET | `/api/v1/agents` | List all Agents |
+| GET | `/api/v1/namespaces/{ns}/agents` | List Agents in namespace |
+| GET | `/api/v1/namespaces/{ns}/agents/{name}` | Get Agent details |
+| GET | `/api/v1/info` | Server info |
+| GET | `/api/v1/namespaces` | List namespaces |
+
+### UI Pages
+
+| Page | Path | Description |
+|------|------|-------------|
+| Task List | `/tasks` | View and filter Tasks across namespaces |
+| Task Detail | `/tasks/:namespace/:name` | Task details with real-time log streaming |
+| Task Create | `/tasks/create` | Create new Tasks with Agent selection |
+| Agent List | `/agents` | Browse available Agents |
+| Agent Detail | `/agents/:namespace/:name` | View Agent configuration |
+
+### Deployment
+
+Enable the UI server in Helm:
+
+```yaml
+server:
+  enabled: true
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 2746
+```
+
+Access via port-forward:
+
+```bash
+kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746
 ```
 
 ---

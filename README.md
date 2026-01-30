@@ -64,14 +64,31 @@ KubeOpenCode enables you to execute [OpenCode](https://opencode.ai) AI agent tas
 # Create namespace
 kubectl create namespace kubeopencode-system
 
-# Install from OCI registry
+# Install from OCI registry (with UI enabled)
 helm install kubeopencode oci://quay.io/kubeopencode/helm-charts/kubeopencode \
-  --namespace kubeopencode-system
+  --namespace kubeopencode-system \
+  --set server.enabled=true
 
 # Or install from local chart (for development)
 helm install kubeopencode ./charts/kubeopencode \
-  --namespace kubeopencode-system
+  --namespace kubeopencode-system \
+  --set server.enabled=true
 ```
+
+### Access the Web UI
+
+```bash
+# Port forward to access the UI
+kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746
+
+# Open http://localhost:2746 in your browser
+```
+
+The Web UI provides:
+- **Task List**: View and filter Tasks across namespaces
+- **Task Detail**: Monitor Task execution with real-time log streaming
+- **Task Creation**: Create new Tasks with Agent selection
+- **Agent Browser**: View available Agents and their configurations
 
 ### Example Usage
 
@@ -655,6 +672,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines 
 - [x] Pod configuration (labels, scheduling, runtimeClassName)
 - [x] Cross-namespace Task/Agent separation (credential isolation)
 - [x] TaskTemplate for reusable configurations
+- [x] Web UI for Task and Agent management
 
 ### Next Priorities
 
@@ -675,15 +693,6 @@ Prometheus-native metrics for comprehensive Task/Agent observability:
 - **Agent Metrics**: Concurrent task counts, quota utilization, error rates per Agent
 - **Controller Metrics**: Reconciliation latency, API call rates, cache hit rates
 - **Grafana Dashboards**: Pre-built dashboards for common monitoring scenarios
-
-#### 3. Web UI
-
-Browser-based interface for monitoring and management:
-
-- **Task Dashboard**: Real-time task status, logs streaming, and execution history
-- **Agent Management**: View Agent configurations, credential status, and usage statistics
-- **Task Creation**: Create and manage Tasks through a visual interface
-- **Log Viewer**: Integrated log viewer with search and filtering capabilities
 
 ## Community
 
