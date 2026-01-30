@@ -1598,11 +1598,6 @@ func pruneTaskStartHistory(history []kubeopenv1alpha1.TaskStartRecord, windowSec
 	return pruned
 }
 
-// getActiveRecordsInWindow returns records within the sliding window.
-func getActiveRecordsInWindow(history []kubeopenv1alpha1.TaskStartRecord, windowSeconds int32) []kubeopenv1alpha1.TaskStartRecord {
-	return pruneTaskStartHistory(history, windowSeconds)
-}
-
 // calculateQuotaRequeueDelay calculates when the next quota slot becomes available.
 // Returns the time until the oldest record in the window expires, with a minimum
 // of DefaultQuotaRequeueDelay.
@@ -1612,7 +1607,7 @@ func calculateQuotaRequeueDelay(history []kubeopenv1alpha1.TaskStartRecord, wind
 	}
 
 	// Find the oldest record in the window
-	activeRecords := getActiveRecordsInWindow(history, windowSeconds)
+	activeRecords := pruneTaskStartHistory(history, windowSeconds)
 	if len(activeRecords) == 0 {
 		return DefaultQuotaRequeueDelay
 	}
@@ -1648,7 +1643,7 @@ func (r *TaskReconciler) checkAgentQuota(ctx context.Context, agent *kubeopenv1a
 	}
 
 	quota := agent.Spec.Quota
-	activeRecords := getActiveRecordsInWindow(agent.Status.TaskStartHistory, quota.WindowSeconds)
+	activeRecords := pruneTaskStartHistory(agent.Status.TaskStartHistory, quota.WindowSeconds)
 	currentCount := int32(len(activeRecords)) //nolint:gosec // len() is always non-negative and bounded by slice capacity
 
 	log.V(1).Info("quota check",
