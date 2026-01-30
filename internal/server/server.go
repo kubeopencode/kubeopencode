@@ -145,6 +145,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 		// Create handlers with impersonation support
 		taskHandler := handlers.NewTaskHandler(s.k8sClient, s.clientset, s.restConfig)
 		agentHandler := handlers.NewAgentHandler(s.k8sClient)
+		taskTemplateHandler := handlers.NewTaskTemplateHandler(s.k8sClient)
 		infoHandler := handlers.NewInfoHandler(s.k8sClient)
 
 		// Register impersonation middleware that creates per-request clients
@@ -169,6 +170,15 @@ func (s *Server) setupRoutes() *chi.Mux {
 		r.Route("/namespaces/{namespace}/agents", func(r chi.Router) {
 			r.Get("/", agentHandler.List)
 			r.Get("/{name}", agentHandler.Get)
+		})
+
+		// TaskTemplate endpoints
+		r.Get("/tasktemplates", taskTemplateHandler.ListAll)
+		r.Route("/namespaces/{namespace}/tasktemplates", func(r chi.Router) {
+			r.Get("/", taskTemplateHandler.List)
+			r.Post("/", taskTemplateHandler.Create)
+			r.Get("/{name}", taskTemplateHandler.Get)
+			r.Delete("/{name}", taskTemplateHandler.Delete)
 		})
 	})
 

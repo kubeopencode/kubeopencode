@@ -98,8 +98,9 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Description == "" {
-		writeError(w, http.StatusBadRequest, "Description is required", "")
+	// Description is required unless a template is specified
+	if req.Description == "" && req.TaskTemplateRef == nil {
+		writeError(w, http.StatusBadRequest, "Description is required when not using a template", "")
 		return
 	}
 
@@ -107,9 +108,20 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 		},
-		Spec: kubeopenv1alpha1.TaskSpec{
-			Description: &req.Description,
-		},
+		Spec: kubeopenv1alpha1.TaskSpec{},
+	}
+
+	// Set description if provided
+	if req.Description != "" {
+		task.Spec.Description = &req.Description
+	}
+
+	// Set task template reference if provided
+	if req.TaskTemplateRef != nil {
+		task.Spec.TaskTemplateRef = &kubeopenv1alpha1.TaskTemplateReference{
+			Name:      req.TaskTemplateRef.Name,
+			Namespace: req.TaskTemplateRef.Namespace,
+		}
 	}
 
 	// Set name or generate name

@@ -31,12 +31,19 @@ type ContextItem struct {
 	MountPath   string `json:"mountPath,omitempty"`
 }
 
+// TaskTemplateReference represents a reference to a TaskTemplate
+type TaskTemplateReference struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
 // CreateTaskRequest represents a request to create a task
 type CreateTaskRequest struct {
-	Name        string          `json:"name,omitempty"`
-	Description string          `json:"description"`
-	AgentRef    *AgentReference `json:"agentRef,omitempty"`
-	Contexts    []ContextItem   `json:"contexts,omitempty"`
+	Name            string                 `json:"name,omitempty"`
+	Description     string                 `json:"description,omitempty"`
+	AgentRef        *AgentReference        `json:"agentRef,omitempty"`
+	TaskTemplateRef *TaskTemplateReference `json:"taskTemplateRef,omitempty"`
+	Contexts        []ContextItem          `json:"contexts,omitempty"`
 }
 
 // TaskResponse represents a task in API responses
@@ -111,4 +118,29 @@ type ErrorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message,omitempty"`
 	Code    int    `json:"code"`
+}
+
+// TaskTemplateResponse represents a TaskTemplate in API responses
+type TaskTemplateResponse struct {
+	Name          string          `json:"name"`
+	Namespace     string          `json:"namespace"`
+	Description   string          `json:"description,omitempty"`
+	AgentRef      *AgentReference `json:"agentRef,omitempty"`
+	ContextsCount int             `json:"contextsCount"`
+	Contexts      []ContextItem   `json:"contexts,omitempty"`
+	CreatedAt     time.Time       `json:"createdAt"`
+}
+
+// TaskTemplateListResponse represents a list of TaskTemplates
+type TaskTemplateListResponse struct {
+	Templates []TaskTemplateResponse `json:"templates"`
+	Total     int                    `json:"total"`
+}
+
+// CreateTaskTemplateRequest represents a request to create a TaskTemplate
+type CreateTaskTemplateRequest struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	AgentRef    *AgentReference `json:"agentRef,omitempty"`
+	Contexts    []ContextItem   `json:"contexts,omitempty"`
 }
