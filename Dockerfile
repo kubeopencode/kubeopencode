@@ -16,6 +16,7 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 COPY vendor/ vendor/
+COPY ui/ ui/
 
 # Build using vendor directory (faster, no download needed)
 # Build the unified kubeopencode binary with all subcommands

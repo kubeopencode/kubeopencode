@@ -352,6 +352,13 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 			Expect(runningTask.Status.StartTime).ShouldNot(BeNil())
 			Expect(runningTask.Status.PodName).ShouldNot(BeEmpty())
 
+			By("Verifying status.agentRef is populated")
+			Expect(runningTask.Status.AgentRef).ShouldNot(BeNil())
+			Expect(runningTask.Status.AgentRef.Name).Should(Equal(agentName))
+
+			By("Verifying status.podNamespace is set")
+			Expect(runningTask.Status.PodNamespace).Should(Equal(testNS))
+
 			By("Verifying Task transitions to Completed")
 			Eventually(func() kubeopenv1alpha1.TaskPhase {
 				createdTask := &kubeopenv1alpha1.Task{}
@@ -794,6 +801,12 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 			logs := getPodLogs(ctx, testNS, jobName)
 			Expect(logs).Should(ContainSubstring("Custom agent running"))
 
+			By("Verifying status.agentRef resolved from TaskTemplate")
+			completedTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskKey, completedTask)).Should(Succeed())
+			Expect(completedTask.Status.AgentRef).ShouldNot(BeNil())
+			Expect(completedTask.Status.AgentRef.Name).Should(Equal(customAgentName))
+
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, template)).Should(Succeed())
@@ -1069,6 +1082,404 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 				}
 			}
 			Expect(k8sClient.Delete(ctx, config)).Should(Succeed())
+		})
+	})
+
+	Context("Task with Runtime Context", func() {
+		It("should inject platform awareness content", func() {
+			taskName := uniqueName("task-runtime")
+			description := "Test runtime context injection"
+
+			By("Creating Task with Runtime context")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Type: kubeopenv1alpha1.ContextTypeRuntime,
+							// No mountPath - should be written to .kubeopencode/context.md
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying Runtime context content is in the logs")
+			jobName := fmt.Sprintf("%s-pod", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			// Runtime context should include platform awareness content
+			Expect(logs).Should(ContainSubstring("KubeOpenCode"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+		})
+	})
+
+	Context("Task with Optional Context", func() {
+		It("should succeed when optional context resolution fails", func() {
+			taskName := uniqueName("task-optional")
+			description := "Test optional context"
+			nonExistentCM := "non-existent-configmap-12345"
+
+			By("Creating Task with optional ConfigMap context referencing non-existent CM")
+			optional := true
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Type:      kubeopenv1alpha1.ContextTypeConfigMap,
+							MountPath: "/workspace/optional-content.md",
+							ConfigMap: &kubeopenv1alpha1.ConfigMapContext{
+								Name:     nonExistentCM,
+								Key:      "content",
+								Optional: &optional,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete (should succeed despite missing ConfigMap)")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying task.md content is in the logs")
+			jobName := fmt.Sprintf("%s-pod", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			Expect(logs).Should(ContainSubstring("Test optional context"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+		})
+	})
+
+	Context("Task with Cross-Namespace Agent", func() {
+		It("should run Pod in Agent's namespace", func() {
+			taskName := uniqueName("task-cross-ns")
+			crossNSAgentName := uniqueName("cross-ns-agent")
+			description := "Test cross-namespace agent"
+
+			By("Creating Agent in platform namespace")
+			crossNSAgent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      crossNSAgentName,
+					Namespace: platformNS,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      echoImage,
+					ServiceAccountName: testServiceAccount,
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo '=== Cross-Namespace Test ===' && cat ${WORKSPACE_DIR}/task.md && echo '=== Done ==='"},
+					// Allow tasks from test namespace
+					AllowedNamespaces: []string{testNS},
+				},
+			}
+			Expect(k8sClient.Create(ctx, crossNSAgent)).Should(Succeed())
+
+			By("Creating Task in test namespace referencing Agent in platform namespace")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef: &kubeopenv1alpha1.AgentReference{
+						Name:      crossNSAgentName,
+						Namespace: platformNS,
+					},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying Pod ran in Agent's namespace (platform namespace)")
+			completedTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskKey, completedTask)).Should(Succeed())
+			Expect(completedTask.Status.PodNamespace).Should(Equal(platformNS))
+
+			By("Verifying status.agentRef is populated")
+			Expect(completedTask.Status.AgentRef).ShouldNot(BeNil())
+			Expect(completedTask.Status.AgentRef.Name).Should(Equal(crossNSAgentName))
+			Expect(completedTask.Status.AgentRef.Namespace).Should(Equal(platformNS))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, crossNSAgent)).Should(Succeed())
+		})
+	})
+
+	Context("Task with Relative MountPath", func() {
+		It("should resolve relative path to workspaceDir", func() {
+			taskName := uniqueName("task-rel-path")
+			description := "Test relative mount path"
+			fileContent := "# Relative Path Content\n\nThis file should be at guides/readme.md"
+
+			By("Creating Task with relative mountPath")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Type:      kubeopenv1alpha1.ContextTypeText,
+							Text:      fileContent,
+							MountPath: "guides/readme.md", // Relative path
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying file is at the relative path under workspaceDir")
+			jobName := fmt.Sprintf("%s-pod", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			// The echo agent's find command shows file paths
+			Expect(logs).Should(ContainSubstring("/workspace/guides/readme.md"))
+			Expect(logs).Should(ContainSubstring("Relative Path Content"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+		})
+	})
+
+	Context("Task with Context FileMode", func() {
+		It("should apply fileMode to mounted context file", func() {
+			taskName := uniqueName("task-filemode")
+			description := "Test file mode"
+			scriptContent := "#!/bin/sh\necho 'Hello from script'"
+
+			By("Creating Agent that checks file permissions")
+			fileModeAgentName := uniqueName("filemode-agent")
+			fileModeAgent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fileModeAgentName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      echoImage,
+					ServiceAccountName: testServiceAccount,
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo '=== File Permissions ===' && ls -la ${WORKSPACE_DIR}/scripts/ && echo '=== Content ===' && cat ${WORKSPACE_DIR}/scripts/run.sh"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, fileModeAgent)).Should(Succeed())
+
+			By("Creating Task with fileMode 0755")
+			fileMode := int32(493) // 0755 in decimal
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: fileModeAgentName},
+					Description: &description,
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Type:      kubeopenv1alpha1.ContextTypeText,
+							Text:      scriptContent,
+							MountPath: "/workspace/scripts/run.sh",
+							FileMode:  &fileMode,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying file has executable permissions")
+			jobName := fmt.Sprintf("%s-pod", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			Expect(logs).Should(ContainSubstring("File Permissions"))
+			// The ls -la output should show executable permissions (rwx)
+			Expect(logs).Should(ContainSubstring("run.sh"))
+			Expect(logs).Should(ContainSubstring("Hello from script"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, fileModeAgent)).Should(Succeed())
+		})
+	})
+
+	Context("Task with ConfigMap as directory", func() {
+		It("should mount ConfigMap without key as directory with all keys as files", func() {
+			taskName := uniqueName("task-cm-dir")
+			configMapName := uniqueName("multi-file-cm")
+			description := "Test ConfigMap directory mount"
+
+			By("Creating ConfigMap with multiple keys")
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      configMapName,
+					Namespace: testNS,
+				},
+				Data: map[string]string{
+					"config.yaml":   "app:\n  name: test\n  version: 1.0",
+					"settings.json": `{"debug": true, "level": "info"}`,
+					"README.md":     "# Configuration Files\n\nThese are the config files.",
+				},
+			}
+			Expect(k8sClient.Create(ctx, cm)).Should(Succeed())
+
+			By("Creating Task with ConfigMap context without key (directory mount)")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Type:      kubeopenv1alpha1.ContextTypeConfigMap,
+							MountPath: "/workspace/config",
+							ConfigMap: &kubeopenv1alpha1.ConfigMapContext{
+								Name: configMapName,
+								// No Key specified - entire ConfigMap as directory
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying all ConfigMap files are mounted")
+			jobName := fmt.Sprintf("%s-pod", taskName)
+			logs := getPodLogs(ctx, testNS, jobName)
+			Expect(logs).Should(ContainSubstring("config.yaml"))
+			Expect(logs).Should(ContainSubstring("settings.json"))
+			Expect(logs).Should(ContainSubstring("README.md"))
+			// Verify content
+			Expect(logs).Should(ContainSubstring("app:"))
+			Expect(logs).Should(ContainSubstring("debug"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, cm)).Should(Succeed())
+		})
+	})
+
+	Context("Task status AgentRef resolution", func() {
+		It("should populate status.agentRef after resolution", func() {
+			taskName := uniqueName("task-agentref-status")
+			description := "Test AgentRef status resolution"
+
+			By("Creating Task with explicit agentRef")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to start running")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Or(
+				Equal(kubeopenv1alpha1.TaskPhaseRunning),
+				Equal(kubeopenv1alpha1.TaskPhaseCompleted),
+			))
+
+			By("Verifying status.agentRef is populated correctly")
+			runningTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskKey, runningTask)).Should(Succeed())
+			Expect(runningTask.Status.AgentRef).ShouldNot(BeNil())
+			Expect(runningTask.Status.AgentRef.Name).Should(Equal(agentName))
+			Expect(runningTask.Status.AgentRef.Namespace).Should(Equal(testNS))
+
+			By("Waiting for Task to complete")
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				createdTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 		})
 	})
 })
