@@ -207,12 +207,42 @@ helm-push: helm-package ## Push helm chart to OCI registry
 	helm push dist/$(CHART_NAME)-*.tgz $(CHART_REGISTRY)
 .PHONY: helm-push
 
+##@ UI
+
+# Check if npm/yarn is available
+UI_PACKAGE_MANAGER := $(shell command -v pnpm 2> /dev/null || command -v yarn 2> /dev/null || command -v npm 2> /dev/null)
+
+# Build React UI
+ui-install: ## Install UI dependencies
+	cd ui && $(UI_PACKAGE_MANAGER) install
+.PHONY: ui-install
+
+ui-build: ## Build React UI for production
+	@echo "Building React UI..."
+	cd ui && $(UI_PACKAGE_MANAGER) run build
+	@echo "UI build complete"
+.PHONY: ui-build
+
+ui-dev: ## Run UI development server
+	cd ui && $(UI_PACKAGE_MANAGER) run dev
+.PHONY: ui-dev
+
+ui-clean: ## Clean UI build artifacts
+	rm -rf ui/dist
+	rm -rf ui/node_modules
+.PHONY: ui-clean
+
 ##@ Development
 
 # Run controller locally
 run:
 	go run ./cmd/kubeopencode controller
 .PHONY: run
+
+# Run server locally
+run-server: ## Run UI server locally
+	go run ./cmd/kubeopencode server
+.PHONY: run-server
 
 # Run webhook server locally
 run-webhook:

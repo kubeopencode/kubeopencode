@@ -14,6 +14,10 @@ cover.out
 # Helm
 dist/
 
+# UI
+ui/node_modules/
+ui/dist/
+
 # Override global gitignore to track CLAUDE.md
 !CLAUDE.md
 

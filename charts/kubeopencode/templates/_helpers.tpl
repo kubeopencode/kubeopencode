@@ -115,3 +115,38 @@ Webhook selector labels
 {{ include "kubeopencode.selectorLabels" . }}
 app.kubernetes.io/component: webhook
 {{- end }}
+
+{{/*
+Server labels
+*/}}
+{{- define "kubeopencode.server.labels" -}}
+{{ include "kubeopencode.labels" . }}
+app.kubernetes.io/component: server
+{{- end }}
+
+{{/*
+Server selector labels
+*/}}
+{{- define "kubeopencode.server.selectorLabels" -}}
+{{ include "kubeopencode.selectorLabels" . }}
+app.kubernetes.io/component: server
+{{- end }}
+
+{{/*
+Create the name of the server service account to use
+*/}}
+{{- define "kubeopencode.server.serviceAccountName" -}}
+{{- if .Values.server.serviceAccount.name }}
+{{- .Values.server.serviceAccount.name }}
+{{- else }}
+{{- printf "%s-server" (include "kubeopencode.fullname" .) }}
+{{- end }}
+{{- end }}
+
+{{/*
+Server image
+*/}}
+{{- define "kubeopencode.server.image" -}}
+{{- $tag := .Values.server.image.tag | default .Chart.AppVersion }}
+{{- printf "%s:%s" .Values.server.image.repository $tag }}
+{{- end }}

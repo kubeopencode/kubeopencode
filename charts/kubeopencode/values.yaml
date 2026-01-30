@@ -76,6 +76,79 @@ commonLabels: {}
 # Additional annotations for all resources
 commonAnnotations: {}
 
+# Server configuration (UI + API)
+server:
+  # Whether to enable the UI server
+  enabled: true
+
+  # Container image for the server (uses same image as controller)
+  image:
+    repository: quay.io/kubeopencode/kubeopencode
+    pullPolicy: IfNotPresent
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: ""
+
+  # Number of server replicas
+  replicas: 1
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 2746
+
+  # Ingress configuration
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    hosts:
+      - host: kubeopencode.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+    #  - secretName: kubeopencode-tls
+    #    hosts:
+    #      - kubeopencode.local
+
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Service account for the server
+  serviceAccount:
+    # Annotations to add to the service account
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: ""
+
+  # Security context for server pods
+  podSecurityContext:
+    runAsNonRoot: true
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+
+  # Node selector for server pods
+  nodeSelector: {}
+
+  # Tolerations for server pods
+  tolerations: []
+
+  # Affinity for server pods
+  affinity: {}
+
 # KubeOpenCodeConfig - system-level configuration
 # This creates a default KubeOpenCodeConfig in the release namespace
 kubeopencodeConfig:
