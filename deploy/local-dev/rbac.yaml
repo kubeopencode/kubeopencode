@@ -1,5 +1,11 @@
 # Copyright Contributors to the KubeOpenCode project
-# RBAC resources for local test environment
+# Minimal RBAC for Agent ServiceAccount
+#
+# Note: Most Kubernetes API permissions are NOT needed because:
+# - ConfigMaps/Secrets are mounted as volumes (not read via API)
+# - Agent/TaskTemplate/KubeOpenCodeConfig are read by Controller before Pod creation
+# - Task status is updated by Controller, not Agent
+# - Init containers (git-init, context-init, url-fetch) only do file I/O
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -17,34 +23,11 @@ metadata:
     app.kubernetes.io/name: kubeopencode
     app.kubernetes.io/component: agent
 rules:
-  # Allow agent to read and update Task resources
+  # Optional: Only needed if agent uses kubectl to query its own Task
+  # Can be removed if agent doesn't need to read Task spec/status
   - apiGroups: ["kubeopencode.io"]
     resources: ["tasks"]
-    verbs: ["get", "list", "watch", "patch", "update"]
-  # Allow agent to update Task status
-  - apiGroups: ["kubeopencode.io"]
-    resources: ["tasks/status"]
-    verbs: ["get", "patch", "update"]
-  # Allow agent to read Agent configuration
-  - apiGroups: ["kubeopencode.io"]
-    resources: ["agents"]
-    verbs: ["get", "list", "watch"]
-  # Allow agent to read KubeOpenCodeConfig
-  - apiGroups: ["kubeopencode.io"]
-    resources: ["kubeopencodeconfigs"]
-    verbs: ["get", "list", "watch"]
-  # Allow agent to read TaskTemplate resources
-  - apiGroups: ["kubeopencode.io"]
-    resources: ["tasktemplates"]
-    verbs: ["get", "list", "watch"]
-  # Allow agent to read Pods and Pod logs
-  - apiGroups: [""]
-    resources: ["pods", "pods/log"]
-    verbs: ["get", "list", "watch"]
-  # Allow agent to read ConfigMaps
-  - apiGroups: [""]
-    resources: ["configmaps"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

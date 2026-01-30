@@ -20,10 +20,10 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .spec.agentRef.namespace
+    - jsonPath: .status.agentRef.namespace
       name: Agent-NS
       type: string
-    - jsonPath: .spec.agentRef.name
+    - jsonPath: .status.agentRef.name
       name: Agent
       type: string
     - jsonPath: .status.podName
@@ -339,6 +339,25 @@ spec:
           status:
             description: Status represents the current status of the Task
             properties:
+              agentRef:
+                description: |-
+                  AgentRef is the resolved Agent reference used for this task.
+                  This may come from Task.spec.agentRef, TaskTemplate.spec.agentRef,
+                  or the default Agent in the Task's namespace.
+                properties:
+                  name:
+                    description: Name of the Agent.
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace of the Agent.
+                      If empty, defaults to the Task's namespace.
+                      When specified, the Pod runs in the Agent's namespace (not the Task's namespace),
+                      allowing credentials to stay isolated from Task creators.
+                    type: string
+                required:
+                - name
+                type: object
               completionTime:
                 description: Completion time
                 format: date-time
