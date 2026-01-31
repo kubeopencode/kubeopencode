@@ -264,16 +264,16 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 			By("Verifying error condition mentions agentRef is required")
 			failedTask := &kubeopenv1alpha1.Task{}
 			Expect(k8sClient.Get(ctx, taskKey, failedTask)).Should(Succeed())
-			// Check that one of the conditions contains the error message
+			// Check that the Ready condition is False with the error message
 			var foundError bool
 			for _, cond := range failedTask.Status.Conditions {
-				if cond.Type == "Failed" && cond.Status == metav1.ConditionTrue {
+				if cond.Type == kubeopenv1alpha1.ConditionTypeReady && cond.Status == metav1.ConditionFalse {
 					Expect(cond.Message).Should(ContainSubstring("agentRef is required"))
 					foundError = true
 					break
 				}
 			}
-			Expect(foundError).Should(BeTrue(), "Expected Failed condition with agentRef error message")
+			Expect(foundError).Should(BeTrue(), "Expected Ready=False condition with agentRef error message")
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
