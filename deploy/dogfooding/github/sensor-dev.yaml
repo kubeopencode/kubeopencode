@@ -38,6 +38,14 @@ spec:
             value:
               # Regex pattern to match @kubeopencode-dev anywhere in text
               - ".*@kubeopencode-dev.*"
+          # Exclude bot's own comments to prevent recursive triggers
+          # Use body.sender.login which is consistent across all GitHub event types
+          - path: body.sender.login
+            type: string
+            comparator: "!="
+            value:
+              - kubeopencode-bot[bot]
+              - kubeopencode-dev[bot]
           - path: body.comment.author_association
             type: string
             value:
