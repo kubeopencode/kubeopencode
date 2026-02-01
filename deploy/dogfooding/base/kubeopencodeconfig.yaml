@@ -12,6 +12,6 @@ spec:
     imagePullPolicy: Always
 
   # Automatic cleanup of completed/failed Tasks
-  # Tasks are deleted after 1 day (86400 seconds) from completion
+  # Tasks are deleted after 1 week (604800 seconds) from completion
   cleanup:
-    ttlSecondsAfterFinished: 86400
+    ttlSecondsAfterFinished: 604800
