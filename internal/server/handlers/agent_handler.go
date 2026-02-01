@@ -142,7 +142,7 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		ctxItem := types.ContextItem{
 			Name:        ctx.Name,
 			Description: ctx.Description,
-			Type:        string(ctx.Type),
+			Type:        ctx.Type,
 			MountPath:   ctx.MountPath,
 		}
 		resp.Contexts = append(resp.Contexts, ctxItem)

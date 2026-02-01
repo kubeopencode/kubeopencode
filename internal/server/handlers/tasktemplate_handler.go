@@ -212,7 +212,7 @@ func taskTemplateToResponse(tt *kubeopenv1alpha1.TaskTemplate) types.TaskTemplat
 		ctxItem := types.ContextItem{
 			Name:        ctx.Name,
 			Description: ctx.Description,
-			Type:        string(ctx.Type),
+			Type:        ctx.Type,
 			MountPath:   ctx.MountPath,
 		}
 		resp.Contexts = append(resp.Contexts, ctxItem)
