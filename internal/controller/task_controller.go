@@ -331,6 +331,39 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		}
 	}
 
+	// Pre-occupy capacity slot by setting Task status to Running BEFORE creating Pod.
+	// This prevents race condition where multiple Tasks pass capacity check simultaneously.
+	// If Pod creation fails later, status will be set to Failed (not reverted to empty).
+	if task.Status.Phase != kubeopenv1alpha1.TaskPhaseRunning {
+		task.Status.ObservedGeneration = task.Generation
+		task.Status.Phase = kubeopenv1alpha1.TaskPhaseRunning
+		task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
+			Name:      agentName,
+			Namespace: agentNamespace,
+		}
+		now := metav1.Now()
+		task.Status.StartTime = &now
+
+		if err := r.Status().Update(ctx, task); err != nil {
+			if errors.IsConflict(err) {
+				// Optimistic lock conflict - another reconcile is in progress
+				// Requeue to let it complete first
+				log.V(1).Info("conflict pre-occupying capacity slot, requeuing")
+				return ctrl.Result{Requeue: true}, nil
+			}
+			log.Error(err, "unable to pre-occupy capacity slot")
+			return ctrl.Result{}, err
+		}
+
+		// Refresh task to get updated version
+		if err := r.Get(ctx, types.NamespacedName{Name: task.Name, Namespace: task.Namespace}, task); err != nil {
+			log.Error(err, "unable to refresh task after pre-occupying slot")
+			return ctrl.Result{}, err
+		}
+
+		log.Info("pre-occupied capacity slot", "task", task.Name, "agent", agentName)
+	}
+
 	// Determine server URL for Server-mode Agents (empty for Pod mode)
 	// In Server mode, Tasks create Pods that use `opencode run --attach` to connect
 	// to the persistent OpenCode server instead of running a standalone instance.
@@ -355,14 +388,17 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	existingPod := &corev1.Pod{}
 	podKey := types.NamespacedName{Name: podName, Namespace: agentNamespace}
 	if err := r.Get(ctx, podKey, existingPod); err == nil {
-		// Pod already exists, update status
-		task.Status.ObservedGeneration = task.Generation
+		// Pod already exists, update status with Pod info
 		task.Status.PodName = podName
 		task.Status.PodNamespace = agentNamespace
-		task.Status.Phase = kubeopenv1alpha1.TaskPhaseRunning
-		now := metav1.Now()
-		task.Status.StartTime = &now
-		return ctrl.Result{}, r.Status().Update(ctx, task)
+		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			if errors.IsConflict(updateErr) {
+				log.V(1).Info("conflict updating existing Pod status, requeuing")
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, updateErr
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Process all contexts using priority-based resolution
@@ -377,8 +413,14 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	contextConfigMap, fileMounts, dirMounts, gitMounts, err := r.processAllContexts(ctx, workingTask, agentConfig, agentNamespace)
 	if err != nil {
 		log.Error(err, "unable to process contexts")
+
+		// Refresh task to get latest version before updating status
+		if refreshErr := r.Get(ctx, types.NamespacedName{Name: task.Name, Namespace: task.Namespace}, task); refreshErr != nil {
+			log.Error(refreshErr, "unable to refresh task for context error status update")
+			return ctrl.Result{}, refreshErr
+		}
+
 		// Update task status to Failed - context errors are user configuration issues
-		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
@@ -390,6 +432,10 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		})
 
 		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			if errors.IsConflict(updateErr) {
+				log.V(1).Info("conflict updating context error status, requeuing")
+				return ctrl.Result{Requeue: true}, nil
+			}
 			log.Error(updateErr, "unable to update Task status")
 			return ctrl.Result{}, updateErr
 		}
@@ -401,8 +447,14 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		if err := r.Create(ctx, contextConfigMap); err != nil {
 			if !errors.IsAlreadyExists(err) {
 				log.Error(err, "unable to create context ConfigMap")
+
+				// Refresh task to get latest version before updating status
+				if refreshErr := r.Get(ctx, types.NamespacedName{Name: task.Name, Namespace: task.Namespace}, task); refreshErr != nil {
+					log.Error(refreshErr, "unable to refresh task for ConfigMap error status update")
+					return ctrl.Result{}, refreshErr
+				}
+
 				// Update task status to Failed - ConfigMap creation error is a terminal failure
-				task.Status.ObservedGeneration = task.Generation
 				task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
 				now := metav1.Now()
 				task.Status.CompletionTime = &now
@@ -413,6 +465,10 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 					Message: err.Error(),
 				})
 				if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+					if errors.IsConflict(updateErr) {
+						log.V(1).Info("conflict updating ConfigMap error status, requeuing")
+						return ctrl.Result{Requeue: true}, nil
+					}
 					log.Error(updateErr, "unable to update Task status")
 					return ctrl.Result{}, updateErr
 				}
@@ -431,10 +487,94 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	// For Server-mode, serverURL is passed to generate --attach command
 	pod := buildPod(workingTask, podName, agentNamespace, agentConfig, contextConfigMap, fileMounts, dirMounts, gitMounts, sysCfg, serverURL)
 
+	// Record task start for quota tracking BEFORE creating Pod.
+	// This ensures quota is accurate even if Pod creation fails.
+	// If Pod creation fails, we rollback the quota record.
+	var quotaAgent *kubeopenv1alpha1.Agent
+	if agentConfig.quota != nil {
+		var err error
+		quotaAgent, err = r.getAgentForQuota(ctx, agentName, agentNamespace)
+		if err != nil {
+			log.Error(err, "unable to get Agent for quota recording")
+
+			// Refresh task to get latest version before updating status
+			if refreshErr := r.Get(ctx, types.NamespacedName{Name: task.Name, Namespace: task.Namespace}, task); refreshErr != nil {
+				log.Error(refreshErr, "unable to refresh task for quota error status update")
+				return ctrl.Result{}, refreshErr
+			}
+
+			// Fail the task - quota tracking is required when configured
+			task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
+			now := metav1.Now()
+			task.Status.CompletionTime = &now
+			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+				Type:    kubeopenv1alpha1.ConditionTypeReady,
+				Status:  metav1.ConditionFalse,
+				Reason:  kubeopenv1alpha1.ReasonAgentError,
+				Message: fmt.Sprintf("failed to get Agent for quota: %v", err),
+			})
+			if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+				if errors.IsConflict(updateErr) {
+					log.V(1).Info("conflict updating quota error status, requeuing")
+					return ctrl.Result{Requeue: true}, nil
+				}
+				log.Error(updateErr, "unable to update Task status")
+				return ctrl.Result{}, updateErr
+			}
+			return ctrl.Result{}, nil
+		}
+
+		if err := r.recordTaskStart(ctx, quotaAgent, task); err != nil {
+			log.Error(err, "failed to record task start for quota")
+
+			// Refresh task to get latest version before updating status
+			if refreshErr := r.Get(ctx, types.NamespacedName{Name: task.Name, Namespace: task.Namespace}, task); refreshErr != nil {
+				log.Error(refreshErr, "unable to refresh task for quota record error status update")
+				return ctrl.Result{}, refreshErr
+			}
+
+			// Fail the task - quota tracking is required when configured
+			task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
+			now := metav1.Now()
+			task.Status.CompletionTime = &now
+			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+				Type:    kubeopenv1alpha1.ConditionTypeReady,
+				Status:  metav1.ConditionFalse,
+				Reason:  kubeopenv1alpha1.ReasonAgentError,
+				Message: fmt.Sprintf("failed to record quota: %v", err),
+			})
+			if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+				if errors.IsConflict(updateErr) {
+					log.V(1).Info("conflict updating quota record error status, requeuing")
+					return ctrl.Result{Requeue: true}, nil
+				}
+				log.Error(updateErr, "unable to update Task status")
+				return ctrl.Result{}, updateErr
+			}
+			return ctrl.Result{}, nil
+		}
+		log.V(1).Info("recorded task start for quota", "task", task.Name, "agent", agentName)
+	}
+
 	if err := r.Create(ctx, pod); err != nil {
 		log.Error(err, "unable to create Pod", "pod", podName, "namespace", agentNamespace)
+
+		// Rollback quota record if it was recorded
+		if quotaAgent != nil {
+			if rollbackErr := r.removeTaskStart(ctx, quotaAgent, task); rollbackErr != nil {
+				log.Error(rollbackErr, "failed to rollback quota record after Pod creation failure")
+			} else {
+				log.V(1).Info("rolled back quota record", "task", task.Name, "agent", agentName)
+			}
+		}
+
+		// Refresh task to get latest version before updating status
+		if refreshErr := r.Get(ctx, types.NamespacedName{Name: task.Name, Namespace: task.Namespace}, task); refreshErr != nil {
+			log.Error(refreshErr, "unable to refresh task for Pod creation error status update")
+			return ctrl.Result{}, refreshErr
+		}
+
 		// Update task status to Failed - Pod creation error is a terminal failure
-		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
@@ -445,39 +585,31 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 			Message: err.Error(),
 		})
 		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			if errors.IsConflict(updateErr) {
+				log.V(1).Info("conflict updating Pod creation error status, requeuing")
+				return ctrl.Result{Requeue: true}, nil
+			}
 			log.Error(updateErr, "unable to update Task status")
 			return ctrl.Result{}, updateErr
 		}
 		return ctrl.Result{}, nil // Don't requeue, Pod creation failed
 	}
 
-	// Record task start for quota tracking (if quota is configured)
-	if agentConfig.quota != nil {
-		agent, err := r.getAgentForQuota(ctx, agentName, agentNamespace)
-		if err != nil {
-			log.Error(err, "unable to get Agent for quota recording")
-			// Non-fatal: Pod is already created, quota tracking may be incomplete
-		} else {
-			if err := r.recordTaskStart(ctx, agent, task); err != nil {
-				log.Error(err, "failed to record task start for quota")
-				// Non-fatal: Pod is already created, quota tracking may be incomplete
-			}
-		}
+	// Refresh task to get latest version before final status update
+	if err := r.Get(ctx, types.NamespacedName{Name: task.Name, Namespace: task.Namespace}, task); err != nil {
+		log.Error(err, "unable to refresh task for final status update")
+		return ctrl.Result{}, err
 	}
 
-	// Update status
-	task.Status.ObservedGeneration = task.Generation
+	// Update status with Pod info (Task is already Running from pre-occupation)
 	task.Status.PodName = podName
 	task.Status.PodNamespace = agentNamespace
-	task.Status.Phase = kubeopenv1alpha1.TaskPhaseRunning
-	task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
-		Name:      agentName,
-		Namespace: agentNamespace,
-	}
-	now := metav1.Now()
-	task.Status.StartTime = &now
 
 	if err := r.Status().Update(ctx, task); err != nil {
+		if errors.IsConflict(err) {
+			log.V(1).Info("conflict updating final status, requeuing")
+			return ctrl.Result{Requeue: true}, nil
+		}
 		log.Error(err, "unable to update Task status")
 		return ctrl.Result{}, err
 	}
@@ -1213,6 +1345,28 @@ func (r *TaskReconciler) checkAgentCapacity(ctx context.Context, namespace, agen
 func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1alpha1.Task) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
+	// Check for user-initiated stop (Queued tasks can also be stopped)
+	if task.Annotations != nil && task.Annotations[AnnotationStop] == "true" {
+		log.Info("user-initiated stop detected for queued task", "task", task.Name)
+
+		task.Status.ObservedGeneration = task.Generation
+		task.Status.Phase = kubeopenv1alpha1.TaskPhaseCompleted
+		now := metav1.Now()
+		task.Status.CompletionTime = &now
+		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+			Type:    kubeopenv1alpha1.ConditionTypeStopped,
+			Status:  metav1.ConditionTrue,
+			Reason:  kubeopenv1alpha1.ReasonUserStopped,
+			Message: "Task was stopped while queued",
+		})
+
+		if err := r.Status().Update(ctx, task); err != nil {
+			log.Error(err, "unable to update stopped task status")
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
 	// Resolve TaskTemplate if referenced (same as initializeTask)
 	// This is needed because task.Spec.AgentRef may come from the TaskTemplate
 	mergedSpec, err := r.resolveTaskTemplate(ctx, task)
@@ -1737,6 +1891,51 @@ func (r *TaskReconciler) recordTaskStart(ctx context.Context, agent *kubeopenv1a
 	}
 
 	return fmt.Errorf("failed to record task start after %d retries", maxRetries)
+}
+
+// removeTaskStart removes a task start record from Agent status.
+// This is used to rollback quota recording when Pod creation fails.
+func (r *TaskReconciler) removeTaskStart(ctx context.Context, agent *kubeopenv1alpha1.Agent, task *kubeopenv1alpha1.Task) error {
+	log := log.FromContext(ctx)
+
+	if agent.Spec.Quota == nil {
+		return nil
+	}
+
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		// Fetch fresh Agent
+		freshAgent := &kubeopenv1alpha1.Agent{}
+		if err := r.Get(ctx, types.NamespacedName{Name: agent.Name, Namespace: agent.Namespace}, freshAgent); err != nil {
+			return err
+		}
+
+		// Filter out the record for this task
+		var filtered []kubeopenv1alpha1.TaskStartRecord
+		for _, record := range freshAgent.Status.TaskStartHistory {
+			if record.TaskName != task.Name || record.TaskNamespace != task.Namespace {
+				filtered = append(filtered, record)
+			}
+		}
+		freshAgent.Status.TaskStartHistory = filtered
+
+		// Update status
+		if err := r.Status().Update(ctx, freshAgent); err != nil {
+			if errors.IsConflict(err) {
+				log.V(1).Info("conflict removing task start, retrying", "retry", i+1)
+				continue
+			}
+			return err
+		}
+
+		log.V(1).Info("removed task start record",
+			"agent", agent.Name,
+			"task", task.Name,
+			"historySize", len(freshAgent.Status.TaskStartHistory))
+		return nil
+	}
+
+	return fmt.Errorf("failed to remove task start after %d retries", maxRetries)
 }
 
 // podToTaskMapper maps Pod events to Task reconciliation requests.

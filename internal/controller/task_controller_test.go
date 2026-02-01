@@ -1228,6 +1228,125 @@ var _ = Describe("TaskController", func() {
 		})
 	})
 
+	Context("When stopping a Queued Task via annotation", func() {
+		It("Should set Task status to Completed with Stopped condition without creating Pod", func() {
+			taskName := "test-task-stop-queued"
+			agentName := "test-agent-stop-queued"
+			description1 := "# First task (will run)"
+			description2 := "# Second task (will be queued then stopped)"
+			maxConcurrent := int32(1)
+
+			By("Creating Agent with maxConcurrentTasks=1")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					MaxConcurrentTasks: &maxConcurrent,
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating first Task to occupy the slot")
+			task1 := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName + "-1",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description1,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task1)).Should(Succeed())
+
+			By("Waiting for first Task to be Running")
+			task1LookupKey := types.NamespacedName{Name: taskName + "-1", Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task1LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Creating second Task (will be queued)")
+			task2 := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName + "-2",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description2,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task2)).Should(Succeed())
+
+			By("Waiting for second Task to be Queued")
+			task2LookupKey := types.NamespacedName{Name: taskName + "-2", Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseQueued))
+
+			By("Adding stop annotation to queued Task")
+			currentTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, task2LookupKey, currentTask)).Should(Succeed())
+			if currentTask.Annotations == nil {
+				currentTask.Annotations = make(map[string]string)
+			}
+			currentTask.Annotations[AnnotationStop] = "true"
+			Expect(k8sClient.Update(ctx, currentTask)).Should(Succeed())
+
+			By("Checking queued Task status is Completed")
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Checking Task has Stopped condition")
+			finalTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, task2LookupKey, finalTask)).Should(Succeed())
+
+			var stoppedCondition *metav1.Condition
+			for i := range finalTask.Status.Conditions {
+				if finalTask.Status.Conditions[i].Type == kubeopenv1alpha1.ConditionTypeStopped {
+					stoppedCondition = &finalTask.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(stoppedCondition).ShouldNot(BeNil())
+			Expect(stoppedCondition.Status).Should(Equal(metav1.ConditionTrue))
+			Expect(stoppedCondition.Reason).Should(Equal(kubeopenv1alpha1.ReasonUserStopped))
+			Expect(stoppedCondition.Message).Should(ContainSubstring("queued"))
+
+			By("Checking CompletionTime is set")
+			Expect(finalTask.Status.CompletionTime).ShouldNot(BeNil())
+
+			By("Checking no Pod was created for the stopped Task")
+			podName := fmt.Sprintf("%s-2-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			pod := &corev1.Pod{}
+			err := k8sClient.Get(ctx, podLookupKey, pod)
+			Expect(err).Should(HaveOccurred()) // Pod should not exist
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, task2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
+
 	Context("Context validation", func() {
 		It("Should fail when inline Git context has no mountPath", func() {
 			taskName := "test-task-inline-git-no-mountpath"
@@ -2467,6 +2586,82 @@ var _ = Describe("TaskController", func() {
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task1)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, task2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should record Task start in Agent status when quota is configured", func() {
+			agentName := "test-agent-quota-record"
+			taskName := "test-task-quota-record"
+			maxTaskStarts := int32(5)
+			windowSeconds := int32(60)
+			description := "# Test quota recording"
+
+			By("Creating Agent with quota configured")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					Quota: &kubeopenv1alpha1.QuotaConfig{
+						MaxTaskStarts: maxTaskStarts,
+						WindowSeconds: windowSeconds,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to be Running")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskLookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Checking Agent status has Task start record")
+			agentLookupKey := types.NamespacedName{Name: agentName, Namespace: taskNamespace}
+			Eventually(func() int {
+				updatedAgent := &kubeopenv1alpha1.Agent{}
+				if err := k8sClient.Get(ctx, agentLookupKey, updatedAgent); err != nil {
+					return 0
+				}
+				return len(updatedAgent.Status.TaskStartHistory)
+			}, timeout, interval).Should(BeNumerically(">=", 1))
+
+			By("Verifying the Task start record contains correct task info")
+			updatedAgent := &kubeopenv1alpha1.Agent{}
+			Expect(k8sClient.Get(ctx, agentLookupKey, updatedAgent)).Should(Succeed())
+
+			found := false
+			for _, record := range updatedAgent.Status.TaskStartHistory {
+				if record.TaskName == taskName && record.TaskNamespace == taskNamespace {
+					found = true
+					Expect(record.StartTime.IsZero()).Should(BeFalse())
+					break
+				}
+			}
+			Expect(found).Should(BeTrue(), "Task start record should exist in Agent status")
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})
