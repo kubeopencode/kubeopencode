@@ -32,16 +32,18 @@ jobs:
             local pr_number=$1
             local pr_title=$2
 
-            echo "Attempting to merge PR #$pr_number: $pr_title"
+            echo "Processing PR #$pr_number: $pr_title"
 
-            # Update branch if behind
-            gh pr update-branch "$pr_number" 2>/dev/null || true
+            # Update branch if behind main
+            if gh pr update-branch "$pr_number" 2>/dev/null; then
+              echo "Branch updated for PR #$pr_number, CI will re-run"
+            fi
 
-            # Attempt to merge
-            if gh pr merge "$pr_number" --squash --delete-branch; then
-              echo "Successfully merged PR #$pr_number"
+            # Enable auto-merge - GitHub will merge when all requirements are met
+            if gh pr merge "$pr_number" --auto --squash --delete-branch; then
+              echo "Auto-merge enabled for PR #$pr_number"
             else
-              echo "Failed to merge PR #$pr_number (may need updates or have conflicts)"
+              echo "Failed to enable auto-merge for PR #$pr_number"
             fi
           }
 
