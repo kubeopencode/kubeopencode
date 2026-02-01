@@ -2,9 +2,20 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
+import { getNamespaceCookie, setNamespaceCookie } from '../utils/cookies';
 
 function TemplatesPage() {
-  const [selectedNamespace, setSelectedNamespace] = useState<string>('');
+  // Initialize from cookie, empty string means "All Namespaces"
+  const [selectedNamespace, setSelectedNamespace] = useState<string>(() => {
+    return getNamespaceCookie() || '';
+  });
+
+  const handleNamespaceChange = (newNamespace: string) => {
+    setSelectedNamespace(newNamespace);
+    if (newNamespace) {
+      setNamespaceCookie(newNamespace);
+    }
+  };
 
   const { data: namespacesData } = useQuery({
     queryKey: ['namespaces'],
@@ -31,7 +42,7 @@ function TemplatesPage() {
         <div className="mt-4 sm:mt-0">
           <select
             value={selectedNamespace}
-            onChange={(e) => setSelectedNamespace(e.target.value)}
+            onChange={(e) => handleNamespaceChange(e.target.value)}
             className="block w-full sm:w-48 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
           >
             <option value="">All Namespaces</option>

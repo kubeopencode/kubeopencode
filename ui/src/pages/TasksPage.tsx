@@ -3,22 +3,35 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import StatusBadge from '../components/StatusBadge';
+import { getNamespaceCookie, setNamespaceCookie } from '../utils/cookies';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 function TasksPage() {
   const [searchParams] = useSearchParams();
-  const [namespace, setNamespace] = useState('default');
+  // Initialize namespace: URL param > cookie > default
+  const [namespace, setNamespace] = useState(() => {
+    const urlParam = new URLSearchParams(window.location.search).get('namespace');
+    if (urlParam) return urlParam;
+    return getNamespaceCookie() || 'default';
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  // Initialize namespace from URL params
+  // Sync namespace from URL params when they change
   useEffect(() => {
     const namespaceParam = searchParams.get('namespace');
-    if (namespaceParam) {
+    if (namespaceParam && namespaceParam !== namespace) {
       setNamespace(namespaceParam);
+      setNamespaceCookie(namespaceParam);
     }
-  }, [searchParams]);
+  }, [searchParams, namespace]);
+
+  // Handler for namespace dropdown change
+  const handleNamespaceChange = (newNamespace: string) => {
+    setNamespace(newNamespace);
+    setNamespaceCookie(newNamespace);
+  };
 
   // Reset to page 1 when namespace changes
   useEffect(() => {
@@ -52,7 +65,7 @@ function TasksPage() {
         <div className="mt-4 sm:mt-0 flex items-center space-x-4">
           <select
             value={namespace}
-            onChange={(e) => setNamespace(e.target.value)}
+            onChange={(e) => handleNamespaceChange(e.target.value)}
             className="block w-48 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
           >
             {namespacesData?.namespaces.map((ns) => (
