@@ -917,16 +917,26 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 
 	Context("Task Cleanup with KubeOpenCodeConfig", func() {
 		It("should delete Task after TTL expires", func() {
-			configName := "default"
+			configName := "cluster" // Singleton name for cluster-scoped KubeOpenCodeConfig
 			taskName := uniqueName("task-ttl")
 			description := "Task for TTL cleanup test"
+
+			By("Deleting existing KubeOpenCodeConfig if present")
+			existingConfig := &kubeopenv1alpha1.KubeOpenCodeConfig{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: configName}, existingConfig); err == nil {
+				Expect(k8sClient.Delete(ctx, existingConfig)).Should(Succeed())
+				// Wait for deletion to complete
+				Eventually(func() bool {
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: configName}, existingConfig)
+					return err != nil
+				}, timeout, interval).Should(BeTrue())
+			}
 
 			By("Creating KubeOpenCodeConfig with TTL cleanup (5 seconds)")
 			ttlSeconds := int32(5)
 			config := &kubeopenv1alpha1.KubeOpenCodeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      configName,
-					Namespace: testNS,
+					Name: configName,
 				},
 				Spec: kubeopenv1alpha1.KubeOpenCodeConfigSpec{
 					Cleanup: &kubeopenv1alpha1.CleanupConfig{
@@ -1009,15 +1019,25 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 		})
 
 		It("should delete oldest Tasks when retention limit is exceeded", func() {
-			configName := "default"
+			configName := "cluster" // Singleton name for cluster-scoped KubeOpenCodeConfig
 			description := "Task for retention test"
+
+			By("Deleting existing KubeOpenCodeConfig if present")
+			existingConfig := &kubeopenv1alpha1.KubeOpenCodeConfig{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: configName}, existingConfig); err == nil {
+				Expect(k8sClient.Delete(ctx, existingConfig)).Should(Succeed())
+				// Wait for deletion to complete
+				Eventually(func() bool {
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: configName}, existingConfig)
+					return err != nil
+				}, timeout, interval).Should(BeTrue())
+			}
 
 			By("Creating KubeOpenCodeConfig with retention limit of 2")
 			maxRetained := int32(2)
 			config := &kubeopenv1alpha1.KubeOpenCodeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      configName,
-					Namespace: testNS,
+					Name: configName,
 				},
 				Spec: kubeopenv1alpha1.KubeOpenCodeConfigSpec{
 					Cleanup: &kubeopenv1alpha1.CleanupConfig{
