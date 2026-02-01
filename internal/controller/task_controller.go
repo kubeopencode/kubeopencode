@@ -135,7 +135,11 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// If new, initialize status and create Pod
-	if task.Status.Phase == "" {
+	// Also handle incomplete Running state (Running but no Pod created yet)
+	// This can happen if context processing failed after Phase was set to Running
+	// and the status update to Failed encountered a conflict
+	if task.Status.Phase == "" ||
+		(task.Status.Phase == kubeopenv1alpha1.TaskPhaseRunning && task.Status.PodName == "") {
 		return r.initializeTask(ctx, task)
 	}
 
