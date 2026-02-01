@@ -1213,11 +1213,38 @@ func (r *TaskReconciler) checkAgentCapacity(ctx context.Context, namespace, agen
 func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1alpha1.Task) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
+	// Resolve TaskTemplate if referenced (same as initializeTask)
+	// This is needed because task.Spec.AgentRef may come from the TaskTemplate
+	mergedSpec, err := r.resolveTaskTemplate(ctx, task)
+	if err != nil {
+		log.Error(err, "unable to resolve TaskTemplate for queued task")
+		task.Status.ObservedGeneration = task.Generation
+		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
+		now := metav1.Now()
+		task.Status.CompletionTime = &now
+		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+			Type:    kubeopenv1alpha1.ConditionTypeReady,
+			Status:  metav1.ConditionFalse,
+			Reason:  kubeopenv1alpha1.ReasonTaskTemplateError,
+			Message: err.Error(),
+		})
+		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+			log.Error(updateErr, "unable to update Task status")
+			return ctrl.Result{}, updateErr
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Create a working copy with merged spec
+	workingTask := task.DeepCopy()
+	workingTask.Spec = *mergedSpec
+
 	// Get agent configuration with name and namespace
-	agentConfig, agentName, agentNamespace, err := r.getAgentConfigWithName(ctx, task)
+	agentConfig, agentName, agentNamespace, err := r.getAgentConfigWithName(ctx, workingTask)
 	if err != nil {
 		log.Error(err, "unable to get Agent for queued task")
 		// Agent might be deleted, fail the task
+		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
 		now := metav1.Now()
 		task.Status.CompletionTime = &now

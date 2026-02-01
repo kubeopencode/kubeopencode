@@ -865,6 +865,125 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 
+		It("Should resolve TaskTemplate agentRef for queued Tasks", func() {
+			agentName := "test-agent-template-queued"
+			templateName := "test-template-queued"
+			maxConcurrent := int32(1)
+			description1 := "# Task 1 with template"
+			description2 := "# Task 2 with template"
+
+			By("Creating Agent with maxConcurrentTasks=1")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent",
+					WorkspaceDir:       "/workspace",
+					MaxConcurrentTasks: &maxConcurrent,
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating TaskTemplate with agentRef")
+			template := &kubeopenv1alpha1.TaskTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskTemplateSpec{
+					AgentRef: &kubeopenv1alpha1.AgentReference{Name: agentName},
+				},
+			}
+			Expect(k8sClient.Create(ctx, template)).Should(Succeed())
+
+			By("Creating first Task with TaskTemplateRef (no agentRef)")
+			task1 := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-template-queued-1",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: templateName},
+					Description:     &description1,
+					// No AgentRef - should use template's
+				},
+			}
+			Expect(k8sClient.Create(ctx, task1)).Should(Succeed())
+
+			By("Waiting for first Task to be Running")
+			task1LookupKey := types.NamespacedName{Name: "test-task-template-queued-1", Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task1LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Creating second Task with TaskTemplateRef (no agentRef)")
+			task2 := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-template-queued-2",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TaskTemplateRef: &kubeopenv1alpha1.TaskTemplateReference{Name: templateName},
+					Description:     &description2,
+					// No AgentRef - should use template's
+				},
+			}
+			Expect(k8sClient.Create(ctx, task2)).Should(Succeed())
+
+			By("Checking second Task is Queued (not Failed)")
+			task2LookupKey := types.NamespacedName{Name: "test-task-template-queued-2", Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseQueued))
+
+			By("Verifying second Task has agent label from resolved template")
+			task2Updated := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, task2LookupKey, task2Updated)).Should(Succeed())
+			Expect(task2Updated.Labels).Should(HaveKeyWithValue(AgentLabelKey, agentName))
+
+			By("Simulating first Task completion")
+			pod1Name := fmt.Sprintf("%s-pod", "test-task-template-queued-1")
+			pod1LookupKey := types.NamespacedName{Name: pod1Name, Namespace: taskNamespace}
+			pod1 := &corev1.Pod{}
+			Expect(k8sClient.Get(ctx, pod1LookupKey, pod1)).Should(Succeed())
+			pod1.Status.Phase = corev1.PodSucceeded
+			Expect(k8sClient.Status().Update(ctx, pod1)).Should(Succeed())
+
+			By("Waiting for first Task to complete")
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task1LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Checking second Task transitions to Running (not Failed)")
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, task2LookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task1)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, task2)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, template)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
 		It("Should allow unlimited Tasks when maxConcurrentTasks is 0", func() {
 			agentName := "test-agent-unlimited"
 			maxConcurrent := int32(0) // 0 means unlimited
