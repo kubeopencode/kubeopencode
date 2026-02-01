@@ -3,13 +3,14 @@
 name: Auto-merge Bot PRs
 
 on:
-  # Enable auto-merge when a bot PR is opened or updated
-  pull_request:
-    types: [opened, synchronize, reopened]
+  # Merge when CI completes on bot PRs
+  workflow_run:
+    workflows: ["PR"]
+    types: [completed]
   # Trigger on approval for kubeopencode-dev PRs
   pull_request_review:
     types: [submitted]
-  # Manual trigger for batch enabling auto-merge on existing PRs
+  # Manual trigger for batch processing
   workflow_dispatch:
 
 permissions:
@@ -27,29 +28,58 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Determine which PRs to process
-          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "pull_request_review" ]; then
-            PR_NUMBER=${{ github.event.pull_request.number }}
-            AUTHOR="${{ github.event.pull_request.user.login }}"
+          merge_pr() {
+            local pr_number=$1
+            local pr_title=$2
+
+            echo "Attempting to merge PR #$pr_number: $pr_title"
+
+            # Update branch if behind
+            gh pr update-branch "$pr_number" 2>/dev/null || true
+
+            # Attempt to merge
+            if gh pr merge "$pr_number" --squash --delete-branch; then
+              echo "Successfully merged PR #$pr_number"
+            else
+              echo "Failed to merge PR #$pr_number (may need updates or have conflicts)"
+            fi
+          }
+
+          # Handle workflow_run event (CI completed)
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            # Only process successful CI runs
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "CI did not succeed, skipping"
+              exit 0
+            fi
+
+            HEAD_BRANCH="${{ github.event.workflow_run.head_branch }}"
+            PR_INFO=$(gh pr list --head "$HEAD_BRANCH" --state open --json number,author,title --jq '.[0] // empty')
+
+            if [ -z "$PR_INFO" ]; then
+              echo "No open PR found for branch: $HEAD_BRANCH"
+              exit 0
+            fi
+
+            PR_NUMBER=$(echo "$PR_INFO" | jq -r '.number')
+            AUTHOR=$(echo "$PR_INFO" | jq -r '.author.login')
+            TITLE=$(echo "$PR_INFO" | jq -r '.title')
 
             echo "Processing PR #$PR_NUMBER by $AUTHOR"
 
-            # Dependabot: enable auto-merge immediately (no approval required)
+            # Dependabot: merge immediately (no approval required)
             if [[ "$AUTHOR" == "dependabot[bot]" ]]; then
-              echo "Dependabot PR - enabling auto-merge (no approval required)..."
-              gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
+              merge_pr "$PR_NUMBER" "$TITLE"
               exit 0
             fi
 
             # kubeopencode-dev: only merge if approved
             if [[ "$AUTHOR" == "kubeopencode-dev[bot]" ]]; then
-              # Check if PR has been approved
               APPROVED=$(gh pr view "$PR_NUMBER" --json reviews --jq '[.reviews[] | select(.state == "APPROVED")] | length > 0')
               if [ "$APPROVED" = "true" ]; then
-                echo "kubeopencode-dev PR is approved - enabling auto-merge..."
-                gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
+                merge_pr "$PR_NUMBER" "$TITLE"
               else
-                echo "kubeopencode-dev PR is not yet approved, skipping auto-merge"
+                echo "kubeopencode-dev PR not approved, skipping"
               fi
               exit 0
             fi
@@ -58,21 +88,50 @@ jobs:
             exit 0
           fi
 
+          # Handle pull_request_review event (approval)
+          if [ "${{ github.event_name }}" = "pull_request_review" ]; then
+            if [ "${{ github.event.review.state }}" != "approved" ]; then
+              echo "Not an approval, skipping"
+              exit 0
+            fi
+
+            PR_NUMBER=${{ github.event.pull_request.number }}
+            AUTHOR="${{ github.event.pull_request.user.login }}"
+            TITLE="${{ github.event.pull_request.title }}"
+
+            # Only process kubeopencode-dev PRs on approval
+            if [[ "$AUTHOR" == "kubeopencode-dev[bot]" ]]; then
+              echo "kubeopencode-dev PR approved, checking CI status..."
+
+              # Check if all checks passed
+              CHECKS_PASSED=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq '[.statusCheckRollup[] | select(.conclusion != "SUCCESS" and .conclusion != "NEUTRAL" and .conclusion != "SKIPPED" and .conclusion != null and .name != "auto-merge")] | length == 0')
+
+              if [ "$CHECKS_PASSED" = "true" ]; then
+                merge_pr "$PR_NUMBER" "$TITLE"
+              else
+                echo "CI checks not passed yet, will merge when CI completes"
+              fi
+            fi
+            exit 0
+          fi
+
           # workflow_dispatch: batch process all open bot PRs
           echo "Batch processing all open bot PRs..."
 
-          # Dependabot PRs: enable auto-merge for all
+          # Dependabot PRs: merge all with passing checks
           echo "Processing Dependabot PRs..."
-          gh pr list --author "app/dependabot" --state open --json number --jq '.[].number' | while read -r number; do
-            echo "Enabling auto-merge for Dependabot PR #$number"
-            gh pr merge "$number" --auto --squash --delete-branch || echo "Failed for PR #$number"
+          gh pr list --author "app/dependabot" --state open --json number,title,statusCheckRollup | jq -c '.[] | select([.statusCheckRollup[] | select(.conclusion != "SUCCESS" and .conclusion != "NEUTRAL" and .conclusion != "SKIPPED" and .conclusion != null and .name != "auto-merge")] | length == 0)' | while read -r pr; do
+            number=$(echo "$pr" | jq -r '.number')
+            title=$(echo "$pr" | jq -r '.title')
+            merge_pr "$number" "$title"
           done
 
-          # kubeopencode-dev PRs: only if approved
+          # kubeopencode-dev PRs: merge approved ones with passing checks
           echo "Processing kubeopencode-dev PRs..."
-          gh pr list --author "app/kubeopencode-dev" --state open --json number,reviews --jq '.[] | select([.reviews[] | select(.state == "APPROVED")] | length > 0) | .number' | while read -r number; do
-            echo "Enabling auto-merge for approved kubeopencode-dev PR #$number"
-            gh pr merge "$number" --auto --squash --delete-branch || echo "Failed for PR #$number"
+          gh pr list --author "app/kubeopencode-dev" --state open --json number,title,reviews,statusCheckRollup | jq -c '.[] | select([.reviews[] | select(.state == "APPROVED")] | length > 0) | select([.statusCheckRollup[] | select(.conclusion != "SUCCESS" and .conclusion != "NEUTRAL" and .conclusion != "SKIPPED" and .conclusion != null and .name != "auto-merge")] | length == 0)' | while read -r pr; do
+            number=$(echo "$pr" | jq -r '.number')
+            title=$(echo "$pr" | jq -r '.title')
+            merge_pr "$number" "$title"
           done
 
           echo "Batch processing complete"
