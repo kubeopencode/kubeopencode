@@ -4,6 +4,8 @@ package types
 
 import (
 	"time"
+
+	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
 
 // ServerInfo represents server information
@@ -24,11 +26,11 @@ type AgentReference struct {
 
 // ContextItem represents a context item in the API
 type ContextItem struct {
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
-	Type        string `json:"type"`
-	Text        string `json:"text,omitempty"`
-	MountPath   string `json:"mountPath,omitempty"`
+	Name        string                       `json:"name,omitempty"`
+	Description string                       `json:"description,omitempty"`
+	Type        kubeopenv1alpha1.ContextType `json:"type"`
+	Text        string                       `json:"text,omitempty"`
+	MountPath   string                       `json:"mountPath,omitempty"`
 }
 
 // TaskTemplateReference represents a reference to a TaskTemplate
