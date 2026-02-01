@@ -390,7 +390,7 @@ func taskToResponse(task *kubeopenv1alpha1.Task) types.TaskResponse {
 	// Convert conditions
 	for _, c := range task.Status.Conditions {
 		resp.Conditions = append(resp.Conditions, types.Condition{
-			Type:    string(c.Type),
+			Type:    c.Type,
 			Status:  string(c.Status),
 			Reason:  c.Reason,
 			Message: c.Message,
