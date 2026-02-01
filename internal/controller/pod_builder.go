@@ -68,12 +68,12 @@ type gitMount struct {
 
 // resolvedContext holds a resolved context with its content and metadata
 type resolvedContext struct {
-	name      string // Context name (for XML tag)
-	namespace string // Context namespace (for XML tag)
-	ctxType   string // Context type (for XML tag)
-	content   string // Resolved content
-	mountPath string // Mount path (empty = append to task.md)
-	fileMode  *int32 // Optional file permission mode (e.g., 0755 for executable)
+	name      string                       // Context name (for XML tag)
+	namespace string                       // Context namespace (for XML tag)
+	ctxType   kubeopenv1alpha1.ContextType // Context type (for XML tag)
+	content   string                       // Resolved content
+	mountPath string                       // Mount path (empty = append to task.md)
+	fileMode  *int32                       // Optional file permission mode (e.g., 0755 for executable)
 }
 
 // sanitizeConfigMapKey converts a file path to a valid ConfigMap key.

@@ -147,7 +147,7 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 			MountPath:   c.MountPath,
 		}
 		switch c.Type {
-		case "Text":
+		case kubeopenv1alpha1.ContextTypeText:
 			item.Type = kubeopenv1alpha1.ContextTypeText
 			item.Text = c.Text
 		}

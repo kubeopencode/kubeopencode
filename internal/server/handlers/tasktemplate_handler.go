@@ -141,16 +141,16 @@ func (h *TaskTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 			MountPath:   c.MountPath,
 		}
 		switch c.Type {
-		case "Text":
+		case kubeopenv1alpha1.ContextTypeText:
 			item.Type = kubeopenv1alpha1.ContextTypeText
 			item.Text = c.Text
-		case "ConfigMap":
+		case kubeopenv1alpha1.ContextTypeConfigMap:
 			item.Type = kubeopenv1alpha1.ContextTypeConfigMap
-		case "Git":
+		case kubeopenv1alpha1.ContextTypeGit:
 			item.Type = kubeopenv1alpha1.ContextTypeGit
-		case "Runtime":
+		case kubeopenv1alpha1.ContextTypeRuntime:
 			item.Type = kubeopenv1alpha1.ContextTypeRuntime
-		case "URL":
+		case kubeopenv1alpha1.ContextTypeURL:
 			item.Type = kubeopenv1alpha1.ContextTypeURL
 		default:
 			item.Type = kubeopenv1alpha1.ContextTypeText
@@ -212,7 +212,7 @@ func taskTemplateToResponse(tt *kubeopenv1alpha1.TaskTemplate) types.TaskTemplat
 		ctxItem := types.ContextItem{
 			Name:        ctx.Name,
 			Description: ctx.Description,
-			Type:        string(ctx.Type),
+			Type:        ctx.Type,
 			MountPath:   ctx.MountPath,
 		}
 		resp.Contexts = append(resp.Contexts, ctxItem)

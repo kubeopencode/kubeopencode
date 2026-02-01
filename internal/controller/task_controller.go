@@ -1022,7 +1022,7 @@ func (r *TaskReconciler) resolveContextItem(ctx context.Context, item *kubeopenv
 	return &resolvedContext{
 		name:      name,
 		namespace: defaultNS,
-		ctxType:   string(item.Type),
+		ctxType:   item.Type,
 		content:   content,
 		mountPath: resolvedPath,
 		fileMode:  item.FileMode,
