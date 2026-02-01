@@ -37,7 +37,8 @@ spec:
               # Regex pattern to match @kubeopencode-bot anywhere in text
               - ".*@kubeopencode-bot.*"
           # Exclude bot's own comments to prevent recursive triggers
-          - path: body.comment.user.login
+          # Use body.sender.login which is consistent across all GitHub event types
+          - path: body.sender.login
             type: string
             comparator: "!="
             value:
