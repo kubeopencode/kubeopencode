@@ -12,11 +12,12 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:scope="Cluster",shortName=ktc
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
+// +kubebuilder:validation:XValidation:rule="self.metadata.name == 'cluster'",message="KubeOpenCodeConfig must be named 'cluster'"
 
 // KubeOpenCodeConfig defines system-level configuration for KubeOpenCode.
 // This CRD provides cluster-wide settings for the KubeOpenCode system.
-// It is a cluster-scoped resource (not namespaced) and typically a single
-// instance named "default" is used for the entire cluster.
+// It is a cluster-scoped singleton resource that must be named "cluster".
+// Following the OpenShift convention for cluster-wide configuration resources.
 type KubeOpenCodeConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

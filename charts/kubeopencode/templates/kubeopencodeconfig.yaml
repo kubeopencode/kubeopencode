@@ -2,8 +2,7 @@
 apiVersion: kubeopencode.io/v1alpha1
 kind: KubeOpenCodeConfig
 metadata:
-  name: default
-  # No namespace - cluster-scoped resource
+  name: cluster  # Singleton name following OpenShift convention
   labels:
     {{- include "kubeopencode.labels" . | nindent 4 }}
 spec:

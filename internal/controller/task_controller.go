@@ -60,6 +60,10 @@ const (
 	// to ensure Pod cleanup when Task is deleted
 	TaskFinalizer = "kubeopencode.io/task-cleanup"
 
+	// KubeOpenCodeConfigName is the singleton name for the cluster-scoped KubeOpenCodeConfig.
+	// Following OpenShift convention, cluster-wide config resources are named "cluster".
+	KubeOpenCodeConfigName = "cluster"
+
 	// TaskNamespaceLabelKey is the label key for tracking the source Task's namespace
 	// when Pod runs in a different namespace (cross-namespace Agent reference)
 	TaskNamespaceLabelKey = "kubeopencode.io/task-namespace"
@@ -1573,7 +1577,7 @@ func (r *TaskReconciler) getSystemConfig(ctx context.Context) systemConfig {
 
 	// Try to get cluster-scoped KubeOpenCodeConfig
 	config := &kubeopenv1alpha1.KubeOpenCodeConfig{}
-	configKey := types.NamespacedName{Name: "default"}
+	configKey := types.NamespacedName{Name: KubeOpenCodeConfigName}
 
 	if err := r.Get(ctx, configKey, config); err != nil {
 		if !errors.IsNotFound(err) {
@@ -1653,7 +1657,7 @@ func (r *TaskReconciler) getCleanupConfig(ctx context.Context) *kubeopenv1alpha1
 
 	// Try to get cluster-scoped KubeOpenCodeConfig
 	config := &kubeopenv1alpha1.KubeOpenCodeConfig{}
-	configKey := types.NamespacedName{Name: "default"}
+	configKey := types.NamespacedName{Name: KubeOpenCodeConfigName}
 
 	if err := r.Get(ctx, configKey, config); err != nil {
 		if !errors.IsNotFound(err) {

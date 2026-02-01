@@ -1,11 +1,10 @@
 # Copyright Contributors to the KubeOpenCode project
 # KubeOpenCodeConfig for dogfooding environment
-# This is a cluster-scoped resource (no namespace)
+# This is a cluster-scoped singleton resource
 apiVersion: kubeopencode.io/v1alpha1
 kind: KubeOpenCodeConfig
 metadata:
-  name: default
-  # No namespace - cluster-scoped resource
+  name: cluster  # Singleton name following OpenShift convention
 spec:
   # System image configuration for internal KubeOpenCode components (git-init, context-init)
   # Use Always to ensure fresh images are pulled, avoiding stale cached images on nodes

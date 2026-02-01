@@ -2076,8 +2076,7 @@ var _ = Describe("TaskController", func() {
 			ttlSeconds := int32(2) // 2 seconds for quick test
 			config := &kubeopenv1alpha1.KubeOpenCodeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "default",
-					// No namespace - cluster-scoped resource
+					Name: "cluster", // Singleton name following OpenShift convention
 				},
 				Spec: kubeopenv1alpha1.KubeOpenCodeConfigSpec{
 					Cleanup: &kubeopenv1alpha1.CleanupConfig{
@@ -2258,8 +2257,7 @@ var _ = Describe("TaskController", func() {
 			maxRetained := int32(2)
 			config := &kubeopenv1alpha1.KubeOpenCodeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "default",
-					// No namespace - cluster-scoped resource
+					Name: "cluster", // Singleton name following OpenShift convention
 				},
 				Spec: kubeopenv1alpha1.KubeOpenCodeConfigSpec{
 					Cleanup: &kubeopenv1alpha1.CleanupConfig{

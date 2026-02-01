@@ -757,7 +757,7 @@ The controller generates Pods with:
 
 KubeOpenCode supports automatic cleanup of completed/failed Tasks via `KubeOpenCodeConfig`. When configured, Tasks are automatically deleted based on TTL (time-to-live) and/or retention count policies.
 
-**Note:** `KubeOpenCodeConfig` is a **cluster-scoped** resource (not namespaced). A single configuration named "default" applies to the entire cluster.
+**Note:** `KubeOpenCodeConfig` is a **cluster-scoped singleton** resource. Following OpenShift convention, it must be named `cluster`.
 
 **CleanupConfig fields:**
 - `ttlSecondsAfterFinished`: Delete Tasks after N seconds from completion
@@ -768,8 +768,7 @@ KubeOpenCode supports automatic cleanup of completed/failed Tasks via `KubeOpenC
 apiVersion: kubeopencode.io/v1alpha1
 kind: KubeOpenCodeConfig
 metadata:
-  name: default
-  # No namespace - cluster-scoped resource
+  name: cluster  # Required singleton name
 spec:
   cleanup:
     # Delete completed Tasks after 1 hour

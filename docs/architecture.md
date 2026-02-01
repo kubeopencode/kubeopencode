@@ -899,14 +899,13 @@ status:
 
 KubeOpenCodeConfig provides **cluster-wide** settings for container image configuration and Task cleanup policies.
 
-> **Note**: KubeOpenCodeConfig is a **cluster-scoped** resource (not namespaced). A single configuration named "default" applies to the entire cluster.
+> **Note**: KubeOpenCodeConfig is a **cluster-scoped singleton** resource. Following OpenShift convention, it must be named `cluster`.
 
 ```yaml
 apiVersion: kubeopencode.io/v1alpha1
 kind: KubeOpenCodeConfig
 metadata:
-  name: default
-  # No namespace - cluster-scoped resource
+  name: cluster  # Required singleton name
 spec:
   # System image configuration for internal KubeOpenCode components
   # (git-init, context-init containers)
