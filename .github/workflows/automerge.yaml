@@ -3,10 +3,9 @@
 name: Auto-merge Bot PRs
 
 on:
-  # Merge when CI completes on bot PRs
-  workflow_run:
-    workflows: ["PR"]
-    types: [completed]
+  # Daily schedule to process any pending bot PRs
+  schedule:
+    - cron: '0 0 * * *'  # Every day at midnight UTC
   # Trigger on approval for kubeopencode-dev PRs
   pull_request_review:
     types: [submitted]
@@ -36,61 +35,18 @@ jobs:
 
             # Update branch if behind main
             if gh pr update-branch "$pr_number" 2>/dev/null; then
-              echo "Branch updated for PR #$pr_number, CI will re-run"
+              echo "Branch updated for PR #$pr_number"
             fi
 
-            # Enable auto-merge - GitHub will merge when all requirements are met
-            if gh pr merge "$pr_number" --auto --squash --delete-branch; then
-              echo "Auto-merge enabled for PR #$pr_number"
+            # Direct merge - squash commits and delete branch
+            if gh pr merge "$pr_number" --squash --delete-branch; then
+              echo "Successfully merged PR #$pr_number"
             else
-              echo "Failed to enable auto-merge for PR #$pr_number"
+              echo "Failed to merge PR #$pr_number"
             fi
           }
 
-          # Handle workflow_run event (CI completed)
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            # Only process successful CI runs
-            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-              echo "CI did not succeed, skipping"
-              exit 0
-            fi
-
-            HEAD_BRANCH="${{ github.event.workflow_run.head_branch }}"
-            PR_INFO=$(gh pr list --head "$HEAD_BRANCH" --state open --json number,author,title --jq '.[0] // empty')
-
-            if [ -z "$PR_INFO" ]; then
-              echo "No open PR found for branch: $HEAD_BRANCH"
-              exit 0
-            fi
-
-            PR_NUMBER=$(echo "$PR_INFO" | jq -r '.number')
-            AUTHOR=$(echo "$PR_INFO" | jq -r '.author.login')
-            TITLE=$(echo "$PR_INFO" | jq -r '.title')
-
-            echo "Processing PR #$PR_NUMBER by $AUTHOR"
-
-            # Dependabot: merge immediately (no approval required)
-            if [[ "$AUTHOR" == "dependabot[bot]" ]]; then
-              merge_pr "$PR_NUMBER" "$TITLE"
-              exit 0
-            fi
-
-            # kubeopencode-dev: only merge if approved
-            if [[ "$AUTHOR" == "kubeopencode-dev[bot]" ]]; then
-              APPROVED=$(gh pr view "$PR_NUMBER" --json reviews --jq '[.reviews[] | select(.state == "APPROVED")] | length > 0')
-              if [ "$APPROVED" = "true" ]; then
-                merge_pr "$PR_NUMBER" "$TITLE"
-              else
-                echo "kubeopencode-dev PR not approved, skipping"
-              fi
-              exit 0
-            fi
-
-            echo "Not a bot PR, skipping"
-            exit 0
-          fi
-
-          # Handle pull_request_review event (approval)
+          # Handle pull_request_review event (approval for kubeopencode-dev PRs)
           if [ "${{ github.event_name }}" = "pull_request_review" ]; then
             if [ "${{ github.event.review.state }}" != "approved" ]; then
               echo "Not an approval, skipping"
@@ -103,7 +59,7 @@ jobs:
 
             # Only process kubeopencode-dev PRs on approval
             if [[ "$AUTHOR" == "kubeopencode-dev[bot]" ]]; then
-              echo "kubeopencode-dev PR approved, checking CI status..."
+              echo "kubeopencode-dev PR #$PR_NUMBER approved, checking CI status..."
 
               # Check if all checks passed
               CHECKS_PASSED=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq '[.statusCheckRollup[] | select(.conclusion != "SUCCESS" and .conclusion != "NEUTRAL" and .conclusion != "SKIPPED" and .conclusion != null and .name != "auto-merge")] | length == 0')
@@ -111,13 +67,15 @@ jobs:
               if [ "$CHECKS_PASSED" = "true" ]; then
                 merge_pr "$PR_NUMBER" "$TITLE"
               else
-                echo "CI checks not passed yet, will merge when CI completes"
+                echo "CI checks not passed yet, skipping"
               fi
+            else
+              echo "Not a kubeopencode-dev PR, skipping"
             fi
             exit 0
           fi
 
-          # workflow_dispatch: batch process all open bot PRs
+          # schedule or workflow_dispatch: batch process all open bot PRs
           echo "Batch processing all open bot PRs..."
 
           # Dependabot PRs: merge all with passing checks
