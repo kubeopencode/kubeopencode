@@ -12,3 +12,4 @@ resources:
   - namespace.yaml
   - rbac.yaml
   - cronworkflow-tiny-refactor.yaml
+  - cronworkflow-opencode-update.yaml
