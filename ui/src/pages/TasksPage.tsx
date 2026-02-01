@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import StatusBadge from '../components/StatusBadge';
@@ -7,9 +7,18 @@ import StatusBadge from '../components/StatusBadge';
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 function TasksPage() {
+  const [searchParams] = useSearchParams();
   const [namespace, setNamespace] = useState('default');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+
+  // Initialize namespace from URL params
+  useEffect(() => {
+    const namespaceParam = searchParams.get('namespace');
+    if (namespaceParam) {
+      setNamespace(namespaceParam);
+    }
+  }, [searchParams]);
 
   // Reset to page 1 when namespace changes
   useEffect(() => {
@@ -53,7 +62,7 @@ function TasksPage() {
             ))}
           </select>
           <Link
-            to="/tasks/create"
+            to={`/tasks/create?namespace=${namespace}`}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
           >
             New Task
@@ -102,7 +111,7 @@ function TasksPage() {
               {data?.tasks.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                    No tasks found. <Link to="/tasks/create" className="text-primary-600 hover:text-primary-800">Create your first task</Link>
+                    No tasks found. <Link to={`/tasks/create?namespace=${namespace}`} className="text-primary-600 hover:text-primary-800">Create your first task</Link>
                   </td>
                 </tr>
               ) : (

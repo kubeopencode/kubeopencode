@@ -51,6 +51,10 @@ function TaskCreatePage() {
 
   // Parse query params for pre-selection
   useEffect(() => {
+    const namespaceParam = searchParams.get('namespace');
+    if (namespaceParam) {
+      setNamespace(namespaceParam);
+    }
     const templateParam = searchParams.get('template');
     if (templateParam) {
       setUseTemplate(true);
@@ -153,7 +157,7 @@ function TaskCreatePage() {
   return (
     <div>
       <div className="mb-6">
-        <Link to="/tasks" className="text-sm text-gray-500 hover:text-gray-700">
+        <Link to={`/tasks?namespace=${namespace}`} className="text-sm text-gray-500 hover:text-gray-700">
           &larr; Back to Tasks
         </Link>
       </div>
@@ -337,7 +341,7 @@ function TaskCreatePage() {
 
           <div className="flex justify-end space-x-4">
             <Link
-              to="/tasks"
+              to={`/tasks?namespace=${namespace}`}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
             >
               Cancel

@@ -14,7 +14,7 @@ function TaskDetailPage() {
     mutationFn: () => api.deleteTask(namespace!, name!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      navigate('/tasks');
+      navigate(`/tasks?namespace=${namespace}`);
     },
   });
 
@@ -64,7 +64,7 @@ function TaskDetailPage() {
             : errorMessage}
         </p>
         <Link
-          to="/tasks"
+          to={`/tasks?namespace=${namespace}`}
           className="inline-flex items-center px-4 py-2 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200"
         >
           &larr; Back to Tasks
@@ -76,7 +76,7 @@ function TaskDetailPage() {
   return (
     <div>
       <div className="mb-6">
-        <Link to="/tasks" className="text-sm text-gray-500 hover:text-gray-700">
+        <Link to={`/tasks?namespace=${namespace}`} className="text-sm text-gray-500 hover:text-gray-700">
           &larr; Back to Tasks
         </Link>
       </div>
