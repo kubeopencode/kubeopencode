@@ -62,10 +62,19 @@ type TaskResponse struct {
 	Conditions     []Condition     `json:"conditions,omitempty"`
 }
 
+// Pagination represents pagination metadata
+type Pagination struct {
+	Limit      int  `json:"limit"`
+	Offset     int  `json:"offset"`
+	TotalCount int  `json:"totalCount"`
+	HasMore    bool `json:"hasMore"`
+}
+
 // TaskListResponse represents a list of tasks
 type TaskListResponse struct {
-	Tasks []TaskResponse `json:"tasks"`
-	Total int            `json:"total"`
+	Tasks      []TaskResponse `json:"tasks"`
+	Total      int            `json:"total"` // Keep for backward compat
+	Pagination *Pagination    `json:"pagination,omitempty"`
 }
 
 // Condition represents a status condition

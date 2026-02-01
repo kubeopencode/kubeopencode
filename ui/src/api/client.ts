@@ -29,9 +29,23 @@ export interface Task {
   conditions?: Condition[];
 }
 
+export interface Pagination {
+  limit: number;
+  offset: number;
+  totalCount: number;
+  hasMore: boolean;
+}
+
 export interface TaskListResponse {
   tasks: Task[];
   total: number;
+  pagination?: Pagination;
+}
+
+export interface ListTasksParams {
+  limit?: number;
+  offset?: number;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export interface TaskTemplateReference {
@@ -141,8 +155,14 @@ export const api = {
   getNamespaces: () => request<NamespaceList>('/namespaces'),
 
   // Tasks
-  listTasks: (namespace: string) =>
-    request<TaskListResponse>(`/namespaces/${namespace}/tasks`),
+  listTasks: (namespace: string, params?: ListTasksParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<TaskListResponse>(`/namespaces/${namespace}/tasks${queryString ? `?${queryString}` : ''}`);
+  },
 
   getTask: (namespace: string, name: string) =>
     request<Task>(`/namespaces/${namespace}/tasks/${name}`),

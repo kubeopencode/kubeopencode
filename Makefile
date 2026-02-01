@@ -134,8 +134,8 @@ verify: check-env
 
 ##@ Docker
 
-# Build the docker image
-docker-build:
+# Build the docker image (includes UI build)
+docker-build: ui-build
 	docker build --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_TIME=$(BUILD_DATE) -t $(IMG) .
 .PHONY: docker-build
 
@@ -144,8 +144,8 @@ docker-push:
 	docker push $(IMG)
 .PHONY: docker-push
 
-# Build and push docker image for multiple architectures
-docker-buildx:
+# Build and push docker image for multiple architectures (includes UI build)
+docker-buildx: ui-build
 	docker buildx create --use --name=kubeopencode-builder || true
 	docker buildx build \
 		--platform=$(PLATFORMS) \
