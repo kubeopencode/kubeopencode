@@ -55,7 +55,7 @@ See `deploy/dogfooding/argo-events/` for examples of GitHub webhook integration 
 |----------|---------|-----------|
 | **Task** | Single task execution (primary API) | Stable - semantic name |
 | **Agent** | AI agent configuration (HOW to execute) | Stable - independent of project name |
-| **KubeOpenCodeConfig** | System-level configuration | Stable - system settings |
+| **KubeOpenCodeConfig** | Cluster-scoped system-level configuration | Stable - system settings |
 | **ContextItem** | Inline context for AI agents (KNOW) | Stable - inline context only |
 
 ### Key Design Decisions
@@ -897,14 +897,16 @@ status:
 
 ### KubeOpenCodeConfig (System-level Configuration)
 
-KubeOpenCodeConfig provides cluster or namespace-level settings for container image configuration and Task cleanup policies.
+KubeOpenCodeConfig provides **cluster-wide** settings for container image configuration and Task cleanup policies.
+
+> **Note**: KubeOpenCodeConfig is a **cluster-scoped** resource (not namespaced). A single configuration named "default" applies to the entire cluster.
 
 ```yaml
 apiVersion: kubeopencode.io/v1alpha1
 kind: KubeOpenCodeConfig
 metadata:
   name: default
-  namespace: kubeopencode-system
+  # No namespace - cluster-scoped resource
 spec:
   # System image configuration for internal KubeOpenCode components
   # (git-init, context-init containers)
@@ -945,9 +947,10 @@ The `systemImage` configuration affects all internal KubeOpenCode containers:
 The cleanup configuration enables automatic garbage collection of completed/failed Tasks:
 
 - **TTL-based cleanup**: Tasks are deleted after `ttlSecondsAfterFinished` seconds from completion
-- **Retention-based cleanup**: Only the most recent `maxRetainedTasks` completed Tasks are retained
+- **Retention-based cleanup**: Only the most recent `maxRetainedTasks` completed Tasks are retained per namespace
 - **Combined**: Both policies can be used together. TTL is checked first, then retention count
 - **Cascading deletion**: Deleting a Task automatically deletes its associated Pod and ConfigMap
+- **Cluster-wide config, per-namespace retention**: The configuration is cluster-scoped, but `maxRetainedTasks` limit applies independently to each namespace
 
 Cleanup is disabled by default. When `KubeOpenCodeConfig` is not present or `cleanup` is not specified, Tasks are never automatically deleted
 

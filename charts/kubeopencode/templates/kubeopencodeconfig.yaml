@@ -3,7 +3,7 @@ apiVersion: kubeopencode.io/v1alpha1
 kind: KubeOpenCodeConfig
 metadata:
   name: default
-  namespace: {{ include "kubeopencode.namespace" . }}
+  # No namespace - cluster-scoped resource
   labels:
     {{- include "kubeopencode.labels" . | nindent 4 }}
 spec:

@@ -68,8 +68,8 @@ spec:
                   Supports cross-namespace references: when Agent is in a different namespace,
                   the Pod runs in the Agent's namespace to keep credentials isolated.
 
+                  Required unless taskTemplateRef is set with an agentRef.
                   If not specified and taskTemplateRef is set, uses the template's agentRef.
-                  If neither is specified, uses the "default" Agent in the same namespace.
                 properties:
                   name:
                     description: Name of the Agent.
@@ -332,8 +332,7 @@ spec:
               agentRef:
                 description: |-
                   AgentRef is the resolved Agent reference used for this task.
-                  This may come from Task.spec.agentRef, TaskTemplate.spec.agentRef,
-                  or the default Agent in the Task's namespace.
+                  This comes from Task.spec.agentRef or TaskTemplate.spec.agentRef.
                 properties:
                   name:
                     description: Name of the Agent.

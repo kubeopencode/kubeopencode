@@ -2072,12 +2072,12 @@ var _ = Describe("TaskController", func() {
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Creating KubeOpenCodeConfig with TTL cleanup")
+			By("Creating cluster-scoped KubeOpenCodeConfig with TTL cleanup")
 			ttlSeconds := int32(2) // 2 seconds for quick test
 			config := &kubeopenv1alpha1.KubeOpenCodeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default",
-					Namespace: taskNamespace,
+					Name: "default",
+					// No namespace - cluster-scoped resource
 				},
 				Spec: kubeopenv1alpha1.KubeOpenCodeConfigSpec{
 					Cleanup: &kubeopenv1alpha1.CleanupConfig{
@@ -2254,12 +2254,12 @@ var _ = Describe("TaskController", func() {
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Creating KubeOpenCodeConfig with retention limit of 2")
+			By("Creating cluster-scoped KubeOpenCodeConfig with retention limit of 2")
 			maxRetained := int32(2)
 			config := &kubeopenv1alpha1.KubeOpenCodeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default",
-					Namespace: taskNamespace,
+					Name: "default",
+					// No namespace - cluster-scoped resource
 				},
 				Spec: kubeopenv1alpha1.KubeOpenCodeConfigSpec{
 					Cleanup: &kubeopenv1alpha1.CleanupConfig{

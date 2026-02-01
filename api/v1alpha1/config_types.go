@@ -8,12 +8,15 @@ import (
 )
 
 // +genclient
+// +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Namespaced",shortName=ktc
+// +kubebuilder:resource:scope="Cluster",shortName=ktc
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 
 // KubeOpenCodeConfig defines system-level configuration for KubeOpenCode.
-// This CRD provides cluster or namespace-level settings for the KubeOpenCode system.
+// This CRD provides cluster-wide settings for the KubeOpenCode system.
+// It is a cluster-scoped resource (not namespaced) and typically a single
+// instance named "default" is used for the entire cluster.
 type KubeOpenCodeConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -56,11 +59,12 @@ type CleanupConfig struct {
 	// per namespace. When exceeded, the oldest Tasks (by CompletionTime) are deleted first.
 	// If unset or nil, retention-based cleanup is disabled.
 	//
-	// Note: TTL cleanup takes precedence - Tasks exceeding TTL are deleted regardless
-	// of this limit. This count only applies to Tasks that haven't exceeded TTL yet.
+	// Note: This is a cluster-wide configuration that applies the same limit to each namespace.
+	// TTL cleanup takes precedence - Tasks exceeding TTL are deleted regardless of this limit.
+	// This count only applies to Tasks that haven't exceeded TTL yet.
 	//
 	// Example:
-	//   maxRetainedTasks: 100  # Keep at most 100 completed Tasks
+	//   maxRetainedTasks: 100  # Keep at most 100 completed Tasks per namespace
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	MaxRetainedTasks *int32 `json:"maxRetainedTasks,omitempty"`

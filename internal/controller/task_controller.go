@@ -477,9 +477,8 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		}
 	}
 
-	// Get system configuration (image, pull policies)
-	// Use Agent's namespace for system config lookup
-	sysCfg := r.getSystemConfig(ctx, agentNamespace)
+	// Get system configuration (image, pull policies) from cluster-scoped KubeOpenCodeConfig
+	sysCfg := r.getSystemConfig(ctx)
 
 	// Create Pod with agent configuration and context mounts
 	// Pod is created in Agent's namespace
@@ -1561,9 +1560,9 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubeopenv1alpha1.
 }
 
 // getSystemConfig retrieves the system configuration from KubeOpenCodeConfig.
-// It looks for config in KubeOpenCodeConfig named "default" in the task's namespace.
+// It looks for the cluster-scoped KubeOpenCodeConfig named "default".
 // Returns a systemConfig with defaults if no config is found.
-func (r *TaskReconciler) getSystemConfig(ctx context.Context, namespace string) systemConfig {
+func (r *TaskReconciler) getSystemConfig(ctx context.Context) systemConfig {
 	log := log.FromContext(ctx)
 
 	// Default configuration
@@ -1572,9 +1571,9 @@ func (r *TaskReconciler) getSystemConfig(ctx context.Context, namespace string) 
 		systemImagePullPolicy: corev1.PullIfNotPresent,
 	}
 
-	// Try to get KubeOpenCodeConfig from the task's namespace
+	// Try to get cluster-scoped KubeOpenCodeConfig
 	config := &kubeopenv1alpha1.KubeOpenCodeConfig{}
-	configKey := types.NamespacedName{Name: "default", Namespace: namespace}
+	configKey := types.NamespacedName{Name: "default"}
 
 	if err := r.Get(ctx, configKey, config); err != nil {
 		if !errors.IsNotFound(err) {
@@ -1603,8 +1602,8 @@ func (r *TaskReconciler) getSystemConfig(ctx context.Context, namespace string) 
 func (r *TaskReconciler) handleTaskCleanup(ctx context.Context, task *kubeopenv1alpha1.Task) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Get cleanup configuration from KubeOpenCodeConfig
-	cleanupConfig := r.getCleanupConfig(ctx, task.Namespace)
+	// Get cleanup configuration from cluster-scoped KubeOpenCodeConfig
+	cleanupConfig := r.getCleanupConfig(ctx)
 	if cleanupConfig == nil {
 		// No cleanup configured, nothing to do
 		return ctrl.Result{}, nil
@@ -1647,14 +1646,14 @@ func (r *TaskReconciler) handleTaskCleanup(ctx context.Context, task *kubeopenv1
 	return ctrl.Result{}, nil
 }
 
-// getCleanupConfig retrieves cleanup configuration from KubeOpenCodeConfig.
+// getCleanupConfig retrieves cleanup configuration from cluster-scoped KubeOpenCodeConfig.
 // Returns nil if no cleanup is configured.
-func (r *TaskReconciler) getCleanupConfig(ctx context.Context, namespace string) *kubeopenv1alpha1.CleanupConfig {
+func (r *TaskReconciler) getCleanupConfig(ctx context.Context) *kubeopenv1alpha1.CleanupConfig {
 	log := log.FromContext(ctx)
 
-	// Try to get KubeOpenCodeConfig from the task's namespace
+	// Try to get cluster-scoped KubeOpenCodeConfig
 	config := &kubeopenv1alpha1.KubeOpenCodeConfig{}
-	configKey := types.NamespacedName{Name: "default", Namespace: namespace}
+	configKey := types.NamespacedName{Name: "default"}
 
 	if err := r.Get(ctx, configKey, config); err != nil {
 		if !errors.IsNotFound(err) {

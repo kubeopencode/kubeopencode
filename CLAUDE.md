@@ -51,7 +51,7 @@ Webhook/event handling has been delegated to [Argo Events](https://argoproj.gith
 1. **Task** - Single task execution (the primary API)
 2. **TaskTemplate** - Reusable template for Task creation (similar to Argo WorkflowTemplate)
 3. **Agent** - AI agent configuration (HOW to execute)
-4. **KubeOpenCodeConfig** - System-level configuration (optional)
+4. **KubeOpenCodeConfig** - Cluster-scoped system-level configuration (optional)
 
 > **Note**: Workflow orchestration and webhook triggers have been delegated to Argo Workflows and Argo Events respectively. KubeOpenCode focuses on the core Task/Agent abstraction.
 
@@ -757,6 +757,8 @@ The controller generates Pods with:
 
 KubeOpenCode supports automatic cleanup of completed/failed Tasks via `KubeOpenCodeConfig`. When configured, Tasks are automatically deleted based on TTL (time-to-live) and/or retention count policies.
 
+**Note:** `KubeOpenCodeConfig` is a **cluster-scoped** resource (not namespaced). A single configuration named "default" applies to the entire cluster.
+
 **CleanupConfig fields:**
 - `ttlSecondsAfterFinished`: Delete Tasks after N seconds from completion
 - `maxRetainedTasks`: Keep at most N completed Tasks per namespace (deletes oldest first)
@@ -767,12 +769,12 @@ apiVersion: kubeopencode.io/v1alpha1
 kind: KubeOpenCodeConfig
 metadata:
   name: default
-  namespace: kubeopencode-system
+  # No namespace - cluster-scoped resource
 spec:
   cleanup:
     # Delete completed Tasks after 1 hour
     ttlSecondsAfterFinished: 3600
-    # Keep at most 100 completed Tasks
+    # Keep at most 100 completed Tasks per namespace
     maxRetainedTasks: 100
 ```
 
@@ -780,7 +782,7 @@ spec:
 - Both policies can be used independently or combined
 - When combined, TTL is checked first, then retention count
 - Tasks are sorted by `CompletionTime` for retention-based cleanup (oldest deleted first)
-- Cleanup is namespace-scoped (each namespace can have different policies)
+- Cleanup configuration is cluster-wide, but `maxRetainedTasks` limit applies per namespace
 - No cleanup is performed if `KubeOpenCodeConfig` is not present (default behavior)
 
 **Note:** Deleting a Task cascades to its Pod and ConfigMap via Finalizer.
