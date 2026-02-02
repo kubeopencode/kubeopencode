@@ -3,6 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import StatusBadge from '../components/StatusBadge';
+import Labels from '../components/Labels';
+import ResourceFilter from '../components/ResourceFilter';
+import { useFilterState } from '../hooks/useFilterState';
 import { getNamespaceCookie, setNamespaceCookie } from '../utils/cookies';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -17,6 +20,7 @@ function TasksPage() {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [filters, setFilters] = useFilterState();
 
   // Sync namespace from URL params when they change
   useEffect(() => {
@@ -33,10 +37,10 @@ function TasksPage() {
     setNamespaceCookie(newNamespace);
   };
 
-  // Reset to page 1 when namespace changes
+  // Reset to page 1 when namespace or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [namespace]);
+  }, [namespace, filters.name, filters.labelSelector]);
 
   const { data: namespacesData } = useQuery({
     queryKey: ['namespaces'],
@@ -44,11 +48,13 @@ function TasksPage() {
   });
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['tasks', namespace, currentPage, pageSize],
+    queryKey: ['tasks', namespace, currentPage, pageSize, filters.name, filters.labelSelector],
     queryFn: () => api.listTasks(namespace, {
       limit: pageSize,
       offset: (currentPage - 1) * pageSize,
       sortOrder: 'desc',
+      name: filters.name || undefined,
+      labelSelector: filters.labelSelector || undefined,
     }),
     refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
@@ -83,6 +89,15 @@ function TasksPage() {
         </div>
       </div>
 
+      {/* Filter bar */}
+      <div className="mb-4">
+        <ResourceFilter
+          filters={filters}
+          onFilterChange={setFilters}
+          placeholder="Filter tasks by name..."
+        />
+      </div>
+
       {isLoading ? (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-primary-600"></div>
@@ -110,6 +125,9 @@ function TasksPage() {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Labels
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Agent
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -123,7 +141,7 @@ function TasksPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {data?.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                     No tasks found. <Link to={`/tasks/create?namespace=${namespace}`} className="text-primary-600 hover:text-primary-800">Create your first task</Link>
                   </td>
                 </tr>
@@ -140,6 +158,9 @@ function TasksPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <StatusBadge phase={task.phase || 'Pending'} />
+                    </td>
+                    <td className="px-6 py-4">
+                      <Labels labels={task.labels} maxDisplay={2} />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {task.agentRef?.name || 'default'}

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
+import Labels from '../components/Labels';
 
 function TemplateDetailPage() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
@@ -66,6 +67,14 @@ function TemplateDetailPage() {
                   {template.description}
                 </pre>
               </div>
+            </div>
+          )}
+
+          {/* Labels */}
+          {template.labels && Object.keys(template.labels).length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Labels</h3>
+              <Labels labels={template.labels} />
             </div>
           )}
 

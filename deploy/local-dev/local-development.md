@@ -171,6 +171,28 @@ Add to `/etc/hosts`:
 | **Task Create** | Create new Tasks with Agent selection (filtered by namespace permissions) |
 | **Agent List** | Browse available Agents with namespace filter |
 | **Agent Detail** | View Agent configuration, contexts, credentials |
+| **Template List** | Browse TaskTemplates with filtering and pagination |
+| **Filtering** | Filter resources by name and Kubernetes label selectors |
+| **Pagination** | Server-side pagination for efficient browsing of large resource lists |
+
+#### Resource Filtering
+
+All list pages (Tasks, Agents, Templates) support filtering:
+
+- **Name Filter**: Filter resources by name (substring match)
+- **Label Selector**: Filter by Kubernetes labels using standard selector syntax (e.g., `app=myapp,env=prod`)
+
+Filters are persisted in the URL as query parameters, making it easy to share filtered views with team members:
+
+```
+http://localhost:2746/agents?name=opencode&labels=env%3Dprod
+```
+
+#### Pagination
+
+List pages use server-side pagination with 12 items per page. The pagination controls at the bottom of each list show:
+- Current page range (e.g., "Showing 1 to 12 of 45")
+- Previous/Next navigation buttons
 
 #### Namespace Filtering
 

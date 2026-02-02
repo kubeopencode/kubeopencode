@@ -2,6 +2,7 @@ import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
+import Labels from '../components/Labels';
 
 function AgentDetailPage() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
@@ -94,6 +95,14 @@ function AgentDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Labels */}
+          {agent.labels && Object.keys(agent.labels).length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Labels</h3>
+              <Labels labels={agent.labels} />
+            </div>
+          )}
 
           {/* Quota */}
           {agent.quota && (

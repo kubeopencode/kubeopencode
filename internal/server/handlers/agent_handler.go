@@ -5,6 +5,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"sort"
 
 	"github.com/go-chi/chi/v5"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,47 +35,125 @@ func (h *AgentHandler) getClient(ctx context.Context) client.Client {
 	return h.defaultClient
 }
 
-// ListAll returns all agents across all namespaces
+// ListAll returns all agents across all namespaces with filtering and pagination
 func (h *AgentHandler) ListAll(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	k8sClient := h.getClient(ctx)
 
+	filterOpts, err := ParseFilterOptions(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid filter parameters", err.Error())
+		return
+	}
+
 	var agentList kubeopenv1alpha1.AgentList
-	if err := k8sClient.List(ctx, &agentList); err != nil {
+	listOpts := BuildListOptions("", filterOpts) // empty namespace = all namespaces
+
+	if err := k8sClient.List(ctx, &agentList, listOpts...); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to list agents", err.Error())
 		return
 	}
 
-	response := types.AgentListResponse{
-		Agents: make([]types.AgentResponse, 0, len(agentList.Items)),
-		Total:  len(agentList.Items),
+	// Filter by name (in-memory)
+	var filteredItems []kubeopenv1alpha1.Agent
+	for _, agent := range agentList.Items {
+		if MatchesNameFilter(agent.Name, filterOpts.Name) {
+			filteredItems = append(filteredItems, agent)
+		}
 	}
 
-	for _, agent := range agentList.Items {
+	// Sort by CreationTimestamp
+	sort.Slice(filteredItems, func(i, j int) bool {
+		if filterOpts.SortOrder == "asc" {
+			return filteredItems[i].CreationTimestamp.Before(&filteredItems[j].CreationTimestamp)
+		}
+		return filteredItems[j].CreationTimestamp.Before(&filteredItems[i].CreationTimestamp)
+	})
+
+	totalCount := len(filteredItems)
+
+	// Apply pagination bounds
+	start := min(filterOpts.Offset, totalCount)
+	end := min(start+filterOpts.Limit, totalCount)
+
+	paginatedItems := filteredItems[start:end]
+	hasMore := end < totalCount
+
+	response := types.AgentListResponse{
+		Agents: make([]types.AgentResponse, 0, len(paginatedItems)),
+		Total:  totalCount,
+		Pagination: &types.Pagination{
+			Limit:      filterOpts.Limit,
+			Offset:     filterOpts.Offset,
+			TotalCount: totalCount,
+			HasMore:    hasMore,
+		},
+	}
+
+	for _, agent := range paginatedItems {
 		response.Agents = append(response.Agents, agentToResponse(&agent))
 	}
 
 	writeJSON(w, http.StatusOK, response)
 }
 
-// List returns all agents in a namespace
+// List returns all agents in a namespace with filtering and pagination
 func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	ctx := r.Context()
 	k8sClient := h.getClient(ctx)
 
+	filterOpts, err := ParseFilterOptions(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid filter parameters", err.Error())
+		return
+	}
+
 	var agentList kubeopenv1alpha1.AgentList
-	if err := k8sClient.List(ctx, &agentList, client.InNamespace(namespace)); err != nil {
+	listOpts := BuildListOptions(namespace, filterOpts)
+
+	if err := k8sClient.List(ctx, &agentList, listOpts...); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to list agents", err.Error())
 		return
 	}
 
-	response := types.AgentListResponse{
-		Agents: make([]types.AgentResponse, 0, len(agentList.Items)),
-		Total:  len(agentList.Items),
+	// Filter by name (in-memory)
+	var filteredItems []kubeopenv1alpha1.Agent
+	for _, agent := range agentList.Items {
+		if MatchesNameFilter(agent.Name, filterOpts.Name) {
+			filteredItems = append(filteredItems, agent)
+		}
 	}
 
-	for _, agent := range agentList.Items {
+	// Sort by CreationTimestamp
+	sort.Slice(filteredItems, func(i, j int) bool {
+		if filterOpts.SortOrder == "asc" {
+			return filteredItems[i].CreationTimestamp.Before(&filteredItems[j].CreationTimestamp)
+		}
+		return filteredItems[j].CreationTimestamp.Before(&filteredItems[i].CreationTimestamp)
+	})
+
+	totalCount := len(filteredItems)
+
+	// Apply pagination bounds
+	start := min(filterOpts.Offset, totalCount)
+	end := min(start+filterOpts.Limit, totalCount)
+
+	paginatedItems := filteredItems[start:end]
+	hasMore := end < totalCount
+
+	response := types.AgentListResponse{
+		Agents: make([]types.AgentResponse, 0, len(paginatedItems)),
+		Total:  totalCount,
+		Pagination: &types.Pagination{
+			Limit:      filterOpts.Limit,
+			Offset:     filterOpts.Offset,
+			TotalCount: totalCount,
+			HasMore:    hasMore,
+		},
+	}
+
+	for _, agent := range paginatedItems {
 		response.Agents = append(response.Agents, agentToResponse(&agent))
 	}
 
@@ -109,6 +188,7 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		CredentialsCount:  len(agent.Spec.Credentials),
 		AllowedNamespaces: agent.Spec.AllowedNamespaces,
 		CreatedAt:         agent.CreationTimestamp.Time,
+		Labels:            agent.Labels,
 	}
 
 	if agent.Spec.MaxConcurrentTasks != nil {

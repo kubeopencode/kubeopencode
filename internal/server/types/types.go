@@ -48,18 +48,19 @@ type CreateTaskRequest struct {
 
 // TaskResponse represents a task in API responses
 type TaskResponse struct {
-	Name           string          `json:"name"`
-	Namespace      string          `json:"namespace"`
-	Phase          string          `json:"phase"`
-	Description    string          `json:"description,omitempty"`
-	AgentRef       *AgentReference `json:"agentRef,omitempty"`
-	PodName        string          `json:"podName,omitempty"`
-	PodNamespace   string          `json:"podNamespace,omitempty"`
-	StartTime      *time.Time      `json:"startTime,omitempty"`
-	CompletionTime *time.Time      `json:"completionTime,omitempty"`
-	Duration       string          `json:"duration,omitempty"`
-	CreatedAt      time.Time       `json:"createdAt"`
-	Conditions     []Condition     `json:"conditions,omitempty"`
+	Name           string            `json:"name"`
+	Namespace      string            `json:"namespace"`
+	Phase          string            `json:"phase"`
+	Description    string            `json:"description,omitempty"`
+	AgentRef       *AgentReference   `json:"agentRef,omitempty"`
+	PodName        string            `json:"podName,omitempty"`
+	PodNamespace   string            `json:"podNamespace,omitempty"`
+	StartTime      *time.Time        `json:"startTime,omitempty"`
+	CompletionTime *time.Time        `json:"completionTime,omitempty"`
+	Duration       string            `json:"duration,omitempty"`
+	CreatedAt      time.Time         `json:"createdAt"`
+	Conditions     []Condition       `json:"conditions,omitempty"`
+	Labels         map[string]string `json:"labels,omitempty"`
 }
 
 // Pagination represents pagination metadata
@@ -101,25 +102,27 @@ type QuotaInfo struct {
 
 // AgentResponse represents an agent in API responses
 type AgentResponse struct {
-	Name               string           `json:"name"`
-	Namespace          string           `json:"namespace"`
-	ExecutorImage      string           `json:"executorImage,omitempty"`
-	AgentImage         string           `json:"agentImage,omitempty"`
-	WorkspaceDir       string           `json:"workspaceDir,omitempty"`
-	ContextsCount      int              `json:"contextsCount"`
-	CredentialsCount   int              `json:"credentialsCount"`
-	MaxConcurrentTasks *int32           `json:"maxConcurrentTasks,omitempty"`
-	Quota              *QuotaInfo       `json:"quota,omitempty"`
-	AllowedNamespaces  []string         `json:"allowedNamespaces,omitempty"`
-	Credentials        []CredentialInfo `json:"credentials,omitempty"`
-	Contexts           []ContextItem    `json:"contexts,omitempty"`
-	CreatedAt          time.Time        `json:"createdAt"`
+	Name               string            `json:"name"`
+	Namespace          string            `json:"namespace"`
+	ExecutorImage      string            `json:"executorImage,omitempty"`
+	AgentImage         string            `json:"agentImage,omitempty"`
+	WorkspaceDir       string            `json:"workspaceDir,omitempty"`
+	ContextsCount      int               `json:"contextsCount"`
+	CredentialsCount   int               `json:"credentialsCount"`
+	MaxConcurrentTasks *int32            `json:"maxConcurrentTasks,omitempty"`
+	Quota              *QuotaInfo        `json:"quota,omitempty"`
+	AllowedNamespaces  []string          `json:"allowedNamespaces,omitempty"`
+	Credentials        []CredentialInfo  `json:"credentials,omitempty"`
+	Contexts           []ContextItem     `json:"contexts,omitempty"`
+	CreatedAt          time.Time         `json:"createdAt"`
+	Labels             map[string]string `json:"labels,omitempty"`
 }
 
 // AgentListResponse represents a list of agents
 type AgentListResponse struct {
-	Agents []AgentResponse `json:"agents"`
-	Total  int             `json:"total"`
+	Agents     []AgentResponse `json:"agents"`
+	Total      int             `json:"total"`
+	Pagination *Pagination     `json:"pagination,omitempty"`
 }
 
 // ErrorResponse represents an error response
@@ -131,19 +134,21 @@ type ErrorResponse struct {
 
 // TaskTemplateResponse represents a TaskTemplate in API responses
 type TaskTemplateResponse struct {
-	Name          string          `json:"name"`
-	Namespace     string          `json:"namespace"`
-	Description   string          `json:"description,omitempty"`
-	AgentRef      *AgentReference `json:"agentRef,omitempty"`
-	ContextsCount int             `json:"contextsCount"`
-	Contexts      []ContextItem   `json:"contexts,omitempty"`
-	CreatedAt     time.Time       `json:"createdAt"`
+	Name          string            `json:"name"`
+	Namespace     string            `json:"namespace"`
+	Description   string            `json:"description,omitempty"`
+	AgentRef      *AgentReference   `json:"agentRef,omitempty"`
+	ContextsCount int               `json:"contextsCount"`
+	Contexts      []ContextItem     `json:"contexts,omitempty"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	Labels        map[string]string `json:"labels,omitempty"`
 }
 
 // TaskTemplateListResponse represents a list of TaskTemplates
 type TaskTemplateListResponse struct {
-	Templates []TaskTemplateResponse `json:"templates"`
-	Total     int                    `json:"total"`
+	Templates  []TaskTemplateResponse `json:"templates"`
+	Total      int                    `json:"total"`
+	Pagination *Pagination            `json:"pagination,omitempty"`
 }
 
 // CreateTaskTemplateRequest represents a request to create a TaskTemplate

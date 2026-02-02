@@ -27,6 +27,7 @@ export interface Task {
   duration?: string;
   createdAt: string;
   conditions?: Condition[];
+  labels?: Record<string, string>;
 }
 
 export interface Pagination {
@@ -42,11 +43,15 @@ export interface TaskListResponse {
   pagination?: Pagination;
 }
 
-export interface ListTasksParams {
+export interface FilterParams {
+  name?: string;
+  labelSelector?: string;
   limit?: number;
   offset?: number;
   sortOrder?: 'asc' | 'desc';
 }
+
+export interface ListTasksParams extends FilterParams {}
 
 export interface TaskTemplateReference {
   name: string;
@@ -93,11 +98,13 @@ export interface Agent {
   credentials?: CredentialInfo[];
   contexts?: ContextItem[];
   createdAt: string;
+  labels?: Record<string, string>;
 }
 
 export interface AgentListResponse {
   agents: Agent[];
   total: number;
+  pagination?: Pagination;
 }
 
 export interface TaskTemplate {
@@ -108,11 +115,13 @@ export interface TaskTemplate {
   contextsCount: number;
   contexts?: ContextItem[];
   createdAt: string;
+  labels?: Record<string, string>;
 }
 
 export interface TaskTemplateListResponse {
   templates: TaskTemplate[];
   total: number;
+  pagination?: Pagination;
 }
 
 export interface ServerInfo {
@@ -157,6 +166,8 @@ export const api = {
   // Tasks
   listTasks: (namespace: string, params?: ListTasksParams) => {
     const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
     if (params?.limit) searchParams.set('limit', params.limit.toString());
     if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
     if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
@@ -192,20 +203,53 @@ export const api = {
   },
 
   // Agents
-  listAllAgents: () => request<AgentListResponse>('/agents'),
+  listAllAgents: (params?: FilterParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<AgentListResponse>(`/agents${queryString ? `?${queryString}` : ''}`);
+  },
 
-  listAgents: (namespace: string) =>
-    request<AgentListResponse>(`/namespaces/${namespace}/agents`),
+  listAgents: (namespace: string, params?: FilterParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<AgentListResponse>(`/namespaces/${namespace}/agents${queryString ? `?${queryString}` : ''}`);
+  },
 
   getAgent: (namespace: string, name: string) =>
     request<Agent>(`/namespaces/${namespace}/agents/${name}`),
 
   // TaskTemplates
-  listAllTaskTemplates: () =>
-    request<TaskTemplateListResponse>('/tasktemplates'),
+  listAllTaskTemplates: (params?: FilterParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<TaskTemplateListResponse>(`/tasktemplates${queryString ? `?${queryString}` : ''}`);
+  },
 
-  listTaskTemplates: (namespace: string) =>
-    request<TaskTemplateListResponse>(`/namespaces/${namespace}/tasktemplates`),
+  listTaskTemplates: (namespace: string, params?: FilterParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<TaskTemplateListResponse>(`/namespaces/${namespace}/tasktemplates${queryString ? `?${queryString}` : ''}`);
+  },
 
   getTaskTemplate: (namespace: string, name: string) =>
     request<TaskTemplate>(`/namespaces/${namespace}/tasktemplates/${name}`),
