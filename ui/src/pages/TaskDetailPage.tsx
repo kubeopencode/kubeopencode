@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import StatusBadge from '../components/StatusBadge';
+import Labels from '../components/Labels';
 import LogViewer from '../components/LogViewer';
 
 function TaskDetailPage() {
@@ -152,6 +153,14 @@ function TaskDetailPage() {
                 <dt className="text-sm font-medium text-gray-500">Pod</dt>
                 <dd className="mt-1 text-sm text-gray-900">
                   {task.podNamespace}/{task.podName}
+                </dd>
+              </div>
+            )}
+            {task.labels && Object.keys(task.labels).length > 0 && (
+              <div className="col-span-2">
+                <dt className="text-sm font-medium text-gray-500">Labels</dt>
+                <dd className="mt-1">
+                  <Labels labels={task.labels} />
                 </dd>
               </div>
             )}

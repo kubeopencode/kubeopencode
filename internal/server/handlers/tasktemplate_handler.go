@@ -5,6 +5,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 
 	"github.com/go-chi/chi/v5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,47 +33,125 @@ func (h *TaskTemplateHandler) getClient(r *http.Request) client.Client {
 	return h.defaultClient
 }
 
-// ListAll returns all TaskTemplates across all namespaces
+// ListAll returns all TaskTemplates across all namespaces with filtering and pagination
 func (h *TaskTemplateHandler) ListAll(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	k8sClient := h.getClient(r)
 
+	filterOpts, err := ParseFilterOptions(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid filter parameters", err.Error())
+		return
+	}
+
 	var templateList kubeopenv1alpha1.TaskTemplateList
-	if err := k8sClient.List(ctx, &templateList); err != nil {
+	listOpts := BuildListOptions("", filterOpts) // empty namespace = all namespaces
+
+	if err := k8sClient.List(ctx, &templateList, listOpts...); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to list task templates", err.Error())
 		return
 	}
 
-	response := types.TaskTemplateListResponse{
-		Templates: make([]types.TaskTemplateResponse, 0, len(templateList.Items)),
-		Total:     len(templateList.Items),
+	// Filter by name (in-memory)
+	var filteredItems []kubeopenv1alpha1.TaskTemplate
+	for _, tt := range templateList.Items {
+		if MatchesNameFilter(tt.Name, filterOpts.Name) {
+			filteredItems = append(filteredItems, tt)
+		}
 	}
 
-	for _, tt := range templateList.Items {
+	// Sort by CreationTimestamp
+	sort.Slice(filteredItems, func(i, j int) bool {
+		if filterOpts.SortOrder == "asc" {
+			return filteredItems[i].CreationTimestamp.Before(&filteredItems[j].CreationTimestamp)
+		}
+		return filteredItems[j].CreationTimestamp.Before(&filteredItems[i].CreationTimestamp)
+	})
+
+	totalCount := len(filteredItems)
+
+	// Apply pagination bounds
+	start := min(filterOpts.Offset, totalCount)
+	end := min(start+filterOpts.Limit, totalCount)
+
+	paginatedItems := filteredItems[start:end]
+	hasMore := end < totalCount
+
+	response := types.TaskTemplateListResponse{
+		Templates: make([]types.TaskTemplateResponse, 0, len(paginatedItems)),
+		Total:     totalCount,
+		Pagination: &types.Pagination{
+			Limit:      filterOpts.Limit,
+			Offset:     filterOpts.Offset,
+			TotalCount: totalCount,
+			HasMore:    hasMore,
+		},
+	}
+
+	for _, tt := range paginatedItems {
 		response.Templates = append(response.Templates, taskTemplateToResponse(&tt))
 	}
 
 	writeJSON(w, http.StatusOK, response)
 }
 
-// List returns all TaskTemplates in a namespace
+// List returns all TaskTemplates in a namespace with filtering and pagination
 func (h *TaskTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	ctx := r.Context()
 	k8sClient := h.getClient(r)
 
+	filterOpts, err := ParseFilterOptions(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid filter parameters", err.Error())
+		return
+	}
+
 	var templateList kubeopenv1alpha1.TaskTemplateList
-	if err := k8sClient.List(ctx, &templateList, client.InNamespace(namespace)); err != nil {
+	listOpts := BuildListOptions(namespace, filterOpts)
+
+	if err := k8sClient.List(ctx, &templateList, listOpts...); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to list task templates", err.Error())
 		return
 	}
 
-	response := types.TaskTemplateListResponse{
-		Templates: make([]types.TaskTemplateResponse, 0, len(templateList.Items)),
-		Total:     len(templateList.Items),
+	// Filter by name (in-memory)
+	var filteredItems []kubeopenv1alpha1.TaskTemplate
+	for _, tt := range templateList.Items {
+		if MatchesNameFilter(tt.Name, filterOpts.Name) {
+			filteredItems = append(filteredItems, tt)
+		}
 	}
 
-	for _, tt := range templateList.Items {
+	// Sort by CreationTimestamp
+	sort.Slice(filteredItems, func(i, j int) bool {
+		if filterOpts.SortOrder == "asc" {
+			return filteredItems[i].CreationTimestamp.Before(&filteredItems[j].CreationTimestamp)
+		}
+		return filteredItems[j].CreationTimestamp.Before(&filteredItems[i].CreationTimestamp)
+	})
+
+	totalCount := len(filteredItems)
+
+	// Apply pagination bounds
+	start := min(filterOpts.Offset, totalCount)
+	end := min(start+filterOpts.Limit, totalCount)
+
+	paginatedItems := filteredItems[start:end]
+	hasMore := end < totalCount
+
+	response := types.TaskTemplateListResponse{
+		Templates: make([]types.TaskTemplateResponse, 0, len(paginatedItems)),
+		Total:     totalCount,
+		Pagination: &types.Pagination{
+			Limit:      filterOpts.Limit,
+			Offset:     filterOpts.Offset,
+			TotalCount: totalCount,
+			HasMore:    hasMore,
+		},
+	}
+
+	for _, tt := range paginatedItems {
 		response.Templates = append(response.Templates, taskTemplateToResponse(&tt))
 	}
 
@@ -194,6 +273,7 @@ func taskTemplateToResponse(tt *kubeopenv1alpha1.TaskTemplate) types.TaskTemplat
 		Namespace:     tt.Namespace,
 		ContextsCount: len(tt.Spec.Contexts),
 		CreatedAt:     tt.CreationTimestamp.Time,
+		Labels:        tt.Labels,
 	}
 
 	if tt.Spec.Description != nil {

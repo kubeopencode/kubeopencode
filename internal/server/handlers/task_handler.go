@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -48,70 +47,58 @@ func (h *TaskHandler) getClient(ctx context.Context) client.Client {
 	return h.defaultClient
 }
 
-// List returns all tasks in a namespace with sorting and pagination
+// List returns all tasks in a namespace with sorting, filtering, and pagination
 func (h *TaskHandler) List(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	ctx := r.Context()
 	k8sClient := h.getClient(ctx)
 
-	// Parse pagination parameters
-	limit := 20 // default
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
-			limit = parsed
-			if limit > 100 {
-				limit = 100 // max limit
-			}
-		}
-	}
-
-	offset := 0 // default
-	if o := r.URL.Query().Get("offset"); o != "" {
-		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-			offset = parsed
-		}
-	}
-
-	sortOrder := r.URL.Query().Get("sortOrder")
-	if sortOrder == "" {
-		sortOrder = "desc" // default: newest first
+	// Parse filter options
+	filterOpts, err := ParseFilterOptions(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid filter parameters", err.Error())
+		return
 	}
 
 	var taskList kubeopenv1alpha1.TaskList
-	if err := k8sClient.List(ctx, &taskList, client.InNamespace(namespace)); err != nil {
+	listOpts := BuildListOptions(namespace, filterOpts)
+
+	if err := k8sClient.List(ctx, &taskList, listOpts...); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to list tasks", err.Error())
 		return
 	}
 
-	// Sort by CreationTimestamp
-	sort.Slice(taskList.Items, func(i, j int) bool {
-		if sortOrder == "asc" {
-			return taskList.Items[i].CreationTimestamp.Before(&taskList.Items[j].CreationTimestamp)
+	// Filter by name (in-memory)
+	var filteredItems []kubeopenv1alpha1.Task
+	for _, task := range taskList.Items {
+		if MatchesNameFilter(task.Name, filterOpts.Name) {
+			filteredItems = append(filteredItems, task)
 		}
-		return taskList.Items[j].CreationTimestamp.Before(&taskList.Items[i].CreationTimestamp)
+	}
+
+	// Sort by CreationTimestamp
+	sort.Slice(filteredItems, func(i, j int) bool {
+		if filterOpts.SortOrder == "asc" {
+			return filteredItems[i].CreationTimestamp.Before(&filteredItems[j].CreationTimestamp)
+		}
+		return filteredItems[j].CreationTimestamp.Before(&filteredItems[i].CreationTimestamp)
 	})
 
-	totalCount := len(taskList.Items)
+	totalCount := len(filteredItems)
 
 	// Apply pagination bounds
-	start := offset
-	if start > totalCount {
-		start = totalCount
-	}
-	end := start + limit
-	if end > totalCount {
-		end = totalCount
-	}
+	start := min(filterOpts.Offset, totalCount)
+	end := min(start+filterOpts.Limit, totalCount)
 
-	paginatedItems := taskList.Items[start:end]
+	paginatedItems := filteredItems[start:end]
 	hasMore := end < totalCount
 
 	response := types.TaskListResponse{
 		Tasks: make([]types.TaskResponse, 0, len(paginatedItems)),
 		Total: totalCount,
 		Pagination: &types.Pagination{
-			Limit:      limit,
-			Offset:     offset,
+			Limit:      filterOpts.Limit,
+			Offset:     filterOpts.Offset,
 			TotalCount: totalCount,
 			HasMore:    hasMore,
 		},
@@ -405,6 +392,7 @@ func taskToResponse(task *kubeopenv1alpha1.Task) types.TaskResponse {
 		PodName:      task.Status.PodName,
 		PodNamespace: task.Status.PodNamespace,
 		CreatedAt:    task.CreationTimestamp.Time,
+		Labels:       task.Labels,
 	}
 
 	if task.Spec.AgentRef != nil {

@@ -1,14 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
+import Labels from '../components/Labels';
+import ResourceFilter from '../components/ResourceFilter';
+import { useFilterState } from '../hooks/useFilterState';
 import { getNamespaceCookie, setNamespaceCookie } from '../utils/cookies';
+
+const PAGE_SIZE = 12;
 
 function AgentsPage() {
   // Initialize from cookie, empty string means "All Namespaces"
   const [selectedNamespace, setSelectedNamespace] = useState<string>(() => {
     return getNamespaceCookie() || '';
   });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filters, setFilters] = useFilterState();
 
   const handleNamespaceChange = (newNamespace: string) => {
     setSelectedNamespace(newNamespace);
@@ -17,17 +24,30 @@ function AgentsPage() {
     }
   };
 
+  // Reset to page 1 when namespace or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedNamespace, filters.name, filters.labelSelector]);
+
   const { data: namespacesData } = useQuery({
     queryKey: ['namespaces'],
     queryFn: () => api.getNamespaces(),
   });
 
+  const filterParams = {
+    name: filters.name || undefined,
+    labelSelector: filters.labelSelector || undefined,
+    limit: PAGE_SIZE,
+    offset: (currentPage - 1) * PAGE_SIZE,
+    sortOrder: 'desc' as const,
+  };
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['agents', selectedNamespace],
+    queryKey: ['agents', selectedNamespace, currentPage, filters.name, filters.labelSelector],
     queryFn: () =>
       selectedNamespace
-        ? api.listAgents(selectedNamespace)
-        : api.listAllAgents(),
+        ? api.listAgents(selectedNamespace, filterParams)
+        : api.listAllAgents(filterParams),
   });
 
   return (
@@ -55,6 +75,15 @@ function AgentsPage() {
         </div>
       </div>
 
+      {/* Filter bar */}
+      <div className="mb-4">
+        <ResourceFilter
+          filters={filters}
+          onFilterChange={setFilters}
+          placeholder="Filter agents by name..."
+        />
+      </div>
+
       {isLoading ? (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-primary-600"></div>
@@ -71,6 +100,7 @@ function AgentsPage() {
           </button>
         </div>
       ) : (
+        <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {data?.agents.length === 0 ? (
             <div className="col-span-full text-center py-12 text-gray-500">
@@ -117,6 +147,13 @@ function AgentsPage() {
                     )}
                   </div>
 
+                  {agent.labels && Object.keys(agent.labels).length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <p className="text-xs text-gray-500 mb-1">Labels:</p>
+                      <Labels labels={agent.labels} maxDisplay={3} />
+                    </div>
+                  )}
+
                   {agent.allowedNamespaces && agent.allowedNamespaces.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
                       <p className="text-xs text-gray-500 mb-1">Allowed namespaces:</p>
@@ -142,6 +179,40 @@ function AgentsPage() {
             ))
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {data?.pagination && data.pagination.totalCount > 0 && (
+          <div className="mt-6 flex items-center justify-between">
+            <p className="text-sm text-gray-700">
+              Showing{' '}
+              <span className="font-medium">{data.pagination.offset + 1}</span>
+              {' '}to{' '}
+              <span className="font-medium">
+                {Math.min(data.pagination.offset + data.agents.length, data.pagination.totalCount)}
+              </span>
+              {' '}of{' '}
+              <span className="font-medium">{data.pagination.totalCount}</span>
+              {' '}results
+            </p>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={!data.pagination.hasMore}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+        </>
       )}
     </div>
   );
