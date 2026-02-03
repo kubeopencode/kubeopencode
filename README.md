@@ -138,41 +138,6 @@ See the [Getting Started Guide](docs/getting-started.md) for detailed examples i
 | [Agent Development](agents/README.md) | Building custom agent images |
 | [ADRs](docs/adr/) | Architecture Decision Records |
 
-## Roadmap
-
-### Completed
-
-- [x] Core Task/Agent abstraction
-- [x] Inline ContextItem system (Text, ConfigMap, Git, Runtime, URL)
-- [x] Argo Events integration for webhook-triggered Tasks
-- [x] Task output capture system
-- [x] Task stop feature (annotation-based)
-- [x] Agent concurrency control (maxConcurrentTasks, quota)
-- [x] Pod configuration (labels, scheduling, runtimeClassName)
-- [x] Cross-namespace Task/Agent separation (credential isolation)
-- [x] TaskTemplate for reusable configurations
-- [x] Web UI for Task and Agent management
-
-### Next Priorities
-
-#### 1. Agent Skills Support
-
-Enable Agents to declare and use skills (tools/capabilities) for enhanced task execution:
-
-- **Skill Definition**: Define reusable skills that Agents can invoke (e.g., web search, code analysis, file operations)
-- **MCP Integration**: Support for Model Context Protocol (MCP) servers as skill providers
-- **Skill Composition**: Allow Agents to combine multiple skills for complex workflows
-- **Built-in Skills**: Provide common skills out-of-the-box (kubectl, git, GitHub CLI, etc.)
-
-#### 2. Metrics & Observability
-
-Prometheus-native metrics for comprehensive Task/Agent observability:
-
-- **Task Metrics**: Execution duration, success/failure rates, queue times, resource usage
-- **Agent Metrics**: Concurrent task counts, quota utilization, error rates per Agent
-- **Controller Metrics**: Reconciliation latency, API call rates, cache hit rates
-- **Grafana Dashboards**: Pre-built dashboards for common monitoring scenarios
-
 ## Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
