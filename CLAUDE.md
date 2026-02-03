@@ -316,8 +316,13 @@ kubeopencode/
 │       └── controller/   # Controller deployment
 ├── hack/                # Build and codegen scripts
 ├── docs/                # Documentation
-│   ├── architecture.md  # Architecture documentation
-│   └── adr/             # Architecture Decision Records
+│   ├── getting-started.md  # Installation, examples, tutorials
+│   ├── features.md         # Context system, concurrency, cross-namespace
+│   ├── agent-images.md     # Building and customizing agent images
+│   ├── security.md         # RBAC, credentials, pod security
+│   ├── architecture.md     # System design and API reference
+│   ├── troubleshooting.md  # Common issues and solutions
+│   └── adr/                # Architecture Decision Records
 └── Makefile             # Build automation
 ```
 
@@ -855,15 +860,35 @@ The controller requires permissions for:
 
 ## Documentation
 
+### Documentation Structure
+
+| File | Description | When to Update |
+|------|-------------|----------------|
+| `README.md` | High-level overview, community, quick start | User-facing changes, new features |
+| `docs/getting-started.md` | Installation, Web UI, detailed examples (Agent, Task, TaskTemplate, batch operations) | Installation changes, new examples |
+| `docs/features.md` | Context system, Agent configuration, concurrency, quota, cross-namespace, pod configuration | Feature changes, new configuration options |
+| `docs/agent-images.md` | Two-container pattern, available images, image resolution, building agent images | Agent image changes, new images |
+| `docs/security.md` | RBAC, credential management, controller/agent pod security, best practices | Security-related changes |
+| `docs/architecture.md` | System design, API reference, detailed technical documentation | Architecture changes, API changes |
+| `docs/troubleshooting.md` | Common issues and solutions | New error scenarios, debugging tips |
+| `deploy/local-dev/local-development.md` | Local development environment setup | Development workflow changes |
+| `charts/kubeopencode/README.md` | Helm chart deployment and configuration | Helm values changes |
+| `agents/README.md` | Building custom agent images | Agent development changes |
+| `docs/adr/` | Architecture Decision Records | Significant architectural decisions |
+
 ### Updating Documentation
 
 > **IMPORTANT**: Always update ALL relevant documentation when making changes. Do not forget the README.
 
 1. **README**: Update `README.md` for user-facing changes (new features, API changes)
-2. **Architecture changes**: Update `docs/architecture.md`
-3. **API changes**: Update inline godoc comments AND this file (`CLAUDE.md`)
-4. **Helm chart**: Update `charts/kubeopencode/README.md`
-5. **Decisions**: Add ADR in `docs/adr/`
+2. **Getting Started**: Update `docs/getting-started.md` for installation or example changes
+3. **Features**: Update `docs/features.md` for context, concurrency, or configuration changes
+4. **Agent Images**: Update `docs/agent-images.md` for agent image changes
+5. **Security**: Update `docs/security.md` for RBAC or credential changes
+6. **Architecture**: Update `docs/architecture.md` for system design or API changes
+7. **API changes**: Update inline godoc comments AND this file (`CLAUDE.md`)
+8. **Helm chart**: Update `charts/kubeopencode/README.md`
+9. **Decisions**: Add ADR in `docs/adr/`
 
 ### Architecture Decision Records (ADRs)
 
@@ -959,4 +984,4 @@ kubectl logs <pod-name> -n kubeopencode-system
 
 ---
 
-**Last Updated**: 2026-01-05
+**Last Updated**: 2026-02-03
