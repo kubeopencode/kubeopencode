@@ -104,10 +104,10 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 // resolveAgentConfig extracts configuration from the Agent spec.
 func (r *AgentReconciler) resolveAgentConfig(agent *kubeopenv1alpha1.Agent) agentConfig {
-	cfg := agentConfig{
-		agentImage:         agent.Spec.AgentImage,
-		executorImage:      agent.Spec.ExecutorImage,
-		attachImage:        agent.Spec.AttachImage,
+	return agentConfig{
+		agentImage:         defaultString(agent.Spec.AgentImage, DefaultAgentImage),
+		executorImage:      defaultString(agent.Spec.ExecutorImage, DefaultExecutorImage),
+		attachImage:        defaultString(agent.Spec.AttachImage, DefaultAttachImage),
 		command:            agent.Spec.Command,
 		workspaceDir:       agent.Spec.WorkspaceDir,
 		contexts:           agent.Spec.Contexts,
@@ -118,13 +118,6 @@ func (r *AgentReconciler) resolveAgentConfig(agent *kubeopenv1alpha1.Agent) agen
 		maxConcurrentTasks: agent.Spec.MaxConcurrentTasks,
 		quota:              agent.Spec.Quota,
 	}
-
-	// Apply defaults
-	cfg.agentImage = defaultString(agent.Spec.AgentImage, DefaultAgentImage)
-	cfg.executorImage = defaultString(agent.Spec.ExecutorImage, DefaultExecutorImage)
-	cfg.attachImage = defaultString(agent.Spec.AttachImage, DefaultAttachImage)
-
-	return cfg
 }
 
 // reconcileDeployment ensures the Deployment exists and is up-to-date.
