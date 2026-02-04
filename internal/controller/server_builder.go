@@ -53,10 +53,7 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		return nil
 	}
 
-	port := serverConfig.Port
-	if port == 0 {
-		port = DefaultServerPort
-	}
+	port := GetServerPort(agent)
 
 	// Build labels for selector and pod template
 	labels := map[string]string{
@@ -227,10 +224,7 @@ func BuildServerService(agent *kubeopenv1alpha1.Agent) *corev1.Service {
 		return nil
 	}
 
-	port := serverConfig.Port
-	if port == 0 {
-		port = DefaultServerPort
-	}
+	port := GetServerPort(agent)
 
 	labels := map[string]string{
 		"app.kubernetes.io/name":       "kubeopencode-server",
