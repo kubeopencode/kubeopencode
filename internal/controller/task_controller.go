@@ -725,17 +725,11 @@ func (r *TaskReconciler) getAgentConfigWithName(ctx context.Context, task *kubeo
 
 	// Get agent image (optional, has default)
 	// This is the OpenCode init container image that copies the binary to /tools
-	agentImage := DefaultAgentImage
-	if agent.Spec.AgentImage != "" {
-		agentImage = agent.Spec.AgentImage
-	}
+	agentImage := defaultString(agent.Spec.AgentImage, DefaultAgentImage)
 
 	// Get executor image (optional, has default)
 	// This is the worker container image where tasks actually run
-	executorImage := DefaultExecutorImage
-	if agent.Spec.ExecutorImage != "" {
-		executorImage = agent.Spec.ExecutorImage
-	}
+	executorImage := defaultString(agent.Spec.ExecutorImage, DefaultExecutorImage)
 
 	// Get workspace directory (required)
 	workspaceDir := agent.Spec.WorkspaceDir
@@ -746,10 +740,7 @@ func (r *TaskReconciler) getAgentConfigWithName(ctx context.Context, task *kubeo
 	}
 
 	// Resolve attach image (only used for Server mode)
-	attachImage := agent.Spec.AttachImage
-	if attachImage == "" {
-		attachImage = DefaultAttachImage
-	}
+	attachImage := defaultString(agent.Spec.AttachImage, DefaultAttachImage)
 
 	return agentConfig{
 		agentImage:         agentImage,
@@ -1228,10 +1219,7 @@ func (r *TaskReconciler) resolveContextContent(ctx context.Context, namespace, n
 		git := item.Git
 
 		// Determine mount path: use specified path or default to ${WORKSPACE_DIR}/git-<context-name>/
-		resolvedMountPath := mountPath
-		if resolvedMountPath == "" {
-			resolvedMountPath = workspaceDir + "/git-" + name
-		}
+		resolvedMountPath := defaultString(mountPath, workspaceDir+"/git-"+name)
 
 		// Determine clone depth: default to 1 (shallow clone)
 		depth := 1
@@ -1240,10 +1228,7 @@ func (r *TaskReconciler) resolveContextContent(ctx context.Context, namespace, n
 		}
 
 		// Determine ref: default to HEAD
-		ref := git.Ref
-		if ref == "" {
-			ref = "HEAD"
-		}
+		ref := defaultString(git.Ref, "HEAD")
 
 		// Get secret name if specified
 		secretName := ""

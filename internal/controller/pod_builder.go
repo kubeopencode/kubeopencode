@@ -124,6 +124,14 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
+// defaultString returns the first string if it's not empty, otherwise the second one.
+func defaultString(val, defaultVal string) string {
+	if val == "" {
+		return defaultVal
+	}
+	return val
+}
+
 const (
 	// DefaultKubeOpenCodeImage is the default kubeopencode container image.
 	// This unified image provides: controller, git-init (Git clone), etc.
@@ -220,10 +228,7 @@ func buildGitInitContainer(gm gitMount, volumeName string, index int, sysCfg sys
 	}
 
 	// Set default ref to HEAD if not specified
-	ref := gm.ref
-	if ref == "" {
-		ref = DefaultGitRef
-	}
+	ref := defaultString(gm.ref, DefaultGitRef)
 
 	envVars := []corev1.EnvVar{
 		{Name: "GIT_REPO", Value: gm.repository},

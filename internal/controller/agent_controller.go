@@ -120,15 +120,9 @@ func (r *AgentReconciler) resolveAgentConfig(agent *kubeopenv1alpha1.Agent) agen
 	}
 
 	// Apply defaults
-	if cfg.agentImage == "" {
-		cfg.agentImage = DefaultAgentImage
-	}
-	if cfg.executorImage == "" {
-		cfg.executorImage = DefaultExecutorImage
-	}
-	if cfg.attachImage == "" {
-		cfg.attachImage = DefaultAttachImage
-	}
+	cfg.agentImage = defaultString(agent.Spec.AgentImage, DefaultAgentImage)
+	cfg.executorImage = defaultString(agent.Spec.ExecutorImage, DefaultExecutorImage)
+	cfg.attachImage = defaultString(agent.Spec.AttachImage, DefaultAttachImage)
 
 	return cfg
 }
