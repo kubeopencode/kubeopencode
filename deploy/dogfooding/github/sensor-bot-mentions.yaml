@@ -38,11 +38,17 @@ spec:
               - ".*@kubeopencode-bot.*"
           # Exclude bot's own comments to prevent recursive triggers
           # Use body.sender.login which is consistent across all GitHub event types
+          # NOTE: Each bot must be a separate filter due to Argo Events bug #3215
+          # (multiple values with != uses OR logic instead of AND)
           - path: body.sender.login
             type: string
             comparator: "!="
             value:
               - kubeopencode-bot[bot]
+          - path: body.sender.login
+            type: string
+            comparator: "!="
+            value:
               - kubeopencode-dev[bot]
   triggers:
     - template:

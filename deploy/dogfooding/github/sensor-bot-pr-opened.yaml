@@ -35,13 +35,14 @@ spec:
             type: string
             value:
               - opened
-          # Exclude Dependabot PRs
+          # Exclude Dependabot and bot PRs
+          # NOTE: Each bot must be a separate filter due to Argo Events bug #3215
+          # (multiple values with != uses OR logic instead of AND)
           - path: body.sender.login
             type: string
             comparator: "!="
             value:
               - dependabot[bot]
-              - kubeopencode-dev[bot]
   triggers:
     - template:
         name: pr-opened
