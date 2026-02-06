@@ -1,0 +1,92 @@
+# Copyright Contributors to the KubeOpenCode project
+# CronJob that creates a daily KubeOpenCode Task for tiny refactoring.
+#
+# This CronJob runs daily at 8:00 AM UTC and creates a Task that:
+# 1. Clones the kubeopencode repository
+# 2. Identifies one small refactoring opportunity
+# 3. Implements the change
+# 4. Runs tests to verify no behavior change
+# 5. Creates a PR if tests pass
+#
+# Prerequisites:
+# 1. base resources applied (Agent, ConfigMaps, Secrets)
+# 2. RBAC permissions for cross-namespace Task creation
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tiny-refactor
+  labels:
+    app.kubernetes.io/name: kubeopencode
+    app.kubernetes.io/component: scheduled
+    app.kubernetes.io/part-of: dogfooding
+spec:
+  # Daily at 8:00 AM UTC
+  schedule: "0 8 * * *"
+  # Keep last 3 successful and 3 failed jobs for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # Concurrency policy: don't start new if previous is still running
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kubeopencode
+        app.kubernetes.io/component: scheduled
+        app.kubernetes.io/part-of: dogfooding
+    spec:
+      # Short timeout since the Job only creates a Task
+      activeDeadlineSeconds: 60
+      template:
+        spec:
+          serviceAccountName: kubeopencode-task-scheduler
+          restartPolicy: OnFailure
+          containers:
+            - name: create-task
+              image: bitnami/kubectl:latest
+              command: [sh, -c]
+              args:
+                - |
+                  kubectl apply -f - <<'EOF'
+                  apiVersion: kubeopencode.io/v1alpha1
+                  kind: Task
+                  metadata:
+                    generateName: tiny-refactor-
+                    namespace: kubeopencode-dogfooding
+                    labels:
+                      app.kubernetes.io/name: kubeopencode
+                      app.kubernetes.io/component: refactor
+                      app.kubernetes.io/part-of: dogfooding
+                      kubeopencode.io/scheduled: "true"
+                    annotations:
+                      kubeopencode.io/triggered-by: "CronJob/tiny-refactor"
+                  spec:
+                    agentRef:
+                      name: refactor
+                      namespace: kubeopencode-dogfooding
+                    description: |
+                      # Daily Tiny Refactor Task
+
+                      ## Objective
+
+                      Identify and implement ONE small, safe refactoring in the kubeopencode
+                      repository that improves code quality without changing behavior.
+
+                      ## Instructions
+
+                      1. Navigate to the cloned `kubeopencode` directory
+                      2. Follow the refactoring guidelines in your context
+                      3. Follow the workflow steps in your context
+                      4. If no safe refactoring is found, follow the no-refactoring instructions
+
+                      ## Important
+
+                      - Make only ONE small change
+                      - Always run `make lint` and `make test`
+                      - Only create PR if ALL tests pass
+                      - Use signoff flag: `git commit -s`
+
+                      ## Context
+
+                      - Trigger: Scheduled CronJob (daily at 8:00 UTC)
+                      - Repository: kubeopencode/kubeopencode
+                  EOF

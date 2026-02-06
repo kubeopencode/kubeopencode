@@ -1,0 +1,103 @@
+# Copyright Contributors to the KubeOpenCode project
+# CronJob that checks for OpenCode updates and creates a PR if needed.
+#
+# This CronJob runs weekly on Monday at 9:00 AM UTC and creates a Task that:
+# 1. Checks the latest OpenCode release on GitHub
+# 2. Compares with the current version in agents/opencode/Dockerfile
+# 3. Updates the Dockerfile if a new version is available
+# 4. Creates a PR with the version bump
+#
+# Prerequisites:
+# 1. base resources applied (Agent, ConfigMaps, Secrets)
+# 2. RBAC permissions for cross-namespace Task creation
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: opencode-update
+  labels:
+    app.kubernetes.io/name: kubeopencode
+    app.kubernetes.io/component: scheduled
+    app.kubernetes.io/part-of: dogfooding
+spec:
+  # Weekly on Monday at 9:00 AM UTC
+  schedule: "0 9 * * 1"
+  # Keep last 3 successful and 3 failed jobs for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # Concurrency policy: don't start new if previous is still running
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kubeopencode
+        app.kubernetes.io/component: scheduled
+        app.kubernetes.io/part-of: dogfooding
+    spec:
+      # Short timeout since the Job only creates a Task
+      activeDeadlineSeconds: 60
+      template:
+        spec:
+          serviceAccountName: kubeopencode-task-scheduler
+          restartPolicy: OnFailure
+          containers:
+            - name: create-task
+              image: bitnami/kubectl:latest
+              command: [sh, -c]
+              args:
+                - |
+                  kubectl apply -f - <<'EOF'
+                  apiVersion: kubeopencode.io/v1alpha1
+                  kind: Task
+                  metadata:
+                    generateName: opencode-update-
+                    namespace: kubeopencode-dogfooding
+                    labels:
+                      app.kubernetes.io/name: kubeopencode
+                      app.kubernetes.io/component: dependency-update
+                      app.kubernetes.io/part-of: dogfooding
+                      kubeopencode.io/scheduled: "true"
+                    annotations:
+                      kubeopencode.io/triggered-by: "CronJob/opencode-update"
+                  spec:
+                    agentRef:
+                      name: refactor
+                      namespace: kubeopencode-dogfooding
+                    description: |
+                      # OpenCode Version Update Task
+
+                      ## Objective
+
+                      Check if there is a new release of OpenCode and update the Dockerfile
+                      if a newer version is available.
+
+                      ## Instructions
+
+                      1. Navigate to the cloned `kubeopencode` directory
+                      2. Check the current OpenCode version in `agents/opencode/Dockerfile`
+                         - Look for the line `ARG OPENCODE_VERSION=x.y.z`
+                      3. Check the latest OpenCode release on GitHub:
+                         ```bash
+                         curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | jq -r '.tag_name'
+                         ```
+                      4. Compare versions:
+                         - If the GitHub version (without 'v' prefix) is newer than the Dockerfile version, proceed
+                         - If versions are the same, exit successfully with message "OpenCode is already up to date"
+                      5. If update needed:
+                         - Update the `ARG OPENCODE_VERSION=x.y.z` line in `agents/opencode/Dockerfile`
+                         - Create a new branch: `chore/bump-opencode-<version>`
+                         - Commit with message: `chore(agents): bump opencode version to <version>`
+                         - Use signoff flag: `git commit -s`
+                         - Push the branch and create a PR
+
+                      ## Important
+
+                      - Only update if there is actually a newer version
+                      - Do not make any other changes to the file
+                      - Use the exact version number from the GitHub release (without 'v' prefix)
+
+                      ## Context
+
+                      - Trigger: Scheduled CronJob (weekly on Monday at 9:00 UTC)
+                      - Repository: kubeopencode/kubeopencode
+                      - File to update: agents/opencode/Dockerfile
+                  EOF

@@ -20,4 +20,4 @@ resources:
 
 # Note: Webhook functionality has been migrated to Argo Events.
 # See ../github/ for EventSource and Sensor configuration.
-# See ../scheduled/ for CronWorkflow configuration.
+# See ../scheduled/ for CronJob configuration.

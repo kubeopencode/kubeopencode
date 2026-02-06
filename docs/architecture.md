@@ -41,7 +41,7 @@ KubeOpenCode focuses on the core Task/Agent abstraction. For advanced features, 
 |---------|------------------------|
 | Workflow orchestration | [Argo Workflows](https://argoproj.github.io/argo-workflows/) |
 | Event-driven triggers | [Argo Events](https://argoproj.github.io/argo-events/) |
-| Scheduled execution | Kubernetes CronJob or Argo CronWorkflows |
+| Scheduled execution | Kubernetes CronJob |
 
 See `deploy/dogfooding/argo-events/` for examples of GitHub webhook integration using Argo Events that creates KubeOpenCode Tasks.
 

@@ -60,11 +60,12 @@ deploy/dogfooding/
 │   ├── eventbus.yaml
 │   ├── eventsource-*.yaml    # GitHub webhook listeners
 │   └── sensor-*.yaml         # Event-to-Task triggers
-├── scheduled/                # Argo Workflows resources (cron-triggered)
+├── scheduled/                # Kubernetes CronJob resources (cron-triggered)
 │   ├── kustomization.yaml
 │   ├── namespace.yaml
 │   ├── rbac.yaml
-│   └── cronworkflow-tiny-refactor.yaml  # Daily refactoring workflow
+│   ├── cronjob-tiny-refactor.yaml       # Daily refactoring CronJob
+│   └── cronjob-opencode-update.yaml     # Weekly OpenCode update CronJob
 └── examples/                 # Example Tasks
 ```
 
@@ -368,56 +369,50 @@ JQ is recommended for annotations because:
 
 5. **Task Cleanup**: Completed Tasks remain in the cluster. Configure `KubeOpenCodeConfig.spec.cleanup` or use Argo's `ttlStrategy`.
 
-## Scheduled Refactoring (CronWorkflow)
+## Scheduled Tasks (CronJob)
 
-KubeOpenCode includes a daily automated refactoring workflow that identifies and implements small code improvements.
+KubeOpenCode includes scheduled CronJobs that create KubeOpenCode Tasks on a cron schedule. No external workflow engine is required — native Kubernetes CronJobs handle scheduling, and KubeOpenCode manages Task lifecycle.
 
-### What is Tiny Refactoring?
+### Available CronJobs
 
-Tiny refactoring consists of small, behavior-preserving code transformations:
-- Remove dead code (unused imports, variables, functions)
-- Improve unclear variable/function names
-- Extract magic numbers to named constants
-- Simplify complex conditionals
-- Extract methods from long functions
+| CronJob | Schedule | Description |
+|---------|----------|-------------|
+| `tiny-refactor` | Daily at 8:00 UTC | Identifies and implements one small refactoring |
+| `opencode-update` | Weekly Monday at 9:00 UTC | Checks for new OpenCode releases and creates update PR |
 
 ### Deploy Scheduled Resources
 
 ```bash
-# Prerequisites: Argo Workflows must be installed
-# See: https://argoproj.github.io/argo-workflows/quick-start/
-
 # Step 1: Apply base resources (includes refactor agent)
 kubectl apply -k deploy/dogfooding/base
 
 # Step 2: Apply scheduled resources
 kubectl apply -k deploy/dogfooding/scheduled
 
-# Step 3: Verify CronWorkflow is created
-kubectl get cronworkflows -n kubeopencode-scheduled
+# Step 3: Verify CronJobs are created
+kubectl get cronjobs -n kubeopencode-scheduled
 ```
 
 ### Manual Trigger (Testing)
 
 ```bash
-# Create a one-off workflow from the CronWorkflow
-argo submit --from cronwf/tiny-refactor -n kubeopencode-scheduled
+# Create a one-off Job from the CronJob
+kubectl create job --from=cronjob/tiny-refactor tiny-refactor-manual -n kubeopencode-scheduled
 
-# Watch the workflow
-argo watch @latest -n kubeopencode-scheduled
+# Check the Job status
+kubectl get jobs -n kubeopencode-scheduled
 
 # Check the created Task
 kubectl get tasks -n kubeopencode-dogfooding -l kubeopencode.io/scheduled=true
 ```
 
-### CronWorkflow Details
+### CronJob Details
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| Schedule | `0 8 * * *` | Daily at 8:00 AM UTC |
-| Concurrency | `Forbid` | Skip if previous run is still active |
-| Timeout | 4 hours | Maximum runtime for AI task |
-| Retention | 3 | Keep last 3 successful/failed workflows |
+| Concurrency | `Forbid` | Skip if previous Job is still active |
+| Job Timeout | 60s | CronJob only creates the Task, does not wait for completion |
+| Retention | 3 | Keep last 3 successful/failed Jobs |
 
 ### Refactor Agent
 
