@@ -136,6 +136,7 @@ See the [Getting Started Guide](docs/getting-started.md) for detailed examples i
 | [Local Development](deploy/local-dev/local-development.md) | Development environment setup |
 | [Helm Chart](charts/kubeopencode/README.md) | Deployment and configuration |
 | [Agent Development](agents/README.md) | Building custom agent images |
+| [Roadmap](docs/roadmap.md) | Planned features and improvements |
 | [ADRs](docs/adr/) | Architecture Decision Records |
 
 ## Contributing
