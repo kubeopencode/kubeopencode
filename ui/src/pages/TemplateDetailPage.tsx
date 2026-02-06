@@ -2,6 +2,9 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import Labels from '../components/Labels';
+import Breadcrumbs from '../components/Breadcrumbs';
+import YamlViewer from '../components/YamlViewer';
+import { DetailSkeleton } from '../components/Skeleton';
 
 function TemplateDetailPage() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
@@ -13,11 +16,7 @@ function TemplateDetailPage() {
   });
 
   if (isLoading) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-primary-600"></div>
-      </div>
-    );
+    return <DetailSkeleton />;
   }
 
   if (error || !template) {
@@ -45,11 +44,11 @@ function TemplateDetailPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <Link to="/templates" className="text-sm text-gray-500 hover:text-gray-700">
-          &larr; Back to Templates
-        </Link>
-      </div>
+      <Breadcrumbs items={[
+        { label: 'Templates', to: '/templates' },
+        { label: namespace! },
+        { label: name! },
+      ]} />
 
       <div className="bg-white shadow-sm rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
@@ -136,6 +135,11 @@ function TemplateDetailPage() {
           </div>
         </div>
       </div>
+
+      <YamlViewer
+        queryKey={['tasktemplate', namespace!, name!]}
+        fetchYaml={() => api.getTaskTemplateYaml(namespace!, name!)}
+      />
     </div>
   );
 }

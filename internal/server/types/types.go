@@ -116,6 +116,33 @@ type AgentResponse struct {
 	Contexts           []ContextItem     `json:"contexts,omitempty"`
 	CreatedAt          time.Time         `json:"createdAt"`
 	Labels             map[string]string `json:"labels,omitempty"`
+	Mode               string            `json:"mode"`
+	Conditions         []Condition       `json:"conditions,omitempty"`
+	ServerStatus       *ServerStatusInfo `json:"serverStatus,omitempty"`
+}
+
+// ServerStatusInfo represents server status for Server-mode agents
+type ServerStatusInfo struct {
+	DeploymentName string `json:"deploymentName,omitempty"`
+	ServiceName    string `json:"serviceName,omitempty"`
+	URL            string `json:"url,omitempty"`
+	ReadyReplicas  int32  `json:"readyReplicas"`
+}
+
+// LogEvent represents a Server-Sent Event for log streaming
+type LogEvent struct {
+	Type     string  `json:"type"`
+	Phase    *string `json:"phase,omitempty"`
+	PodPhase *string `json:"podPhase,omitempty"`
+	Content  *string `json:"content,omitempty"`
+	Message  string  `json:"message,omitempty"`
+}
+
+// HealthResponse represents the health endpoint response
+type HealthResponse struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+	Uptime  string `json:"uptime"`
 }
 
 // AgentListResponse represents a list of agents

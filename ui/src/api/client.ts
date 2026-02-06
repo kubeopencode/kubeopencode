@@ -51,7 +51,9 @@ export interface FilterParams {
   sortOrder?: 'asc' | 'desc';
 }
 
-export interface ListTasksParams extends FilterParams {}
+export interface ListTasksParams extends FilterParams {
+  phase?: string;
+}
 
 export interface TaskTemplateReference {
   name: string;
@@ -84,6 +86,13 @@ export interface QuotaInfo {
   windowSeconds?: number;
 }
 
+export interface ServerStatusInfo {
+  deploymentName?: string;
+  serviceName?: string;
+  url?: string;
+  readyReplicas: number;
+}
+
 export interface Agent {
   name: string;
   namespace: string;
@@ -99,6 +108,9 @@ export interface Agent {
   contexts?: ContextItem[];
   createdAt: string;
   labels?: Record<string, string>;
+  mode: string;
+  conditions?: Condition[];
+  serverStatus?: ServerStatusInfo;
 }
 
 export interface AgentListResponse {
@@ -164,10 +176,23 @@ export const api = {
   getNamespaces: () => request<NamespaceList>('/namespaces'),
 
   // Tasks
+  listAllTasks: (params?: ListTasksParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.phase) searchParams.set('phase', params.phase);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<TaskListResponse>(`/tasks${queryString ? `?${queryString}` : ''}`);
+  },
+
   listTasks: (namespace: string, params?: ListTasksParams) => {
     const searchParams = new URLSearchParams();
     if (params?.name) searchParams.set('name', params.name);
     if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.phase) searchParams.set('phase', params.phase);
     if (params?.limit) searchParams.set('limit', params.limit.toString());
     if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
     if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
@@ -177,6 +202,12 @@ export const api = {
 
   getTask: (namespace: string, name: string) =>
     request<Task>(`/namespaces/${namespace}/tasks/${name}`),
+
+  getTaskYaml: async (namespace: string, name: string): Promise<string> => {
+    const response = await fetch(`${API_BASE}/namespaces/${namespace}/tasks/${name}?output=yaml`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.text();
+  },
 
   createTask: (namespace: string, task: CreateTaskRequest) =>
     request<Task>(`/namespaces/${namespace}/tasks`, {
@@ -228,6 +259,12 @@ export const api = {
   getAgent: (namespace: string, name: string) =>
     request<Agent>(`/namespaces/${namespace}/agents/${name}`),
 
+  getAgentYaml: async (namespace: string, name: string): Promise<string> => {
+    const response = await fetch(`${API_BASE}/namespaces/${namespace}/agents/${name}?output=yaml`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.text();
+  },
+
   // TaskTemplates
   listAllTaskTemplates: (params?: FilterParams) => {
     const searchParams = new URLSearchParams();
@@ -253,6 +290,12 @@ export const api = {
 
   getTaskTemplate: (namespace: string, name: string) =>
     request<TaskTemplate>(`/namespaces/${namespace}/tasktemplates/${name}`),
+
+  getTaskTemplateYaml: async (namespace: string, name: string): Promise<string> => {
+    const response = await fetch(`${API_BASE}/namespaces/${namespace}/tasktemplates/${name}?output=yaml`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.text();
+  },
 };
 
 export default api;

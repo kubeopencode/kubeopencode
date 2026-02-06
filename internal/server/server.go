@@ -4,8 +4,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +23,7 @@ import (
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 	"github.com/kubeopencode/kubeopencode/internal/server/handlers"
 	authmiddleware "github.com/kubeopencode/kubeopencode/internal/server/middleware"
+	servertypes "github.com/kubeopencode/kubeopencode/internal/server/types"
 	"github.com/kubeopencode/kubeopencode/ui"
 )
 
@@ -44,6 +47,10 @@ type Options struct {
 	AuthEnabled bool
 	// AuthAllowAnonymous allows unauthenticated requests when auth is enabled
 	AuthAllowAnonymous bool
+	// CORSAllowedOrigins is a list of allowed CORS origins. Empty means same-origin only.
+	CORSAllowedOrigins []string
+	// APIRateLimit is the maximum number of concurrent API requests. 0 means no limit.
+	APIRateLimit int
 }
 
 // Server is the KubeOpenCode UI server
@@ -53,6 +60,7 @@ type Server struct {
 	k8sClient  client.Client
 	clientset  kubernetes.Interface
 	restConfig *rest.Config
+	startTime  time.Time
 }
 
 // New creates a new Server instance
@@ -79,6 +87,7 @@ func New(opts Options) (*Server, error) {
 		k8sClient:  k8sClient,
 		clientset:  clientset,
 		restConfig: cfg,
+		startTime:  time.Now(),
 	}
 
 	return s, nil
@@ -125,9 +134,14 @@ func (s *Server) setupRoutes() *chi.Mux {
 	// Middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
-	r.Use(chimiddleware.Logger)
+	r.Use(structuredLogger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
+
+	// CORS middleware
+	if len(s.opts.CORSAllowedOrigins) > 0 {
+		r.Use(corsMiddleware(s.opts.CORSAllowedOrigins))
+	}
 
 	// Health endpoints (no auth required)
 	r.Get("/health", s.healthHandler)
@@ -135,6 +149,11 @@ func (s *Server) setupRoutes() *chi.Mux {
 
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
+		// Add rate limiting if configured
+		if s.opts.APIRateLimit > 0 {
+			r.Use(chimiddleware.Throttle(s.opts.APIRateLimit))
+		}
+
 		// Add authentication middleware for API routes
 		authConfig := authmiddleware.AuthConfig{
 			Enabled:        s.opts.AuthEnabled,
@@ -155,7 +174,10 @@ func (s *Server) setupRoutes() *chi.Mux {
 		r.Get("/info", infoHandler.GetInfo)
 		r.Get("/namespaces", infoHandler.ListNamespaces)
 
-		// Task endpoints
+		// Task endpoints (all-namespaces)
+		r.Get("/tasks", taskHandler.ListAll)
+
+		// Task endpoints (namespace-scoped)
 		r.Route("/namespaces/{namespace}/tasks", func(r chi.Router) {
 			r.Get("/", taskHandler.List)
 			r.Post("/", taskHandler.Create)
@@ -188,13 +210,16 @@ func (s *Server) setupRoutes() *chi.Mux {
 	return r
 }
 
-// healthHandler returns 200 if the server is healthy
-func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+// healthHandler returns structured health information
+func (s *Server) healthHandler(w http.ResponseWriter, _ *http.Request) {
+	writeHealthJSON(w, http.StatusOK, servertypes.HealthResponse{
+		Status:  "ok",
+		Version: handlers.Version,
+		Uptime:  time.Since(s.startTime).Truncate(time.Second).String(),
+	})
 }
 
-// readyHandler returns 200 if the server is ready to accept requests
+// readyHandler returns structured readiness information
 func (s *Server) readyHandler(w http.ResponseWriter, r *http.Request) {
 	// Check if we can reach Kubernetes API
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -202,12 +227,26 @@ func (s *Server) readyHandler(w http.ResponseWriter, r *http.Request) {
 
 	var tasks kubeopenv1alpha1.TaskList
 	if err := s.k8sClient.List(ctx, &tasks, client.Limit(1)); err != nil {
-		http.Error(w, "not ready", http.StatusServiceUnavailable)
+		writeHealthJSON(w, http.StatusServiceUnavailable, servertypes.HealthResponse{
+			Status:  "not ready",
+			Version: handlers.Version,
+			Uptime:  time.Since(s.startTime).Truncate(time.Second).String(),
+		})
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	writeHealthJSON(w, http.StatusOK, servertypes.HealthResponse{
+		Status:  "ok",
+		Version: handlers.Version,
+		Uptime:  time.Since(s.startTime).Truncate(time.Second).String(),
+	})
+}
+
+// writeHealthJSON writes a health JSON response
+func writeHealthJSON(w http.ResponseWriter, status int, data servertypes.HealthResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // clientContextKey is the context key for the impersonated client
@@ -244,6 +283,57 @@ func (s *Server) impersonationMiddleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), clientContextKey{}, impersonatedClient)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// structuredLogger is a middleware that logs HTTP requests using controller-runtime's structured logger.
+func structuredLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ww := chimiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		defer func() {
+			log.V(1).Info("http request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", ww.Status(),
+				"bytes", ww.BytesWritten(),
+				"duration", time.Since(start).String(),
+				"requestId", chimiddleware.GetReqID(r.Context()),
+			)
+		}()
+		next.ServeHTTP(ww, r)
+	})
+}
+
+// corsMiddleware returns a middleware that handles CORS headers for the given allowed origins.
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	originSet := make(map[string]bool, len(allowedOrigins))
+	allowAll := false
+	for _, o := range allowedOrigins {
+		if o == "*" {
+			allowAll = true
+		}
+		originSet[o] = true
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if origin != "" && (allowAll || originSet[origin]) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				w.Header().Set("Access-Control-Max-Age", "300")
+				w.Header().Set("Vary", strings.Join([]string{w.Header().Get("Vary"), "Origin"}, ", "))
+			}
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // GetClientFromContext retrieves the Kubernetes client from the request context

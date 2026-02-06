@@ -1,21 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import StatusBadge from '../components/StatusBadge';
 import Labels from '../components/Labels';
 import LogViewer from '../components/LogViewer';
+import TimeAgo from '../components/TimeAgo';
+import ConfirmDialog from '../components/ConfirmDialog';
+import Breadcrumbs from '../components/Breadcrumbs';
+import YamlViewer from '../components/YamlViewer';
+import { DetailSkeleton } from '../components/Skeleton';
+import { useToast } from '../contexts/ToastContext';
 
 function TaskDetailPage() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { addToast } = useToast();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteTask(namespace!, name!),
     onSuccess: () => {
+      addToast(`Task "${name}" deleted successfully`, 'success');
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       navigate(`/tasks?namespace=${namespace}`);
+    },
+    onError: (err: Error) => {
+      addToast(`Failed to delete task: ${err.message}`, 'error');
     },
   });
 
@@ -29,16 +41,16 @@ function TaskDetailPage() {
   const stopMutation = useMutation({
     mutationFn: () => api.stopTask(namespace!, name!),
     onSuccess: () => {
+      addToast(`Task "${name}" stop requested`, 'success');
       queryClient.invalidateQueries({ queryKey: ['task', namespace, name] });
+    },
+    onError: (err: Error) => {
+      addToast(`Failed to stop task: ${err.message}`, 'error');
     },
   });
 
   if (isLoading) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-primary-600"></div>
-      </div>
-    );
+    return <DetailSkeleton />;
   }
 
   // If delete is in progress or succeeded, don't show error - navigation will happen
@@ -68,7 +80,7 @@ function TaskDetailPage() {
           to={`/tasks?namespace=${namespace}`}
           className="inline-flex items-center px-4 py-2 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200"
         >
-          &larr; Back to Tasks
+          Back to Tasks
         </Link>
       </div>
     );
@@ -76,11 +88,11 @@ function TaskDetailPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <Link to={`/tasks?namespace=${namespace}`} className="text-sm text-gray-500 hover:text-gray-700">
-          &larr; Back to Tasks
-        </Link>
-      </div>
+      <Breadcrumbs items={[
+        { label: 'Tasks', to: `/tasks?namespace=${namespace}` },
+        { label: namespace!, to: `/tasks?namespace=${namespace}` },
+        { label: name! },
+      ]} />
 
       <div className="bg-white shadow-sm rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
@@ -100,12 +112,14 @@ function TaskDetailPage() {
                   {stopMutation.isPending ? 'Stopping...' : 'Stop'}
                 </button>
               )}
+              <Link
+                to={`/tasks/create?namespace=${namespace}&rerun=${name}`}
+                className="px-3 py-1 text-sm font-medium text-primary-700 bg-primary-100 rounded-md hover:bg-primary-200"
+              >
+                Rerun
+              </Link>
               <button
-                onClick={() => {
-                  if (confirm('Are you sure you want to delete this task?')) {
-                    deleteMutation.mutate();
-                  }
-                }}
+                onClick={() => setShowDeleteDialog(true)}
                 disabled={deleteMutation.isPending}
                 className="px-3 py-1 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200"
               >
@@ -139,13 +153,13 @@ function TaskDetailPage() {
             <div>
               <dt className="text-sm font-medium text-gray-500">Start Time</dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {task.startTime ? new Date(task.startTime).toLocaleString() : '-'}
+                {task.startTime ? <TimeAgo date={task.startTime} /> : '-'}
               </dd>
             </div>
             <div>
               <dt className="text-sm font-medium text-gray-500">Completion Time</dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {task.completionTime ? new Date(task.completionTime).toLocaleString() : '-'}
+                {task.completionTime ? <TimeAgo date={task.completionTime} /> : '-'}
               </dd>
             </div>
             {task.podName && (
@@ -207,6 +221,11 @@ function TaskDetailPage() {
         </div>
       </div>
 
+      <YamlViewer
+        queryKey={['task', namespace!, name!]}
+        fetchYaml={() => api.getTaskYaml(namespace!, name!)}
+      />
+
       {/* Log Viewer - show when task has a pod */}
       {(task.phase === 'Running' || task.phase === 'Completed' || task.phase === 'Failed') && (
         <div className="mt-6">
@@ -218,6 +237,19 @@ function TaskDetailPage() {
           />
         </div>
       )}
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete Task"
+        message={`Are you sure you want to delete task "${name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => {
+          setShowDeleteDialog(false);
+          deleteMutation.mutate();
+        }}
+        onCancel={() => setShowDeleteDialog(false)}
+      />
     </div>
   );
 }

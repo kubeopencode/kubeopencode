@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import Labels from '../components/Labels';
+import Skeleton from '../components/Skeleton';
 import ResourceFilter from '../components/ResourceFilter';
 import { useFilterState } from '../hooks/useFilterState';
 import { getNamespaceCookie, setNamespaceCookie } from '../utils/cookies';
@@ -85,9 +86,16 @@ function AgentsPage() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-primary-600"></div>
-          <p className="mt-2 text-sm text-gray-500">Loading agents...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white shadow-sm rounded-lg p-6">
+              <Skeleton className="h-5 w-32 mb-2" />
+              <Skeleton className="h-4 w-20 mb-4" />
+              <Skeleton className="h-4 w-full mb-2" />
+              <Skeleton className="h-4 w-full mb-2" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ))}
         </div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">

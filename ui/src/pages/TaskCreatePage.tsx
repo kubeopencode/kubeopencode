@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api, { CreateTaskRequest, Agent } from '../api/client';
+import { useToast } from '../contexts/ToastContext';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 // Check if a namespace matches a glob pattern
 function matchGlob(pattern: string, namespace: string): boolean {
@@ -26,6 +28,7 @@ function isAgentAvailableForNamespace(agent: Agent, namespace: string): boolean 
 
 function TaskCreatePage() {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const [searchParams] = useSearchParams();
   const [namespace, setNamespace] = useState('default');
   const [name, setName] = useState('');
@@ -49,6 +52,15 @@ function TaskCreatePage() {
     queryFn: () => api.listAllTaskTemplates(),
   });
 
+  // Query for rerun task data
+  const rerunTaskName = searchParams.get('rerun');
+  const rerunNamespace = searchParams.get('namespace') || 'default';
+  const { data: rerunTask } = useQuery({
+    queryKey: ['task', rerunNamespace, rerunTaskName],
+    queryFn: () => api.getTask(rerunNamespace, rerunTaskName!),
+    enabled: !!rerunTaskName,
+  });
+
   // Parse query params for pre-selection
   useEffect(() => {
     const namespaceParam = searchParams.get('namespace');
@@ -65,6 +77,19 @@ function TaskCreatePage() {
       setSelectedAgent(agentParam);
     }
   }, [searchParams]);
+
+  // Pre-fill from rerun task
+  useEffect(() => {
+    if (rerunTask) {
+      if (rerunTask.description) {
+        setDescription(rerunTask.description);
+      }
+      if (rerunTask.agentRef) {
+        const agentKey = `${rerunTask.agentRef.namespace || rerunTask.namespace}/${rerunTask.agentRef.name}`;
+        setSelectedAgent(agentKey);
+      }
+    }
+  }, [rerunTask]);
 
   // Filter agents based on allowedNamespaces
   const availableAgents = useMemo(() => {
@@ -97,7 +122,11 @@ function TaskCreatePage() {
   const createMutation = useMutation({
     mutationFn: (task: CreateTaskRequest) => api.createTask(namespace, task),
     onSuccess: (task) => {
+      addToast(`Task "${task.name}" created successfully`, 'success');
       navigate(`/tasks/${task.namespace}/${task.name}`);
+    },
+    onError: (err: Error) => {
+      addToast(`Failed to create task: ${err.message}`, 'error');
     },
   });
 
@@ -156,11 +185,10 @@ function TaskCreatePage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <Link to={`/tasks?namespace=${namespace}`} className="text-sm text-gray-500 hover:text-gray-700">
-          &larr; Back to Tasks
-        </Link>
-      </div>
+      <Breadcrumbs items={[
+        { label: 'Tasks', to: `/tasks?namespace=${namespace}` },
+        { label: 'Create Task' },
+      ]} />
 
       <div className="bg-white shadow-sm rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">

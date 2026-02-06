@@ -173,11 +173,16 @@ func (h *AgentHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, agentToResponse(&agent))
+	writeResourceOutput(w, r, http.StatusOK, &agent, agentToResponse(&agent))
 }
 
 // agentToResponse converts an Agent CRD to an API response
 func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
+	mode := "Pod"
+	if agent.Spec.ServerConfig != nil {
+		mode = "Server"
+	}
+
 	resp := types.AgentResponse{
 		Name:              agent.Name,
 		Namespace:         agent.Namespace,
@@ -189,6 +194,7 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		AllowedNamespaces: agent.Spec.AllowedNamespaces,
 		CreatedAt:         agent.CreationTimestamp.Time,
 		Labels:            agent.Labels,
+		Mode:              mode,
 	}
 
 	if agent.Spec.MaxConcurrentTasks != nil {
@@ -199,6 +205,26 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		resp.Quota = &types.QuotaInfo{
 			MaxTaskStarts: agent.Spec.Quota.MaxTaskStarts,
 			WindowSeconds: agent.Spec.Quota.WindowSeconds,
+		}
+	}
+
+	// Add conditions
+	for _, c := range agent.Status.Conditions {
+		resp.Conditions = append(resp.Conditions, types.Condition{
+			Type:    c.Type,
+			Status:  string(c.Status),
+			Reason:  c.Reason,
+			Message: c.Message,
+		})
+	}
+
+	// Add server status if in Server mode
+	if agent.Status.ServerStatus != nil {
+		resp.ServerStatus = &types.ServerStatusInfo{
+			DeploymentName: agent.Status.ServerStatus.DeploymentName,
+			ServiceName:    agent.Status.ServerStatus.ServiceName,
+			URL:            agent.Status.ServerStatus.URL,
+			ReadyReplicas:  agent.Status.ServerStatus.ReadyReplicas,
 		}
 	}
 

@@ -285,6 +285,17 @@ spec:
                   required:
                   - type
                   type: object
+                  x-kubernetes-validations:
+                  - message: text is required when type is Text
+                    rule: self.type != 'Text' || self.text != ''
+                  - message: configMap is required when type is ConfigMap
+                    rule: self.type != 'ConfigMap' || has(self.configMap)
+                  - message: git is required when type is Git
+                    rule: self.type != 'Git' || has(self.git)
+                  - message: url is required when type is URL
+                    rule: self.type != 'URL' || has(self.url)
+                  - message: mountPath is required for Git context type
+                    rule: self.type != 'Git' || self.mountPath != ''
                 type: array
               description:
                 description: |-

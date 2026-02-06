@@ -11,8 +11,9 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope="Namespaced",shortName=ag
-// +kubebuilder:printcolumn:JSONPath=`.spec.agentImage`,name="Image",type=string,priority=1
+// +kubebuilder:printcolumn:JSONPath=`.spec.executorImage`,name="Image",type=string,priority=1
 // +kubebuilder:printcolumn:JSONPath=`.spec.serviceAccountName`,name="ServiceAccount",type=string
+// +kubebuilder:printcolumn:JSONPath=`.spec.maxConcurrentTasks`,name="MaxTasks",type=integer,priority=1
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 
 // Agent defines the AI agent configuration for task execution.
@@ -412,6 +413,7 @@ type PodScheduling struct {
 // 2. No Key specified + MountPath: entire Secret as directory (each key becomes a file)
 // 3. Key specified + Env: single key as environment variable
 // 4. Key specified + MountPath: single key as file
+// +kubebuilder:validation:XValidation:rule="!has(self.env) || has(self.secretRef.key)",message="env can only be set when secretRef.key is specified"
 type Credential struct {
 	// Name is a descriptive name for this credential (for documentation purposes).
 	// +required
@@ -460,33 +462,6 @@ type SecretReference struct {
 	// When Key is omitted, the Env field on the Credential is ignored.
 	// +optional
 	Key *string `json:"key,omitempty"`
-}
-
-// ConfigMapKeySelector selects a key of a ConfigMap.
-type ConfigMapKeySelector struct {
-	// Name of the ConfigMap
-	// +required
-	Name string `json:"name"`
-
-	// Key of the ConfigMap to select from
-	// +required
-	Key string `json:"key"`
-
-	// Specify whether the ConfigMap must be defined
-	// +optional
-	Optional *bool `json:"optional,omitempty"`
-}
-
-// ConfigMapReference references an entire ConfigMap.
-// Used with DirPath to mount all keys as files in a directory.
-type ConfigMapReference struct {
-	// Name of the ConfigMap
-	// +required
-	Name string `json:"name"`
-
-	// Specify whether the ConfigMap must be defined
-	// +optional
-	Optional *bool `json:"optional,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

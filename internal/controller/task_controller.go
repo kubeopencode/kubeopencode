@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -101,7 +102,8 @@ To get Task status:
 // TaskReconciler reconciles a Task object
 type TaskReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=kubeopencode.io,resources=tasks,verbs=get;list;watch;create;update;patch;delete
@@ -113,6 +115,7 @@ type TaskReconciler struct {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -268,6 +271,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		if !hasCapacity {
 			// Agent is at capacity, queue the task
 			log.Info("agent at capacity, queueing task", "agent", agentName, "maxConcurrent", *agentConfig.maxConcurrentTasks)
+			r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "Queued", "Queued", "Agent %q at capacity (max: %d), task queued", agentName, *agentConfig.maxConcurrentTasks)
 
 			task.Status.ObservedGeneration = task.Generation
 			task.Status.Phase = kubeopenv1alpha1.TaskPhaseQueued
@@ -314,6 +318,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 				"agent", agentName,
 				"maxTaskStarts", agentConfig.quota.MaxTaskStarts,
 				"windowSeconds", agentConfig.quota.WindowSeconds)
+			r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "QuotaExceeded", "Queued", "Agent %q quota exceeded (max: %d per %ds), task queued", agentName, agentConfig.quota.MaxTaskStarts, agentConfig.quota.WindowSeconds)
 
 			task.Status.ObservedGeneration = task.Generation
 			task.Status.Phase = kubeopenv1alpha1.TaskPhaseQueued
@@ -565,6 +570,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 
 	if err := r.Create(ctx, pod); err != nil {
 		log.Error(err, "unable to create Pod", "pod", podName, "namespace", agentNamespace)
+		r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "PodCreationFailed", "CreatePod", "Failed to create pod: %v", err)
 
 		// Rollback quota record if it was recorded
 		if quotaAgent != nil {
@@ -622,6 +628,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	}
 
 	log.Info("initialized Task", "pod", podName, "image", agentConfig.agentImage)
+	r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "PodCreated", "CreatePod", "Created pod %s in namespace %s", podName, agentNamespace)
 	return ctrl.Result{}, nil
 }
 
@@ -658,6 +665,8 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
 		log.Info("task completed", "pod", task.Status.PodName)
+		r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "Completed", "Completed", "Task completed successfully")
+		r.recordTaskDuration(task)
 		return r.Status().Update(ctx, task)
 	case corev1.PodFailed:
 		task.Status.ObservedGeneration = task.Generation
@@ -665,6 +674,8 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
 		log.Info("task failed", "pod", task.Status.PodName)
+		r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Failed", "Failed", "Task failed")
+		r.recordTaskDuration(task)
 		return r.Status().Update(ctx, task)
 	}
 
@@ -1330,6 +1341,18 @@ func (r *TaskReconciler) checkAgentCapacity(ctx context.Context, namespace, agen
 
 	log.V(1).Info("agent capacity check", "agent", agentName, "running", runningCount, "max", maxConcurrent)
 
+	// Record capacity metric
+	AgentCapacity.WithLabelValues(agentName, namespace).Set(float64(maxConcurrent - runningCount))
+
+	// Count queued tasks for this agent
+	queuedCount := int32(0)
+	for i := range taskList.Items {
+		if taskList.Items[i].Status.Phase == kubeopenv1alpha1.TaskPhaseQueued {
+			queuedCount++
+		}
+	}
+	AgentQueueLength.WithLabelValues(agentName, namespace).Set(float64(queuedCount))
+
 	return runningCount < maxConcurrent, nil
 }
 
@@ -1543,6 +1566,8 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubeopenv1alpha1.
 		Reason:  kubeopenv1alpha1.ReasonUserStopped,
 		Message: "Task stopped by user via kubeopencode.io/stop annotation",
 	})
+
+	r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "Stopped", "Stopped", "Task stopped by user")
 
 	if err := r.Status().Update(ctx, task); err != nil {
 		log.Error(err, "failed to update task status")
@@ -1928,6 +1953,23 @@ func (r *TaskReconciler) removeTaskStart(ctx context.Context, agent *kubeopenv1a
 	}
 
 	return fmt.Errorf("failed to remove task start after %d retries", maxRetries)
+}
+
+// recordTaskDuration records the task duration in the Prometheus histogram.
+func (r *TaskReconciler) recordTaskDuration(task *kubeopenv1alpha1.Task) {
+	if task.Status.StartTime == nil || task.Status.CompletionTime == nil {
+		return
+	}
+	duration := task.Status.CompletionTime.Time.Sub(task.Status.StartTime.Time).Seconds()
+	agentName := ""
+	agentNS := task.Namespace
+	if task.Status.AgentRef != nil {
+		agentName = task.Status.AgentRef.Name
+		if task.Status.AgentRef.Namespace != "" {
+			agentNS = task.Status.AgentRef.Namespace
+		}
+	}
+	TaskDurationSeconds.WithLabelValues(agentNS, agentName).Observe(duration)
 }
 
 // podToTaskMapper maps Pod events to Task reconciliation requests.

@@ -3,6 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import Labels from '../components/Labels';
+import Breadcrumbs from '../components/Breadcrumbs';
+import YamlViewer from '../components/YamlViewer';
+import { DetailSkeleton } from '../components/Skeleton';
 
 function AgentDetailPage() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
@@ -14,11 +17,7 @@ function AgentDetailPage() {
   });
 
   if (isLoading) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-primary-600"></div>
-      </div>
-    );
+    return <DetailSkeleton />;
   }
 
   if (error || !agent) {
@@ -46,16 +45,27 @@ function AgentDetailPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <Link to="/agents" className="text-sm text-gray-500 hover:text-gray-700">
-          &larr; Back to Agents
-        </Link>
-      </div>
+      <Breadcrumbs items={[
+        { label: 'Agents', to: '/agents' },
+        { label: namespace! },
+        { label: name! },
+      ]} />
 
       <div className="bg-white shadow-sm rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900">{agent.name}</h2>
-          <p className="text-sm text-gray-500">{agent.namespace}</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">{agent.name}</h2>
+              <p className="text-sm text-gray-500">{agent.namespace}</p>
+            </div>
+            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+              agent.mode === 'Server'
+                ? 'bg-purple-100 text-purple-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {agent.mode} Mode
+            </span>
+          </div>
         </div>
 
         <div className="px-6 py-4 space-y-6">
@@ -113,6 +123,60 @@ function AgentDetailPage() {
                   Maximum {agent.quota.maxTaskStarts} task starts per{' '}
                   {agent.quota.windowSeconds} seconds
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* Server Status (Server mode only) */}
+          {agent.serverStatus && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Server Status</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Deployment</dt>
+                  <dd className="mt-1 text-sm text-gray-900 font-mono">{agent.serverStatus.deploymentName}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Service</dt>
+                  <dd className="mt-1 text-sm text-gray-900 font-mono">{agent.serverStatus.serviceName}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">URL</dt>
+                  <dd className="mt-1 text-sm text-gray-900 font-mono break-all">{agent.serverStatus.url}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Ready Replicas</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{agent.serverStatus.readyReplicas}</dd>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Conditions */}
+          {agent.conditions && agent.conditions.length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Conditions</h3>
+              <div className="space-y-2">
+                {agent.conditions.map((condition, idx) => (
+                  <div key={idx} className="bg-gray-50 rounded-md p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-gray-900">{condition.type}</span>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        condition.status === 'True'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {condition.status}
+                      </span>
+                    </div>
+                    {condition.reason && (
+                      <p className="text-sm text-gray-600 mt-1">Reason: {condition.reason}</p>
+                    )}
+                    {condition.message && (
+                      <p className="text-sm text-gray-500 mt-1">{condition.message}</p>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -205,6 +269,11 @@ function AgentDetailPage() {
           </div>
         </div>
       </div>
+
+      <YamlViewer
+        queryKey={['agent', namespace!, name!]}
+        fetchYaml={() => api.getAgentYaml(namespace!, name!)}
+      />
     </div>
   );
 }

@@ -152,6 +152,11 @@ type URLSecretReference struct {
 
 // ContextItem defines context with content and mount path.
 // Used directly in Task/Agent specs to provide additional context for task execution.
+// +kubebuilder:validation:XValidation:rule="self.type != 'Text' || self.text != ”",message="text is required when type is Text"
+// +kubebuilder:validation:XValidation:rule="self.type != 'ConfigMap' || has(self.configMap)",message="configMap is required when type is ConfigMap"
+// +kubebuilder:validation:XValidation:rule="self.type != 'Git' || has(self.git)",message="git is required when type is Git"
+// +kubebuilder:validation:XValidation:rule="self.type != 'URL' || has(self.url)",message="url is required when type is URL"
+// +kubebuilder:validation:XValidation:rule="self.type != 'Git' || self.mountPath != ”",message="mountPath is required for Git context type"
 type ContextItem struct {
 	// === Common Fields ===
 

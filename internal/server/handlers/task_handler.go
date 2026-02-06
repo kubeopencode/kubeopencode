@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -47,9 +48,19 @@ func (h *TaskHandler) getClient(ctx context.Context) client.Client {
 	return h.defaultClient
 }
 
+// ListAll returns all tasks across all namespaces with filtering and pagination
+func (h *TaskHandler) ListAll(w http.ResponseWriter, r *http.Request) {
+	h.listTasks(w, r, "")
+}
+
 // List returns all tasks in a namespace with sorting, filtering, and pagination
 func (h *TaskHandler) List(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
+	h.listTasks(w, r, namespace)
+}
+
+// listTasks is the shared implementation for List and ListAll
+func (h *TaskHandler) listTasks(w http.ResponseWriter, r *http.Request, namespace string) {
 	ctx := r.Context()
 	k8sClient := h.getClient(ctx)
 
@@ -68,12 +79,16 @@ func (h *TaskHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Filter by name (in-memory)
+	// Filter by name and phase (in-memory)
 	var filteredItems []kubeopenv1alpha1.Task
 	for _, task := range taskList.Items {
-		if MatchesNameFilter(task.Name, filterOpts.Name) {
-			filteredItems = append(filteredItems, task)
+		if !MatchesNameFilter(task.Name, filterOpts.Name) {
+			continue
 		}
+		if filterOpts.Phase != "" && !strings.EqualFold(string(task.Status.Phase), filterOpts.Phase) {
+			continue
+		}
+		filteredItems = append(filteredItems, task)
 	}
 
 	// Sort by CreationTimestamp
@@ -124,7 +139,7 @@ func (h *TaskHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, taskToResponse(&task))
+	writeResourceOutput(w, r, http.StatusOK, &task, taskToResponse(&task))
 }
 
 // Create creates a new task
@@ -304,14 +319,14 @@ func (h *TaskHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	// Check if pod exists
 	var pod corev1.Pod
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: podNamespace, Name: task.Status.PodName}, &pod); err != nil {
-		fmt.Fprintf(w, "data: {\"type\": \"error\", \"message\": \"Pod not found: %s\"}\n\n", err.Error())
-		flusher.Flush()
+		writeSSEEvent(w, flusher, types.LogEvent{Type: "error", Message: fmt.Sprintf("Pod not found: %s", err.Error())})
 		return
 	}
 
 	// Send initial status
-	fmt.Fprintf(w, "data: {\"type\": \"status\", \"phase\": \"%s\", \"podPhase\": \"%s\"}\n\n", task.Status.Phase, pod.Status.Phase)
-	flusher.Flush()
+	phase := string(task.Status.Phase)
+	podPhase := string(pod.Status.Phase)
+	writeSSEEvent(w, flusher, types.LogEvent{Type: "status", Phase: &phase, PodPhase: &podPhase})
 
 	// Stream pod logs using clientset
 	h.streamPodLogs(ctx, w, flusher, podNamespace, task.Status.PodName, container, follow, namespace, name)
@@ -334,8 +349,7 @@ func (h *TaskHandler) streamPodLogs(ctx context.Context, w http.ResponseWriter, 
 		req = h.defaultClientset.CoreV1().Pods(podNamespace).GetLogs(podName, logOptions)
 		stream, err = req.Stream(ctx)
 		if err != nil {
-			fmt.Fprintf(w, "data: {\"type\": \"error\", \"message\": \"Failed to get logs: %s\"}\n\n", err.Error())
-			flusher.Flush()
+			writeSSEEvent(w, flusher, types.LogEvent{Type: "error", Message: fmt.Sprintf("Failed to get logs: %s", err.Error())})
 			return
 		}
 	}
@@ -354,27 +368,32 @@ func (h *TaskHandler) streamPodLogs(ctx context.Context, w http.ResponseWriter, 
 					// Check if task is completed
 					k8sClient := h.getClient(ctx)
 					var task kubeopenv1alpha1.Task
+					phase := "Unknown"
 					if getErr := k8sClient.Get(ctx, client.ObjectKey{Namespace: taskNamespace, Name: taskName}, &task); getErr == nil {
-						fmt.Fprintf(w, "data: {\"type\": \"complete\", \"phase\": \"%s\"}\n\n", task.Status.Phase)
-					} else {
-						fmt.Fprintf(w, "data: {\"type\": \"complete\", \"phase\": \"Unknown\"}\n\n")
+						phase = string(task.Status.Phase)
 					}
-					flusher.Flush()
+					writeSSEEvent(w, flusher, types.LogEvent{Type: "complete", Phase: &phase})
 					return
 				}
-				fmt.Fprintf(w, "data: {\"type\": \"error\", \"message\": \"Read error: %s\"}\n\n", err.Error())
-				flusher.Flush()
+				writeSSEEvent(w, flusher, types.LogEvent{Type: "error", Message: fmt.Sprintf("Read error: %s", err.Error())})
 				return
 			}
 
 			// Send log line as SSE event
-			// Escape the log content for JSON
 			logContent := string(line)
-			escapedContent, _ := json.Marshal(logContent)
-			fmt.Fprintf(w, "data: {\"type\": \"log\", \"content\": %s}\n\n", escapedContent)
-			flusher.Flush()
+			writeSSEEvent(w, flusher, types.LogEvent{Type: "log", Content: &logContent})
 		}
 	}
+}
+
+// writeSSEEvent marshals a LogEvent to JSON and writes it as an SSE data event
+func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event types.LogEvent) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
 }
 
 // taskToResponse converts a Task CRD to an API response

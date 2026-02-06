@@ -5,8 +5,10 @@ interface StatusBadgeProps {
 }
 
 function StatusBadge({ phase }: StatusBadgeProps) {
-  const getStatusClass = (phase: string) => {
-    switch (phase.toLowerCase()) {
+  const lowerPhase = phase.toLowerCase();
+
+  const getStatusClass = () => {
+    switch (lowerPhase) {
       case 'pending':
         return 'bg-gray-100 text-gray-800';
       case 'queued':
@@ -22,12 +24,34 @@ function StatusBadge({ phase }: StatusBadgeProps) {
     }
   };
 
+  const getDotClass = () => {
+    switch (lowerPhase) {
+      case 'running':
+        return 'bg-blue-500';
+      case 'queued':
+        return 'bg-yellow-500';
+      default:
+        return '';
+    }
+  };
+
+  const isActive = lowerPhase === 'running' || lowerPhase === 'queued';
+  const dotClass = getDotClass();
+
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClass(
-        phase
-      )}`}
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClass()}`}
     >
+      {isActive && (
+        <span className="relative mr-1.5 flex h-2 w-2">
+          <span
+            className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${dotClass}`}
+          />
+          <span
+            className={`relative inline-flex rounded-full h-2 w-2 ${dotClass}`}
+          />
+        </span>
+      )}
       {phase}
     </span>
   );

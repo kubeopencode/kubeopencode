@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
+import DashboardPage from './pages/DashboardPage';
 import TasksPage from './pages/TasksPage';
 import TaskDetailPage from './pages/TaskDetailPage';
 import TaskCreatePage from './pages/TaskCreatePage';
@@ -13,7 +14,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={<Navigate to="/tasks" replace />} />
+          <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="tasks/create" element={<TaskCreatePage />} />
           <Route path="tasks/:namespace/:name" element={<TaskDetailPage />} />

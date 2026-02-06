@@ -14,6 +14,7 @@ import (
 // FilterOptions holds parsed filter parameters from HTTP request
 type FilterOptions struct {
 	Name          string
+	Phase         string
 	LabelSelector labels.Selector
 	Limit         int
 	Offset        int
@@ -30,6 +31,9 @@ func ParseFilterOptions(r *http.Request) (*FilterOptions, error) {
 
 	// Parse name filter
 	opts.Name = r.URL.Query().Get("name")
+
+	// Parse phase filter
+	opts.Phase = r.URL.Query().Get("phase")
 
 	// Parse label selector (format: key1=value1,key2=value2)
 	if labelStr := r.URL.Query().Get("labelSelector"); labelStr != "" {

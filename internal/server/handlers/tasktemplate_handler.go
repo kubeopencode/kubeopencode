@@ -171,7 +171,7 @@ func (h *TaskTemplateHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, taskTemplateToResponse(&tt))
+	writeResourceOutput(w, r, http.StatusOK, &tt, taskTemplateToResponse(&tt))
 }
 
 // Create creates a new TaskTemplate

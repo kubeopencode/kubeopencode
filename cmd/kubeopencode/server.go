@@ -36,10 +36,12 @@ Example:
 
 // Server flags
 var (
-	serverAddress       string
-	serverBaseURL       string
-	serverAuthEnabled   bool
-	serverAuthAllowAnon bool
+	serverAddress        string
+	serverBaseURL        string
+	serverAuthEnabled    bool
+	serverAuthAllowAnon  bool
+	serverCORSAllowedOri []string
+	serverAPIRateLimit   int
 )
 
 func init() {
@@ -51,6 +53,10 @@ func init() {
 		"Enable token-based authentication for API requests")
 	serverCmd.Flags().BoolVar(&serverAuthAllowAnon, "auth-allow-anonymous", true,
 		"Allow anonymous requests when auth is enabled (for development)")
+	serverCmd.Flags().StringSliceVar(&serverCORSAllowedOri, "cors-allowed-origins", nil,
+		"Comma-separated list of allowed CORS origins (e.g., 'http://localhost:3000,https://dashboard.example.com')")
+	serverCmd.Flags().IntVar(&serverAPIRateLimit, "api-rate-limit", 0,
+		"Maximum number of concurrent API requests (0 = unlimited)")
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -68,6 +74,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 		BaseURL:            serverBaseURL,
 		AuthEnabled:        serverAuthEnabled,
 		AuthAllowAnonymous: serverAuthAllowAnon,
+		CORSAllowedOrigins: serverCORSAllowedOri,
+		APIRateLimit:       serverAPIRateLimit,
 	}
 
 	// Create the server
