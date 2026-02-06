@@ -5,8 +5,6 @@
 package controller
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -448,11 +446,3 @@ var _ = Describe("DeploymentBuilder", func() {
 		})
 	})
 })
-
-// Helper to generate unique agent names for tests
-var agentCounter = 0
-
-func uniqueAgentName(prefix string) string {
-	agentCounter++
-	return fmt.Sprintf("%s-%d", prefix, agentCounter)
-}
