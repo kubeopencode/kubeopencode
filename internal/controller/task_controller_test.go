@@ -1349,69 +1349,33 @@ var _ = Describe("TaskController", func() {
 
 	Context("Context validation", func() {
 		It("Should fail when inline Git context has no mountPath", func() {
-			taskName := "test-task-inline-git-no-mountpath"
 			description := "Test inline Git validation"
-
-			By("Creating Agent")
-			agent := &kubeopenv1alpha1.Agent{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "agent-inline-git-validation",
-					Namespace: taskNamespace,
-				},
-				Spec: kubeopenv1alpha1.AgentSpec{
-					AgentImage:         "test-agent:v1.0.0",
-					WorkspaceDir:       "/workspace",
-					ServiceAccountName: "default",
-				},
-			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
 			By("Creating Task with inline Git context without mountPath")
 			task := &kubeopenv1alpha1.Task{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      taskName,
+					Name:      "test-task-inline-git-no-mountpath",
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
 					Description: &description,
-					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agent.Name},
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: testAgentName},
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
 							Type: kubeopenv1alpha1.ContextTypeGit,
 							Git: &kubeopenv1alpha1.GitContext{
 								Repository: "https://github.com/example/repo",
 							},
-							// No MountPath - should fail validation
+							// No MountPath - should be rejected by CRD CEL validation
 						},
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
-			By("Checking Task status is Failed with validation error")
-			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
-			createdTask := &kubeopenv1alpha1.Task{}
-			Eventually(func() kubeopenv1alpha1.TaskPhase {
-				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
-					return ""
-				}
-				return createdTask.Status.Phase
-			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseFailed))
-
-			By("Verifying error message mentions mountPath requirement")
-			var readyCondition *metav1.Condition
-			for i := range createdTask.Status.Conditions {
-				if createdTask.Status.Conditions[i].Type == kubeopenv1alpha1.ConditionTypeReady {
-					readyCondition = &createdTask.Status.Conditions[i]
-					break
-				}
-			}
-			Expect(readyCondition).ShouldNot(BeNil())
-			Expect(readyCondition.Message).Should(ContainSubstring("git context requires mountPath"))
-
-			By("Cleaning up")
-			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
-			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+			By("Verifying CRD validation rejects the Task")
+			err := k8sClient.Create(ctx, task)
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring("mountPath"))
 		})
 
 		It("Should fail when multiple contexts use same mountPath", func() {
