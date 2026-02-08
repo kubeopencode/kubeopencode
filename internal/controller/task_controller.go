@@ -1233,13 +1233,13 @@ func (r *TaskReconciler) resolveContextContent(ctx context.Context, namespace, n
 		resolvedMountPath := defaultString(mountPath, workspaceDir+"/git-"+name)
 
 		// Determine clone depth: default to 1 (shallow clone)
-		depth := 1
+		depth := DefaultGitDepth
 		if git.Depth != nil && *git.Depth > 0 {
 			depth = *git.Depth
 		}
 
 		// Determine ref: default to HEAD
-		ref := defaultString(git.Ref, "HEAD")
+		ref := defaultString(git.Ref, DefaultGitRef)
 
 		// Get secret name if specified
 		secretName := ""
