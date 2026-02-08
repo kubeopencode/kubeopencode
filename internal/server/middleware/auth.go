@@ -1,5 +1,6 @@
 // Copyright Contributors to the KubeOpenCode project
 
+// Package middleware provides HTTP middleware for the KubeOpenCode server.
 package middleware
 
 import (

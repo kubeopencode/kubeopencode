@@ -1,5 +1,6 @@
 // Copyright Contributors to the KubeOpenCode project
 
+// Package server implements the KubeOpenCode UI server.
 package server
 
 import (

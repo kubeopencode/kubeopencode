@@ -182,9 +182,9 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Set name or generate name
 	if req.Name != "" {
-		task.ObjectMeta.Name = req.Name
+		task.Name = req.Name
 	} else {
-		task.ObjectMeta.GenerateName = "task-"
+		task.GenerateName = "task-"
 	}
 
 	// Set agent reference if provided
@@ -202,8 +202,7 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 			Description: c.Description,
 			MountPath:   c.MountPath,
 		}
-		switch c.Type {
-		case "Text":
+		if c.Type == "Text" {
 			item.Type = kubeopenv1alpha1.ContextTypeText
 			item.Text = c.Text
 		}
@@ -353,7 +352,7 @@ func (h *TaskHandler) streamPodLogs(ctx context.Context, w http.ResponseWriter, 
 			return
 		}
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	// Read logs line by line and send as SSE events
 	reader := bufio.NewReader(stream)

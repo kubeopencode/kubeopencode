@@ -1,5 +1,6 @@
 // Copyright Contributors to the KubeOpenCode project
 
+// Package handlers implements HTTP handlers for the KubeOpenCode server.
 package handlers
 
 import (
@@ -16,7 +17,7 @@ import (
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // writeError writes an error response
