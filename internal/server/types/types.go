@@ -1,5 +1,6 @@
 // Copyright Contributors to the KubeOpenCode project
 
+// Package types provides API types for the KubeOpenCode server.
 package types
 
 import (

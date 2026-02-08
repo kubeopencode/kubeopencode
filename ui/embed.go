@@ -1,5 +1,6 @@
 // Copyright Contributors to the KubeOpenCode project
 
+// Package ui provides embedded static files for the Web UI.
 package ui
 
 import (
@@ -41,7 +42,6 @@ func Handler(baseURL string) http.Handler {
 			// Check if the file exists
 			if _, err := fs.Stat(distFS, strings.TrimPrefix(path, "/")); err != nil {
 				// File doesn't exist, serve index.html for SPA routing
-				path = "/"
 				r.URL.Path = "/"
 			}
 		}
