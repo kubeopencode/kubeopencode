@@ -1,10 +1,10 @@
 # Copyright Contributors to the KubeOpenCode project
-name: Weekly Full Build
+name: Daily Full Build
 
 on:
   schedule:
-    # Every Sunday at 00:00 UTC
-    - cron: "0 0 * * 0"
+    # Every day at 00:00 UTC
+    - cron: "0 0 * * *"
   workflow_dispatch:
     # Allow manual trigger for ad-hoc rebuilding
 
