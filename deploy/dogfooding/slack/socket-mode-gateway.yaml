@@ -79,16 +79,19 @@ data:
 
         # Build full description with Slack context for the agent
         full_description = (
-            f"## Task\n"
-            f"{description}\n\n"
+            f"## MANDATORY: Respond via Slack\n\n"
+            f"Your text output is NOT visible to the user. You MUST use the bash tool to run\n"
+            f"`slack-cli send` to reply. Without this, the user receives NOTHING.\n\n"
+            f"When done, execute this command:\n"
+            f"```bash\n"
+            f"slack-cli send --channel \"{channel}\" --thread-ts \"{thread_ts}\" --text \"Your response here\"\n"
+            f"```\n\n"
             f"## Slack Context\n"
             f"- Channel: `{channel}`\n"
             f"- Thread TS: `{thread_ts}`\n"
             f"- User: `{user}`\n\n"
-            f"**IMPORTANT**: After completing the task, you MUST send the results back to Slack using:\n"
-            f"```bash\n"
-            f"slack-cli send --channel \"{channel}\" --thread-ts \"{thread_ts}\" --text \"Your response here\"\n"
-            f"```\n"
+            f"## Task\n"
+            f"{description}\n"
         )
 
         task_body = {
