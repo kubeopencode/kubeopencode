@@ -32,14 +32,14 @@
 #
 # Version Management:
 #   Set OPENCODE_VERSION build arg to pin to a specific version.
-#   Example: docker build --build-arg OPENCODE_VERSION=1.1.23 -t opencode .
+#   Example: docker build --build-arg OPENCODE_VERSION=1.1.60 -t opencode .
 #
 
 FROM debian:bookworm-slim
 
 # OpenCode version to download (use specific version to avoid cache issues)
 # Override with: --build-arg OPENCODE_VERSION=x.y.z
-ARG OPENCODE_VERSION=1.1.53
+ARG OPENCODE_VERSION=1.1.60
 
 # Install curl for downloading
 RUN apt-get update && apt-get install -y --no-install-recommends \

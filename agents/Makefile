@@ -11,8 +11,8 @@ AGENT ?= devbox
 NO_CACHE ?=
 NO_CACHE_FLAG := $(if $(NO_CACHE),--no-cache,)
 
-# OpenCode version for opencode agent (usage: make AGENT=opencode OPENCODE_VERSION=1.1.23 build)
-OPENCODE_VERSION ?= 1.1.23
+# OpenCode version for opencode agent (usage: make AGENT=opencode OPENCODE_VERSION=1.1.60 build)
+OPENCODE_VERSION ?= 1.1.60
 
 # Image URL configuration
 IMG_REGISTRY ?= quay.io
