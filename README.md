@@ -13,6 +13,12 @@
   <a href="https://goreportcard.com/report/github.com/kubeopencode/kubeopencode"><img src="https://goreportcard.com/badge/github.com/kubeopencode/kubeopencode" alt="Go Report Card"></a>
 </p>
 
+## Demo
+
+<p align="center">
+  <img src="docs/images/kubeopencode-demo.gif" alt="KubeOpenCode Demo" width="800">
+</p>
+
 ## Overview
 
 KubeOpenCode enables you to execute [OpenCode](https://opencode.ai) AI agent tasks using Kubernetes Custom Resources. It provides a simple, declarative, GitOps-friendly approach to running AI coding agents as Kubernetes Pods.
