@@ -223,6 +223,14 @@ ui-build: ## Build React UI for production
 	@echo "UI build complete"
 .PHONY: ui-build
 
+ui-test: ## Run UI unit tests
+	cd ui && $(UI_PACKAGE_MANAGER) test
+.PHONY: ui-test
+
+ui-test-coverage: ## Run UI tests with coverage report
+	cd ui && $(UI_PACKAGE_MANAGER) run test:coverage
+.PHONY: ui-test-coverage
+
 ui-dev: ## Run UI development server
 	cd ui && $(UI_PACKAGE_MANAGER) run dev
 .PHONY: ui-dev

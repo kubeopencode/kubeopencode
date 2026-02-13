@@ -1,30 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import api, { CreateTaskRequest, Agent } from '../api/client';
+import api, { CreateTaskRequest } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import Breadcrumbs from '../components/Breadcrumbs';
-
-// Check if a namespace matches a glob pattern
-function matchGlob(pattern: string, namespace: string): boolean {
-  // Convert glob pattern to regex
-  const regexPattern = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // Escape special regex chars except * and ?
-    .replace(/\*/g, '.*') // * matches any string
-    .replace(/\?/g, '.'); // ? matches single char
-  const regex = new RegExp(`^${regexPattern}$`);
-  return regex.test(namespace);
-}
-
-// Check if an agent is available for a given namespace
-function isAgentAvailableForNamespace(agent: Agent, namespace: string): boolean {
-  // If no allowedNamespaces, agent is available to all namespaces
-  if (!agent.allowedNamespaces || agent.allowedNamespaces.length === 0) {
-    return true;
-  }
-  // Check if any pattern matches the namespace
-  return agent.allowedNamespaces.some((pattern) => matchGlob(pattern, namespace));
-}
+import { isAgentAvailableForNamespace } from '../utils/agent';
 
 function TaskCreatePage() {
   const navigate = useNavigate();
