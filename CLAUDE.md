@@ -871,6 +871,7 @@ The controller requires permissions for:
 | `docs/security.md` | RBAC, credential management, controller/agent pod security, best practices | Security-related changes |
 | `docs/architecture.md` | System design, API reference, detailed technical documentation | Architecture changes, API changes |
 | `docs/troubleshooting.md` | Common issues and solutions | New error scenarios, debugging tips |
+| `docs/ui-testing.md` | UI automated testing setup, architecture, and maintenance guide | UI test changes, new test patterns |
 | `deploy/local-dev/local-development.md` | Local development environment setup | Development workflow changes |
 | `charts/kubeopencode/README.md` | Helm chart deployment and configuration | Helm values changes |
 | `agents/README.md` | Building custom agent images | Agent development changes |
