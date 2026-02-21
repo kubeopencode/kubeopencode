@@ -48,6 +48,15 @@ const (
 	// AgentLabelKey is the label key used to identify which Agent a Task uses
 	AgentLabelKey = "kubeopencode.io/agent"
 
+	// Retry backoff constants
+	retryBackoffBaseSecs     = 5
+	retryBackoffMaxSecs     = 300
+	retryBackoffLinearSecs  = 30
+	maxTerminalReasonMsgLen = 1024
+
+	// agentContainerName is the main worker container name in Task Pods (from pod_builder)
+	agentContainerName = "agent"
+
 	// DefaultQueuedRequeueDelay is the default delay for requeuing queued Tasks
 	DefaultQueuedRequeueDelay = 10 * time.Second
 
@@ -141,7 +150,7 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// Also handle incomplete Running state (Running but no Pod created yet)
 	// This can happen if context processing failed after Phase was set to Running
 	// and the status update to Failed encountered a conflict
-	if task.Status.Phase == "" ||
+	if task.Status.Phase == "" || task.Status.Phase == kubeopenv1alpha1.TaskPhasePending ||
 		(task.Status.Phase == kubeopenv1alpha1.TaskPhaseRunning && task.Status.PodName == "") {
 		return r.initializeTask(ctx, task)
 	}
@@ -165,12 +174,12 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// Update task status from Pod status (both Pod mode and Server mode use Pods now)
-	if err := r.updateTaskStatusFromPod(ctx, task); err != nil {
+	result, err := r.updateTaskStatusFromPod(ctx, task)
+	if err != nil {
 		log.Error(err, "unable to update task status")
 		return ctrl.Result{}, err
 	}
-
-	return ctrl.Result{}, nil
+	return result, nil
 }
 
 // initializeTask initializes a new Task and creates its Pod
@@ -389,12 +398,25 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 
 	// Generate Pod name
 	// For cross-namespace, include Task namespace to avoid name conflicts
+	// For retries, include attempt to avoid collision with previous Pod (may still be terminating)
 	isCrossNamespace := agentNamespace != task.Namespace
+	attempt := task.Status.RetryAttempt
+	if attempt == 0 && task.Spec.Retry != nil {
+		attempt = 1
+	}
 	var podName string
 	if isCrossNamespace {
-		podName = fmt.Sprintf("%s-%s-pod", task.Namespace, task.Name)
+		if attempt > 1 {
+			podName = fmt.Sprintf("%s-%s-%d-pod", task.Namespace, task.Name, attempt)
+		} else {
+			podName = fmt.Sprintf("%s-%s-pod", task.Namespace, task.Name)
+		}
 	} else {
-		podName = fmt.Sprintf("%s-pod", task.Name)
+		if attempt > 1 {
+			podName = fmt.Sprintf("%s-%d-pod", task.Name, attempt)
+		} else {
+			podName = fmt.Sprintf("%s-pod", task.Name)
+		}
 	}
 
 	// Check if Pod already exists (in Agent's namespace)
@@ -404,6 +426,9 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		// Pod already exists, update status with Pod info
 		task.Status.PodName = podName
 		task.Status.PodNamespace = agentNamespace
+		if task.Status.RetryAttempt == 0 && task.Spec.Retry != nil {
+			task.Status.RetryAttempt = 1
+		}
 		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
 			if errors.IsConflict(updateErr) {
 				log.V(1).Info("conflict updating existing Pod status, requeuing")
@@ -617,6 +642,9 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	// Update status with Pod info (Task is already Running from pre-occupation)
 	task.Status.PodName = podName
 	task.Status.PodNamespace = agentNamespace
+	if task.Status.RetryAttempt == 0 && task.Spec.Retry != nil {
+		task.Status.RetryAttempt = 1
+	}
 
 	if err := r.Status().Update(ctx, task); err != nil {
 		if errors.IsConflict(err) {
@@ -632,19 +660,19 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	return ctrl.Result{}, nil
 }
 
-// updateTaskStatusFromPod syncs task status from Pod status
-func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kubeopenv1alpha1.Task) error {
+// updateTaskStatusFromPod syncs task status from Pod status.
+// Returns (ctrl.Result, error). Result may have RequeueAfter for retry backoff.
+func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kubeopenv1alpha1.Task) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	if task.Status.PodName == "" {
-		return nil
+		return ctrl.Result{}, nil
 	}
 
 	// Get Pod status from the correct namespace
-	// PodNamespace may differ from Task namespace when using cross-namespace Agent
 	podNamespace := task.Status.PodNamespace
 	if podNamespace == "" {
-		podNamespace = task.Namespace // Backwards compatibility
+		podNamespace = task.Namespace
 	}
 
 	pod := &corev1.Pod{}
@@ -652,34 +680,222 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 	if err := r.Get(ctx, podKey, pod); err != nil {
 		if errors.IsNotFound(err) {
 			log.Error(err, "Pod not found", "pod", task.Status.PodName)
-			return nil
+			return ctrl.Result{}, nil
 		}
-		return err
+		return ctrl.Result{}, err
 	}
 
-	// Check Pod phase
 	switch pod.Status.Phase {
 	case corev1.PodSucceeded:
 		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseCompleted
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
+		task.Status.TerminalReason = &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonSuccess,
+			Message: "Task completed successfully",
+		}
 		log.Info("task completed", "pod", task.Status.PodName)
 		r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "Completed", "Completed", "Task completed successfully")
 		r.recordTaskDuration(task)
-		return r.Status().Update(ctx, task)
+		return ctrl.Result{}, r.Status().Update(ctx, task)
 	case corev1.PodFailed:
+		// Check retry budget
+		retrySpec := task.Spec.Retry
+		currentAttempt := task.Status.RetryAttempt
+		if currentAttempt == 0 {
+			currentAttempt = 1 // First run
+		}
+		maxAttempts := int32(1)
+		if retrySpec != nil && retrySpec.MaxAttempts > 0 {
+			maxAttempts = retrySpec.MaxAttempts
+			if maxAttempts > 10 {
+				maxAttempts = 10 // Hard cap for safety
+			}
+		}
+
+		termReason := terminalReasonFromPod(pod)
+		// Non-retriable: business logic failures (AgentExitNonZero) per PR description
+		isRetriable := termReason == nil || termReason.Code != kubeopenv1alpha1.TerminalReasonAgentExitNonZero
+		if !isRetriable && retrySpec != nil && maxAttempts > 1 {
+			log.Info("pod failed with AgentExitNonZero, not retrying", "pod", task.Status.PodName)
+		}
+		if isRetriable && retrySpec != nil && maxAttempts > 1 && currentAttempt < maxAttempts {
+			// Retry: delete Pod, reset status, requeue with backoff
+			log.Info("pod failed, retrying", "pod", task.Status.PodName, "attempt", currentAttempt, "maxAttempts", maxAttempts)
+			r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Retrying", "Retry", "Pod failed (attempt %d/%d), retrying", currentAttempt, maxAttempts)
+
+			if err := r.Delete(ctx, pod); err != nil && !errors.IsNotFound(err) {
+				log.Error(err, "failed to delete pod for retry")
+				return ctrl.Result{}, err
+			}
+
+			// Reset for re-initialization
+			task.Status.ObservedGeneration = task.Generation
+			task.Status.Phase = kubeopenv1alpha1.TaskPhasePending
+			task.Status.PodName = ""
+			task.Status.PodNamespace = ""
+			task.Status.RetryAttempt = currentAttempt + 1
+			task.Status.CompletionTime = nil
+
+			if err := r.Status().Update(ctx, task); err != nil {
+				if errors.IsConflict(err) {
+					log.V(1).Info("conflict updating retry status, requeuing")
+					return ctrl.Result{Requeue: true}, nil
+				}
+				return ctrl.Result{}, err
+			}
+
+			delay := retryBackoffDelay(currentAttempt, retrySpec.Profile)
+			log.Info("scheduling retry", "delay", delay, "nextAttempt", currentAttempt+1)
+			return ctrl.Result{RequeueAfter: delay}, nil
+		}
+
+		// Terminal failure: no retry or exhausted
+		if retrySpec != nil && currentAttempt >= maxAttempts {
+			exhaustedMsg := fmt.Sprintf("Retry exhausted after %d attempts", maxAttempts)
+			if termReason != nil && termReason.Message != "" {
+				exhaustedMsg = fmt.Sprintf("%s; last failure: %s", exhaustedMsg, termReason.Message)
+			}
+			termReason = &kubeopenv1alpha1.TerminalReason{
+				Code:    kubeopenv1alpha1.TerminalReasonRetryExhausted,
+				Message: truncateTerminalReasonMessage(exhaustedMsg),
+			}
+		}
+
 		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
-		log.Info("task failed", "pod", task.Status.PodName)
-		r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Failed", "Failed", "Task failed")
+		task.Status.TerminalReason = termReason
+		log.Info("task failed", "pod", task.Status.PodName, "reason", termReason.Code)
+		r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Failed", "Failed", "Task failed: %s", termReason.Message)
 		r.recordTaskDuration(task)
-		return r.Status().Update(ctx, task)
+		return ctrl.Result{}, r.Status().Update(ctx, task)
 	}
 
-	return nil
+	return ctrl.Result{}, nil
+}
+
+// retryBackoffDelay returns the delay before the next retry attempt.
+func retryBackoffDelay(attempt int32, profile kubeopenv1alpha1.RetryProfile) time.Duration {
+	switch profile {
+	case kubeopenv1alpha1.RetryProfileExponential:
+		// 2^(attempt-1) * base: 5s, 10s, 20s, 40s, ...
+		exp := attempt - 1
+		if exp < 0 {
+			exp = 0
+		}
+		if exp > 6 {
+			exp = 6 // Clamp to avoid overflow in 1<<exp
+		}
+		secs := retryBackoffBaseSecs * (1 << exp)
+		if secs > retryBackoffMaxSecs {
+			secs = retryBackoffMaxSecs
+		}
+		return time.Duration(secs) * time.Second
+	default:
+		return retryBackoffLinearSecs * time.Second
+	}
+}
+
+func truncateTerminalReasonMessage(s string) string {
+	if len(s) <= maxTerminalReasonMsgLen {
+		return s
+	}
+	return s[:maxTerminalReasonMsgLen]
+}
+
+// terminalReasonFromPod extracts a normalized TerminalReason from a failed Pod.
+// Checks InitContainerStatuses first (e.g. git-init, context-init failures), then
+// prefers the agent container when multiple containers have terminated.
+func terminalReasonFromPod(pod *corev1.Pod) *kubeopenv1alpha1.TerminalReason {
+	// Pod-level reasons (Evicted, DeadlineExceeded, etc.) may not appear in container statuses
+	switch pod.Status.Reason {
+	case "Evicted":
+		msg := pod.Status.Message
+		if msg == "" {
+			msg = "Pod evicted"
+		}
+		return &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonInfrastructureError,
+			Message: truncateTerminalReasonMessage(msg),
+		}
+	case "DeadlineExceeded":
+		msg := pod.Status.Message
+		if msg == "" {
+			msg = "Pod deadline exceeded"
+		}
+		return &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonTimeout,
+			Message: truncateTerminalReasonMessage(msg),
+		}
+	case "CreateContainerConfigError", "Preemption":
+		msg := pod.Status.Message
+		if msg == "" {
+			msg = pod.Status.Reason
+		}
+		return &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonInfrastructureError,
+			Message: truncateTerminalReasonMessage(msg),
+		}
+	}
+	// Init container failures (e.g. git-init, context-init) map to InfrastructureError
+	for _, ics := range pod.Status.InitContainerStatuses {
+		if state := ics.State.Terminated; state != nil && state.ExitCode != 0 {
+			msg := state.Message
+			if msg == "" {
+				msg = state.Reason
+			}
+			return &kubeopenv1alpha1.TerminalReason{
+				Code:    kubeopenv1alpha1.TerminalReasonInfrastructureError,
+				Message: truncateTerminalReasonMessage(fmt.Sprintf("init container %s: %s", ics.Name, msg)),
+			}
+		}
+	}
+	// Prefer agent container status when sidecars may exist; fallback to first terminated
+	var agentTerm *corev1.ContainerStateTerminated
+	var otherTerm *corev1.ContainerStateTerminated
+	for _, cs := range pod.Status.ContainerStatuses {
+		if state := cs.State.Terminated; state != nil {
+			if cs.Name == agentContainerName {
+				agentTerm = state
+				break
+			}
+			if otherTerm == nil {
+				otherTerm = state
+			}
+		}
+	}
+	term := agentTerm
+	if term == nil {
+		term = otherTerm
+	}
+	if term != nil {
+		msg := term.Message
+		if msg == "" {
+			msg = term.Reason
+		}
+		code := kubeopenv1alpha1.TerminalReasonInfrastructureError
+		switch term.Reason {
+		case "OOMKilled":
+			code = kubeopenv1alpha1.TerminalReasonInfrastructureError
+		case "ContainerCannotRun", "CreateContainerConfigError":
+			// Infrastructure/setup failures, not business logic
+			code = kubeopenv1alpha1.TerminalReasonInfrastructureError
+		case "Error":
+			if term.ExitCode != 0 {
+				code = kubeopenv1alpha1.TerminalReasonAgentExitNonZero
+			}
+		default:
+			code = kubeopenv1alpha1.TerminalReasonUnknown
+		}
+		return &kubeopenv1alpha1.TerminalReason{Code: code, Message: truncateTerminalReasonMessage(msg)}
+	}
+	return &kubeopenv1alpha1.TerminalReason{
+		Code:    kubeopenv1alpha1.TerminalReasonUnknown,
+		Message: "Pod failed",
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -1368,6 +1584,10 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseCompleted
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
+		task.Status.TerminalReason = &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonUserStopped,
+			Message: truncateTerminalReasonMessage("Task was stopped while queued"),
+		}
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    kubeopenv1alpha1.ConditionTypeStopped,
 			Status:  metav1.ConditionTrue,
@@ -1437,7 +1657,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 	// If neither limit is configured, proceed to initialize
 	if !hasCapacityLimit && !hasQuotaLimit {
 		log.Info("no limits configured, proceeding with task", "agent", agentName)
-		task.Status.Phase = ""
+		task.Status.Phase = kubeopenv1alpha1.TaskPhasePending
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    kubeopenv1alpha1.ConditionTypeQueued,
 			Status:  metav1.ConditionFalse,
@@ -1511,9 +1731,9 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 		}
 	}
 
-	// Capacity available, transition to empty phase to trigger initializeTask
+	// Capacity available, transition to Pending to trigger initializeTask
 	log.Info("agent capacity available, transitioning to initialize", "agent", agentName)
-	task.Status.Phase = ""
+	task.Status.Phase = kubeopenv1alpha1.TaskPhasePending
 	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 		Type:    kubeopenv1alpha1.ConditionTypeQueued,
 		Status:  metav1.ConditionFalse,
@@ -1540,7 +1760,11 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubeopenv1alpha1.
 	// Delete the Pod if it exists
 	if task.Status.PodName != "" {
 		pod := &corev1.Pod{}
-		podKey := types.NamespacedName{Name: task.Status.PodName, Namespace: task.Namespace}
+		podNamespace := task.Status.PodNamespace
+		if podNamespace == "" {
+			podNamespace = task.Namespace
+		}
+		podKey := types.NamespacedName{Name: task.Status.PodName, Namespace: podNamespace}
 		if err := r.Get(ctx, podKey, pod); err == nil {
 			// Delete the Pod - Kubernetes will automatically:
 			// 1. Send SIGTERM to the Pod
@@ -1559,6 +1783,10 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubeopenv1alpha1.
 	task.Status.ObservedGeneration = task.Generation
 	now := metav1.Now()
 	task.Status.CompletionTime = &now
+	task.Status.TerminalReason = &kubeopenv1alpha1.TerminalReason{
+		Code:    kubeopenv1alpha1.TerminalReasonUserStopped,
+		Message: truncateTerminalReasonMessage("Task stopped by user via kubeopencode.io/stop annotation"),
+	}
 
 	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 		Type:    kubeopenv1alpha1.ConditionTypeStopped,

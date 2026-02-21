@@ -689,10 +689,12 @@ var _ = Describe("TaskController", func() {
 				return updatedTask.Status.Phase
 			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
 
-			By("Checking CompletionTime is set")
+			By("Checking CompletionTime and TerminalReason are set")
 			finalTask := &kubeopenv1alpha1.Task{}
 			Expect(k8sClient.Get(ctx, taskLookupKey, finalTask)).Should(Succeed())
 			Expect(finalTask.Status.CompletionTime).ShouldNot(BeNil())
+			Expect(finalTask.Status.TerminalReason).ShouldNot(BeNil())
+			Expect(finalTask.Status.TerminalReason.Code).Should(Equal(kubeopenv1alpha1.TerminalReasonSuccess))
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
@@ -738,6 +740,149 @@ var _ = Describe("TaskController", func() {
 				}
 				return updatedTask.Status.Phase
 			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseFailed))
+
+			By("Checking TerminalReason is set")
+			finalTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskLookupKey, finalTask)).Should(Succeed())
+			Expect(finalTask.Status.TerminalReason).ShouldNot(BeNil())
+			Expect(finalTask.Status.TerminalReason.Code).Should(BeElementOf(
+				kubeopenv1alpha1.TerminalReasonUnknown,
+				kubeopenv1alpha1.TerminalReasonInfrastructureError,
+				kubeopenv1alpha1.TerminalReasonAgentExitNonZero,
+			))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+		})
+
+		It("Should retry on failure when spec.retry is set", func() {
+			taskName := "test-task-retry"
+			description := "# Retry test"
+			maxAttempts := int32(3)
+
+			By("Creating Task with retry spec")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: testAgentName},
+					Description: &description,
+					Retry: &kubeopenv1alpha1.RetrySpec{
+						MaxAttempts: maxAttempts,
+						Profile:     kubeopenv1alpha1.RetryProfileLinear,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("Simulating first Pod failure")
+			createdPod.Status.Phase = corev1.PodFailed
+			Expect(k8sClient.Status().Update(ctx, createdPod)).Should(Succeed())
+
+			By("Waiting for Pod to be deleted (retry triggers delete)")
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, podLookupKey, &corev1.Pod{})
+				return apierrors.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+
+			By("Waiting for new Pod to be created (retry, backoff ~30s, attempt 2 uses -2-pod suffix)")
+			retryPodName := fmt.Sprintf("%s-2-pod", taskName)
+			retryPodLookupKey := types.NamespacedName{Name: retryPodName, Namespace: taskNamespace}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, retryPodLookupKey, createdPod) == nil
+			}, timeout*5, interval).Should(BeTrue())
+
+			By("Verifying RetryAttempt is incremented")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			updatedTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskLookupKey, updatedTask)).Should(Succeed())
+			Expect(updatedTask.Status.RetryAttempt).Should(BeNumerically(">=", 2))
+
+			By("Simulating second Pod success")
+			createdPod.Status.Phase = corev1.PodSucceeded
+			Expect(k8sClient.Status().Update(ctx, createdPod)).Should(Succeed())
+
+			By("Checking Task status is Completed")
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				if err := k8sClient.Get(ctx, taskLookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+		})
+
+		It("Should set RetryExhausted when retries are exhausted", func() {
+			taskName := "test-task-retry-exhausted"
+			description := "# Retry exhausted test"
+			maxAttempts := int32(2)
+
+			By("Creating Task with retry spec (maxAttempts=2)")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: testAgentName},
+					Description: &description,
+					Retry: &kubeopenv1alpha1.RetrySpec{
+						MaxAttempts: maxAttempts,
+						Profile:     kubeopenv1alpha1.RetryProfileLinear,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("Simulating first Pod failure (triggers retry)")
+			createdPod.Status.Phase = corev1.PodFailed
+			Expect(k8sClient.Status().Update(ctx, createdPod)).Should(Succeed())
+
+			By("Waiting for new Pod after retry (backoff ~30s, attempt 2 uses -2-pod suffix)")
+			retryPodName := fmt.Sprintf("%s-2-pod", taskName)
+			retryPodLookupKey := types.NamespacedName{Name: retryPodName, Namespace: taskNamespace}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, retryPodLookupKey, createdPod) == nil
+			}, timeout*5, interval).Should(BeTrue())
+
+			By("Simulating second Pod failure (exhausts retries)")
+			createdPod.Status.Phase = corev1.PodFailed
+			Expect(k8sClient.Status().Update(ctx, createdPod)).Should(Succeed())
+
+			By("Checking Task status is Failed with RetryExhausted")
+			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskLookupKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseFailed))
+
+			finalTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskLookupKey, finalTask)).Should(Succeed())
+			Expect(finalTask.Status.TerminalReason).ShouldNot(BeNil())
+			Expect(finalTask.Status.TerminalReason.Code).Should(Equal(kubeopenv1alpha1.TerminalReasonRetryExhausted))
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
