@@ -138,7 +138,7 @@ const (
 	TerminalReasonSuccess            TerminalReasonCode = "Success"
 	TerminalReasonInfrastructureError TerminalReasonCode = "InfrastructureError"
 	TerminalReasonAgentExitNonZero   TerminalReasonCode = "AgentExitNonZero"
-	TerminalReasonTimeout            TerminalReasonCode = "Timeout"
+	TerminalReasonTimeout            TerminalReasonCode = "Timeout" // Set when pod.Status.Reason == "DeadlineExceeded"
 	TerminalReasonUserStopped        TerminalReasonCode = "UserStopped"
 	TerminalReasonRetryExhausted     TerminalReasonCode = "RetryExhausted"
 	TerminalReasonUnknown            TerminalReasonCode = "Unknown"
