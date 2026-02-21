@@ -63,6 +63,7 @@ const (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope="Namespaced",shortName=tk
 // +kubebuilder:printcolumn:JSONPath=`.status.phase`,name="Phase",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.terminalReason.code`,name="Reason",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.agentRef.namespace`,name="Agent-NS",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.agentRef.name`,name="Agent",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.podName`,name="Pod",type=string
@@ -98,6 +99,58 @@ type AgentReference struct {
 	// allowing credentials to stay isolated from Task creators.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
+}
+
+// RetryProfile defines the backoff schedule between retry attempts.
+// +kubebuilder:validation:Enum=linear;exponential
+type RetryProfile string
+
+const (
+	// RetryProfileLinear uses a fixed 30s delay between attempts.
+	RetryProfileLinear RetryProfile = "linear"
+	// RetryProfileExponential uses 2^n * 5s (5s, 10s, 20s, 40s, ...).
+	RetryProfileExponential RetryProfile = "exponential"
+)
+
+// RetrySpec defines the retry budget for a Task.
+// When omitted, no retries are performed (single attempt).
+type RetrySpec struct {
+	// MaxAttempts is the total number of attempts including the first.
+	// Default 1 means no retry. Must be >= 1.
+	// +optional
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	MaxAttempts int32 `json:"maxAttempts,omitempty"`
+
+	// Profile selects the backoff schedule between attempts.
+	// linear: fixed 30s delay. exponential: 2^n * 5s.
+	// +optional
+	// +kubebuilder:default=linear
+	Profile RetryProfile `json:"profile,omitempty"`
+}
+
+// TerminalReasonCode is a normalized taxonomy for task terminal state.
+// +kubebuilder:validation:Enum=Success;InfrastructureError;AgentExitNonZero;Timeout;UserStopped;RetryExhausted;Unknown
+type TerminalReasonCode string
+
+const (
+	TerminalReasonSuccess            TerminalReasonCode = "Success"
+	TerminalReasonInfrastructureError TerminalReasonCode = "InfrastructureError"
+	TerminalReasonAgentExitNonZero   TerminalReasonCode = "AgentExitNonZero"
+	TerminalReasonTimeout            TerminalReasonCode = "Timeout"
+	TerminalReasonUserStopped        TerminalReasonCode = "UserStopped"
+	TerminalReasonRetryExhausted     TerminalReasonCode = "RetryExhausted"
+	TerminalReasonUnknown            TerminalReasonCode = "Unknown"
+)
+
+// TerminalReason holds the normalized reason when a Task reaches a terminal state.
+type TerminalReason struct {
+	// Code is the normalized taxonomy code.
+	Code TerminalReasonCode `json:"code"`
+
+	// Message is the human-readable description.
+	// +optional
+	Message string `json:"message,omitempty"`
 }
 
 // TaskSpec defines the Task configuration
@@ -159,6 +212,11 @@ type TaskSpec struct {
 	// If not specified and taskTemplateRef is set, uses the template's agentRef.
 	// +optional
 	AgentRef *AgentReference `json:"agentRef,omitempty"`
+
+	// Retry defines the retry budget for transient failures.
+	// When omitted, no retries are performed (single attempt).
+	// +optional
+	Retry *RetrySpec `json:"retry,omitempty"`
 }
 
 // TaskExecutionStatus defines the observed state of Task
@@ -200,6 +258,16 @@ type TaskExecutionStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// TerminalReason is set when Phase is Completed or Failed.
+	// Provides a normalized code and human-readable message for programmatic handling.
+	// +optional
+	TerminalReason *TerminalReason `json:"terminalReason,omitempty"`
+
+	// RetryAttempt is the current attempt number (1-based).
+	// Only present when spec.retry is set. Incremented on each retry.
+	// +optional
+	RetryAttempt int32 `json:"retryAttempt,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -165,12 +165,12 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// Update task status from Pod status (both Pod mode and Server mode use Pods now)
-	if err := r.updateTaskStatusFromPod(ctx, task); err != nil {
+	result, err := r.updateTaskStatusFromPod(ctx, task)
+	if err != nil {
 		log.Error(err, "unable to update task status")
 		return ctrl.Result{}, err
 	}
-
-	return ctrl.Result{}, nil
+	return result, nil
 }
 
 // initializeTask initializes a new Task and creates its Pod
@@ -404,6 +404,9 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		// Pod already exists, update status with Pod info
 		task.Status.PodName = podName
 		task.Status.PodNamespace = agentNamespace
+		if task.Status.RetryAttempt == 0 && task.Spec.Retry != nil {
+			task.Status.RetryAttempt = 1
+		}
 		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
 			if errors.IsConflict(updateErr) {
 				log.V(1).Info("conflict updating existing Pod status, requeuing")
@@ -617,6 +620,9 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	// Update status with Pod info (Task is already Running from pre-occupation)
 	task.Status.PodName = podName
 	task.Status.PodNamespace = agentNamespace
+	if task.Status.RetryAttempt == 0 && task.Spec.Retry != nil {
+		task.Status.RetryAttempt = 1
+	}
 
 	if err := r.Status().Update(ctx, task); err != nil {
 		if errors.IsConflict(err) {
@@ -632,19 +638,19 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	return ctrl.Result{}, nil
 }
 
-// updateTaskStatusFromPod syncs task status from Pod status
-func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kubeopenv1alpha1.Task) error {
+// updateTaskStatusFromPod syncs task status from Pod status.
+// Returns (ctrl.Result, error). Result may have RequeueAfter for retry backoff.
+func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kubeopenv1alpha1.Task) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	if task.Status.PodName == "" {
-		return nil
+		return ctrl.Result{}, nil
 	}
 
 	// Get Pod status from the correct namespace
-	// PodNamespace may differ from Task namespace when using cross-namespace Agent
 	podNamespace := task.Status.PodNamespace
 	if podNamespace == "" {
-		podNamespace = task.Namespace // Backwards compatibility
+		podNamespace = task.Namespace
 	}
 
 	pod := &corev1.Pod{}
@@ -652,34 +658,132 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 	if err := r.Get(ctx, podKey, pod); err != nil {
 		if errors.IsNotFound(err) {
 			log.Error(err, "Pod not found", "pod", task.Status.PodName)
-			return nil
+			return ctrl.Result{}, nil
 		}
-		return err
+		return ctrl.Result{}, err
 	}
 
-	// Check Pod phase
 	switch pod.Status.Phase {
 	case corev1.PodSucceeded:
 		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseCompleted
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
+		task.Status.TerminalReason = &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonSuccess,
+			Message: "Task completed successfully",
+		}
 		log.Info("task completed", "pod", task.Status.PodName)
 		r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "Completed", "Completed", "Task completed successfully")
 		r.recordTaskDuration(task)
-		return r.Status().Update(ctx, task)
+		return ctrl.Result{}, r.Status().Update(ctx, task)
 	case corev1.PodFailed:
+		// Check retry budget
+		retrySpec := task.Spec.Retry
+		currentAttempt := task.Status.RetryAttempt
+		if currentAttempt == 0 {
+			currentAttempt = 1 // First run
+		}
+		maxAttempts := int32(1)
+		if retrySpec != nil && retrySpec.MaxAttempts > 0 {
+			maxAttempts = retrySpec.MaxAttempts
+		}
+
+		if retrySpec != nil && maxAttempts > 1 && currentAttempt < maxAttempts {
+			// Retry: delete Pod, reset status, requeue with backoff
+			log.Info("pod failed, retrying", "pod", task.Status.PodName, "attempt", currentAttempt, "maxAttempts", maxAttempts)
+			r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Retrying", "Retry", "Pod failed (attempt %d/%d), retrying", currentAttempt, maxAttempts)
+
+			if err := r.Delete(ctx, pod); err != nil && !errors.IsNotFound(err) {
+				log.Error(err, "failed to delete pod for retry")
+				return ctrl.Result{}, err
+			}
+
+			// Reset for re-initialization
+			task.Status.ObservedGeneration = task.Generation
+			task.Status.Phase = ""
+			task.Status.PodName = ""
+			task.Status.PodNamespace = ""
+			task.Status.RetryAttempt = currentAttempt + 1
+			task.Status.CompletionTime = nil
+
+			if err := r.Status().Update(ctx, task); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			delay := retryBackoffDelay(currentAttempt, retrySpec.Profile)
+			log.Info("scheduling retry", "delay", delay, "nextAttempt", currentAttempt+1)
+			return ctrl.Result{RequeueAfter: delay}, nil
+		}
+
+		// Terminal failure: no retry or exhausted
+		termReason := terminalReasonFromPod(pod)
+		if retrySpec != nil && currentAttempt >= maxAttempts {
+			termReason = &kubeopenv1alpha1.TerminalReason{
+				Code:    kubeopenv1alpha1.TerminalReasonRetryExhausted,
+				Message: fmt.Sprintf("Retry exhausted after %d attempts", maxAttempts),
+			}
+		}
+
 		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
-		log.Info("task failed", "pod", task.Status.PodName)
-		r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Failed", "Failed", "Task failed")
+		task.Status.TerminalReason = termReason
+		log.Info("task failed", "pod", task.Status.PodName, "reason", termReason.Code)
+		r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Failed", "Failed", "Task failed: %s", termReason.Message)
 		r.recordTaskDuration(task)
-		return r.Status().Update(ctx, task)
+		return ctrl.Result{}, r.Status().Update(ctx, task)
 	}
 
-	return nil
+	return ctrl.Result{}, nil
+}
+
+// retryBackoffDelay returns the delay before the next retry attempt.
+func retryBackoffDelay(attempt int32, profile kubeopenv1alpha1.RetryProfile) time.Duration {
+	switch profile {
+	case kubeopenv1alpha1.RetryProfileExponential:
+		// 2^(attempt-1) * 5s: 5s, 10s, 20s, 40s, ...
+		exp := attempt - 1
+		if exp < 0 {
+			exp = 0
+		}
+		secs := 5 * (1 << exp)
+		if secs > 300 {
+			secs = 300 // Cap at 5 min
+		}
+		return time.Duration(secs) * time.Second
+	default:
+		return 30 * time.Second
+	}
+}
+
+// terminalReasonFromPod extracts a normalized TerminalReason from a failed Pod.
+func terminalReasonFromPod(pod *corev1.Pod) *kubeopenv1alpha1.TerminalReason {
+	for _, cs := range pod.Status.ContainerStatuses {
+		if state := cs.State.Terminated; state != nil {
+			msg := state.Message
+			if msg == "" {
+				msg = state.Reason
+			}
+			code := kubeopenv1alpha1.TerminalReasonInfrastructureError
+			switch state.Reason {
+			case "OOMKilled":
+				code = kubeopenv1alpha1.TerminalReasonInfrastructureError
+			case "Error", "ContainerCannotRun":
+				if state.ExitCode != 0 {
+					code = kubeopenv1alpha1.TerminalReasonAgentExitNonZero
+				}
+			default:
+				code = kubeopenv1alpha1.TerminalReasonUnknown
+			}
+			return &kubeopenv1alpha1.TerminalReason{Code: code, Message: msg}
+		}
+	}
+	return &kubeopenv1alpha1.TerminalReason{
+		Code:    kubeopenv1alpha1.TerminalReasonUnknown,
+		Message: "Pod failed",
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.

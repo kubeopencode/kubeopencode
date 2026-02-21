@@ -20,6 +20,9 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.terminalReason.code
+      name: Reason
+      type: string
     - jsonPath: .status.agentRef.namespace
       name: Agent-NS
       type: string
@@ -287,7 +290,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: text is required when type is Text
-                    rule: self.type != 'Text' || self.text != ''
+                    rule: self.type != 'Text' || self.text != ”
                   - message: configMap is required when type is ConfigMap
                     rule: self.type != 'ConfigMap' || has(self.configMap)
                   - message: git is required when type is Git
@@ -295,7 +298,7 @@ spec:
                   - message: url is required when type is URL
                     rule: self.type != 'URL' || has(self.url)
                   - message: mountPath is required for Git context type
-                    rule: self.type != 'Git' || self.mountPath != ''
+                    rule: self.type != 'Git' || self.mountPath != ”
                 type: array
               description:
                 description: |-
@@ -310,6 +313,29 @@ spec:
                   Example:
                     description: "Update all dependencies and create a PR"
                 type: string
+              retry:
+                description: |-
+                  Retry defines the retry budget for transient failures.
+                  When omitted, no retries are performed (single attempt).
+                properties:
+                  maxAttempts:
+                    default: 1
+                    description: |-
+                      MaxAttempts is the total number of attempts including the first.
+                      Default 1 means no retry. Must be >= 1.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  profile:
+                    default: linear
+                    description: |-
+                      Profile selects the backoff schedule between attempts.
+                      linear: fixed 30s delay. exponential: 2^n * 5s.
+                    enum:
+                    - linear
+                    - exponential
+                    type: string
+                type: object
               taskTemplateRef:
                 description: |-
                   TaskTemplateRef references a TaskTemplate to use as base configuration.
@@ -446,10 +472,38 @@ spec:
                   When Agent is in a different namespace, the Pod runs in the Agent's namespace
                   to keep credentials isolated from Task creators.
                 type: string
+              retryAttempt:
+                description: |-
+                  RetryAttempt is the current attempt number (1-based).
+                  Only present when spec.retry is set. Incremented on each retry.
+                format: int32
+                type: integer
               startTime:
                 description: Start time
                 format: date-time
                 type: string
+              terminalReason:
+                description: |-
+                  TerminalReason is set when Phase is Completed or Failed.
+                  Provides a normalized code and human-readable message for programmatic handling.
+                properties:
+                  code:
+                    description: Code is the normalized taxonomy code.
+                    enum:
+                    - Success
+                    - InfrastructureError
+                    - AgentExitNonZero
+                    - Timeout
+                    - UserStopped
+                    - RetryExhausted
+                    - Unknown
+                    type: string
+                  message:
+                    description: Message is the human-readable description.
+                    type: string
+                required:
+                - code
+                type: object
             type: object
         required:
         - spec
