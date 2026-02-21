@@ -117,6 +117,58 @@ func TestTerminalReasonFromPod(t *testing.T) {
 			},
 			want: kubeopenv1alpha1.TerminalReasonTimeout,
 		},
+		{
+			name: "ContainerCannotRun (infrastructure, not AgentExitNonZero)",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					ContainerStatuses: []corev1.ContainerStatus{{
+						Name: "agent",
+						State: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								Reason: "ContainerCannotRun", ExitCode: 128, Message: "failed to create container",
+							},
+						},
+					}},
+				},
+			},
+			want: kubeopenv1alpha1.TerminalReasonInfrastructureError,
+		},
+		{
+			name: "CreateContainerConfigError (pod-level)",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Reason:  "CreateContainerConfigError",
+					Message: "secret \"my-secret\" not found",
+				},
+			},
+			want: kubeopenv1alpha1.TerminalReasonInfrastructureError,
+		},
+		{
+			name: "Preemption (pod-level)",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Reason:  "Preemption",
+					Message: "Preempted to accommodate higher priority pod",
+				},
+			},
+			want: kubeopenv1alpha1.TerminalReasonInfrastructureError,
+		},
+		{
+			name: "init container failure",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					InitContainerStatuses: []corev1.ContainerStatus{{
+						Name: "git-init-0",
+						State: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								Reason: "Error", ExitCode: 1, Message: "git clone failed",
+							},
+						},
+					}},
+				},
+			},
+			want: kubeopenv1alpha1.TerminalReasonInfrastructureError,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

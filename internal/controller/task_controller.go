@@ -54,6 +54,9 @@ const (
 	retryBackoffLinearSecs  = 30
 	maxTerminalReasonMsgLen = 1024
 
+	// agentContainerName is the main worker container name in Task Pods (from pod_builder)
+	agentContainerName = "agent"
+
 	// DefaultQueuedRequeueDelay is the default delay for requeuing queued Tasks
 	DefaultQueuedRequeueDelay = 10 * time.Second
 
@@ -750,9 +753,13 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 
 		// Terminal failure: no retry or exhausted
 		if retrySpec != nil && currentAttempt >= maxAttempts {
+			exhaustedMsg := fmt.Sprintf("Retry exhausted after %d attempts", maxAttempts)
+			if termReason != nil && termReason.Message != "" {
+				exhaustedMsg = fmt.Sprintf("%s; last failure: %s", exhaustedMsg, termReason.Message)
+			}
 			termReason = &kubeopenv1alpha1.TerminalReason{
 				Code:    kubeopenv1alpha1.TerminalReasonRetryExhausted,
-				Message: truncateTerminalReasonMessage(fmt.Sprintf("Retry exhausted after %d attempts", maxAttempts)),
+				Message: truncateTerminalReasonMessage(exhaustedMsg),
 			}
 		}
 
@@ -800,8 +807,10 @@ func truncateTerminalReasonMessage(s string) string {
 }
 
 // terminalReasonFromPod extracts a normalized TerminalReason from a failed Pod.
+// Checks InitContainerStatuses first (e.g. git-init, context-init failures), then
+// prefers the agent container when multiple containers have terminated.
 func terminalReasonFromPod(pod *corev1.Pod) *kubeopenv1alpha1.TerminalReason {
-	// Pod-level reasons (Evicted, DeadlineExceeded) may not appear in container statuses
+	// Pod-level reasons (Evicted, DeadlineExceeded, etc.) may not appear in container statuses
 	switch pod.Status.Reason {
 	case "Evicted":
 		msg := pod.Status.Message
@@ -821,26 +830,67 @@ func terminalReasonFromPod(pod *corev1.Pod) *kubeopenv1alpha1.TerminalReason {
 			Code:    kubeopenv1alpha1.TerminalReasonTimeout,
 			Message: truncateTerminalReasonMessage(msg),
 		}
+	case "CreateContainerConfigError", "Preemption":
+		msg := pod.Status.Message
+		if msg == "" {
+			msg = pod.Status.Reason
+		}
+		return &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonInfrastructureError,
+			Message: truncateTerminalReasonMessage(msg),
+		}
 	}
-	for _, cs := range pod.Status.ContainerStatuses {
-		if state := cs.State.Terminated; state != nil {
+	// Init container failures (e.g. git-init, context-init) map to InfrastructureError
+	for _, ics := range pod.Status.InitContainerStatuses {
+		if state := ics.State.Terminated; state != nil && state.ExitCode != 0 {
 			msg := state.Message
 			if msg == "" {
 				msg = state.Reason
 			}
-			code := kubeopenv1alpha1.TerminalReasonInfrastructureError
-			switch state.Reason {
-			case "OOMKilled":
-				code = kubeopenv1alpha1.TerminalReasonInfrastructureError
-			case "Error", "ContainerCannotRun":
-				if state.ExitCode != 0 {
-					code = kubeopenv1alpha1.TerminalReasonAgentExitNonZero
-				}
-			default:
-				code = kubeopenv1alpha1.TerminalReasonUnknown
+			return &kubeopenv1alpha1.TerminalReason{
+				Code:    kubeopenv1alpha1.TerminalReasonInfrastructureError,
+				Message: truncateTerminalReasonMessage(fmt.Sprintf("init container %s: %s", ics.Name, msg)),
 			}
-			return &kubeopenv1alpha1.TerminalReason{Code: code, Message: truncateTerminalReasonMessage(msg)}
 		}
+	}
+	// Prefer agent container status when sidecars may exist; fallback to first terminated
+	var agentTerm *corev1.ContainerStateTerminated
+	var otherTerm *corev1.ContainerStateTerminated
+	for _, cs := range pod.Status.ContainerStatuses {
+		if state := cs.State.Terminated; state != nil {
+			if cs.Name == agentContainerName {
+				agentTerm = state
+				break
+			}
+			if otherTerm == nil {
+				otherTerm = state
+			}
+		}
+	}
+	term := agentTerm
+	if term == nil {
+		term = otherTerm
+	}
+	if term != nil {
+		msg := term.Message
+		if msg == "" {
+			msg = term.Reason
+		}
+		code := kubeopenv1alpha1.TerminalReasonInfrastructureError
+		switch term.Reason {
+		case "OOMKilled":
+			code = kubeopenv1alpha1.TerminalReasonInfrastructureError
+		case "ContainerCannotRun", "CreateContainerConfigError":
+			// Infrastructure/setup failures, not business logic
+			code = kubeopenv1alpha1.TerminalReasonInfrastructureError
+		case "Error":
+			if term.ExitCode != 0 {
+				code = kubeopenv1alpha1.TerminalReasonAgentExitNonZero
+			}
+		default:
+			code = kubeopenv1alpha1.TerminalReasonUnknown
+		}
+		return &kubeopenv1alpha1.TerminalReason{Code: code, Message: truncateTerminalReasonMessage(msg)}
 	}
 	return &kubeopenv1alpha1.TerminalReason{
 		Code:    kubeopenv1alpha1.TerminalReasonUnknown,
