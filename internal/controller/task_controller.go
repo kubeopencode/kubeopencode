@@ -48,6 +48,12 @@ const (
 	// AgentLabelKey is the label key used to identify which Agent a Task uses
 	AgentLabelKey = "kubeopencode.io/agent"
 
+	// Retry backoff constants
+	retryBackoffBaseSecs     = 5
+	retryBackoffMaxSecs     = 300
+	retryBackoffLinearSecs  = 30
+	maxTerminalReasonMsgLen = 1024
+
 	// DefaultQueuedRequeueDelay is the default delay for requeuing queued Tasks
 	DefaultQueuedRequeueDelay = 10 * time.Second
 
@@ -141,7 +147,7 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// Also handle incomplete Running state (Running but no Pod created yet)
 	// This can happen if context processing failed after Phase was set to Running
 	// and the status update to Failed encountered a conflict
-	if task.Status.Phase == "" ||
+	if task.Status.Phase == "" || task.Status.Phase == kubeopenv1alpha1.TaskPhasePending ||
 		(task.Status.Phase == kubeopenv1alpha1.TaskPhaseRunning && task.Status.PodName == "") {
 		return r.initializeTask(ctx, task)
 	}
@@ -723,13 +729,17 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 
 			// Reset for re-initialization
 			task.Status.ObservedGeneration = task.Generation
-			task.Status.Phase = ""
+			task.Status.Phase = kubeopenv1alpha1.TaskPhasePending
 			task.Status.PodName = ""
 			task.Status.PodNamespace = ""
 			task.Status.RetryAttempt = currentAttempt + 1
 			task.Status.CompletionTime = nil
 
 			if err := r.Status().Update(ctx, task); err != nil {
+				if errors.IsConflict(err) {
+					log.V(1).Info("conflict updating retry status, requeuing")
+					return ctrl.Result{Requeue: true}, nil
+				}
 				return ctrl.Result{}, err
 			}
 
@@ -742,7 +752,7 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 		if retrySpec != nil && currentAttempt >= maxAttempts {
 			termReason = &kubeopenv1alpha1.TerminalReason{
 				Code:    kubeopenv1alpha1.TerminalReasonRetryExhausted,
-				Message: fmt.Sprintf("Retry exhausted after %d attempts", maxAttempts),
+				Message: truncateTerminalReasonMessage(fmt.Sprintf("Retry exhausted after %d attempts", maxAttempts)),
 			}
 		}
 
@@ -764,19 +774,29 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 func retryBackoffDelay(attempt int32, profile kubeopenv1alpha1.RetryProfile) time.Duration {
 	switch profile {
 	case kubeopenv1alpha1.RetryProfileExponential:
-		// 2^(attempt-1) * 5s: 5s, 10s, 20s, 40s, ...
+		// 2^(attempt-1) * base: 5s, 10s, 20s, 40s, ...
 		exp := attempt - 1
 		if exp < 0 {
 			exp = 0
 		}
-		secs := 5 * (1 << exp)
-		if secs > 300 {
-			secs = 300 // Cap at 5 min
+		if exp > 6 {
+			exp = 6 // Clamp to avoid overflow in 1<<exp
+		}
+		secs := retryBackoffBaseSecs * (1 << exp)
+		if secs > retryBackoffMaxSecs {
+			secs = retryBackoffMaxSecs
 		}
 		return time.Duration(secs) * time.Second
 	default:
-		return 30 * time.Second
+		return retryBackoffLinearSecs * time.Second
 	}
+}
+
+func truncateTerminalReasonMessage(s string) string {
+	if len(s) <= maxTerminalReasonMsgLen {
+		return s
+	}
+	return s[:maxTerminalReasonMsgLen]
 }
 
 // terminalReasonFromPod extracts a normalized TerminalReason from a failed Pod.
@@ -790,7 +810,7 @@ func terminalReasonFromPod(pod *corev1.Pod) *kubeopenv1alpha1.TerminalReason {
 		}
 		return &kubeopenv1alpha1.TerminalReason{
 			Code:    kubeopenv1alpha1.TerminalReasonInfrastructureError,
-			Message: msg,
+			Message: truncateTerminalReasonMessage(msg),
 		}
 	case "DeadlineExceeded":
 		msg := pod.Status.Message
@@ -799,7 +819,7 @@ func terminalReasonFromPod(pod *corev1.Pod) *kubeopenv1alpha1.TerminalReason {
 		}
 		return &kubeopenv1alpha1.TerminalReason{
 			Code:    kubeopenv1alpha1.TerminalReasonTimeout,
-			Message: msg,
+			Message: truncateTerminalReasonMessage(msg),
 		}
 	}
 	for _, cs := range pod.Status.ContainerStatuses {
@@ -819,7 +839,7 @@ func terminalReasonFromPod(pod *corev1.Pod) *kubeopenv1alpha1.TerminalReason {
 			default:
 				code = kubeopenv1alpha1.TerminalReasonUnknown
 			}
-			return &kubeopenv1alpha1.TerminalReason{Code: code, Message: msg}
+			return &kubeopenv1alpha1.TerminalReason{Code: code, Message: truncateTerminalReasonMessage(msg)}
 		}
 	}
 	return &kubeopenv1alpha1.TerminalReason{
@@ -1516,7 +1536,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 		task.Status.CompletionTime = &now
 		task.Status.TerminalReason = &kubeopenv1alpha1.TerminalReason{
 			Code:    kubeopenv1alpha1.TerminalReasonUserStopped,
-			Message: "Task was stopped while queued",
+			Message: truncateTerminalReasonMessage("Task was stopped while queued"),
 		}
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    kubeopenv1alpha1.ConditionTypeStopped,
@@ -1587,7 +1607,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 	// If neither limit is configured, proceed to initialize
 	if !hasCapacityLimit && !hasQuotaLimit {
 		log.Info("no limits configured, proceeding with task", "agent", agentName)
-		task.Status.Phase = ""
+		task.Status.Phase = kubeopenv1alpha1.TaskPhasePending
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    kubeopenv1alpha1.ConditionTypeQueued,
 			Status:  metav1.ConditionFalse,
@@ -1661,9 +1681,9 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 		}
 	}
 
-	// Capacity available, transition to empty phase to trigger initializeTask
+	// Capacity available, transition to Pending to trigger initializeTask
 	log.Info("agent capacity available, transitioning to initialize", "agent", agentName)
-	task.Status.Phase = ""
+	task.Status.Phase = kubeopenv1alpha1.TaskPhasePending
 	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 		Type:    kubeopenv1alpha1.ConditionTypeQueued,
 		Status:  metav1.ConditionFalse,
@@ -1715,7 +1735,7 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubeopenv1alpha1.
 	task.Status.CompletionTime = &now
 	task.Status.TerminalReason = &kubeopenv1alpha1.TerminalReason{
 		Code:    kubeopenv1alpha1.TerminalReasonUserStopped,
-		Message: "Task stopped by user via kubeopencode.io/stop annotation",
+		Message: truncateTerminalReasonMessage("Task stopped by user via kubeopencode.io/stop annotation"),
 	}
 
 	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
