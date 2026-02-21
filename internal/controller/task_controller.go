@@ -687,6 +687,9 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 		maxAttempts := int32(1)
 		if retrySpec != nil && retrySpec.MaxAttempts > 0 {
 			maxAttempts = retrySpec.MaxAttempts
+			if maxAttempts > 10 {
+				maxAttempts = 10 // Hard cap for safety
+			}
 		}
 
 		if retrySpec != nil && maxAttempts > 1 && currentAttempt < maxAttempts {
@@ -1472,6 +1475,10 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseCompleted
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
+		task.Status.TerminalReason = &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonUserStopped,
+			Message: "Task was stopped while queued",
+		}
 		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 			Type:    kubeopenv1alpha1.ConditionTypeStopped,
 			Status:  metav1.ConditionTrue,
@@ -1644,7 +1651,11 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubeopenv1alpha1.
 	// Delete the Pod if it exists
 	if task.Status.PodName != "" {
 		pod := &corev1.Pod{}
-		podKey := types.NamespacedName{Name: task.Status.PodName, Namespace: task.Namespace}
+		podNamespace := task.Status.PodNamespace
+		if podNamespace == "" {
+			podNamespace = task.Namespace
+		}
+		podKey := types.NamespacedName{Name: task.Status.PodName, Namespace: podNamespace}
 		if err := r.Get(ctx, podKey, pod); err == nil {
 			// Delete the Pod - Kubernetes will automatically:
 			// 1. Send SIGTERM to the Pod
@@ -1663,6 +1674,10 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubeopenv1alpha1.
 	task.Status.ObservedGeneration = task.Generation
 	now := metav1.Now()
 	task.Status.CompletionTime = &now
+	task.Status.TerminalReason = &kubeopenv1alpha1.TerminalReason{
+		Code:    kubeopenv1alpha1.TerminalReasonUserStopped,
+		Message: "Task stopped by user via kubeopencode.io/stop annotation",
+	}
 
 	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 		Type:    kubeopenv1alpha1.ConditionTypeStopped,

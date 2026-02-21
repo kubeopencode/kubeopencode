@@ -116,10 +116,11 @@ const (
 // When omitted, no retries are performed (single attempt).
 type RetrySpec struct {
 	// MaxAttempts is the total number of attempts including the first.
-	// Default 1 means no retry. Must be >= 1.
+	// Default 1 means no retry. Must be >= 1 and <= 10.
 	// +optional
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10
 	MaxAttempts int32 `json:"maxAttempts,omitempty"`
 
 	// Profile selects the backoff schedule between attempts.
