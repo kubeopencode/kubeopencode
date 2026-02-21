@@ -795,9 +795,11 @@ var _ = Describe("TaskController", func() {
 				return apierrors.IsNotFound(err)
 			}, timeout, interval).Should(BeTrue())
 
-			By("Waiting for new Pod to be created (retry, backoff ~30s)")
+			By("Waiting for new Pod to be created (retry, backoff ~30s, attempt 2 uses -2-pod suffix)")
+			retryPodName := fmt.Sprintf("%s-2-pod", taskName)
+			retryPodLookupKey := types.NamespacedName{Name: retryPodName, Namespace: taskNamespace}
 			Eventually(func() bool {
-				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+				return k8sClient.Get(ctx, retryPodLookupKey, createdPod) == nil
 			}, timeout*5, interval).Should(BeTrue())
 
 			By("Verifying RetryAttempt is incremented")
@@ -856,9 +858,11 @@ var _ = Describe("TaskController", func() {
 			createdPod.Status.Phase = corev1.PodFailed
 			Expect(k8sClient.Status().Update(ctx, createdPod)).Should(Succeed())
 
-			By("Waiting for new Pod after retry (backoff ~30s)")
+			By("Waiting for new Pod after retry (backoff ~30s, attempt 2 uses -2-pod suffix)")
+			retryPodName := fmt.Sprintf("%s-2-pod", taskName)
+			retryPodLookupKey := types.NamespacedName{Name: retryPodName, Namespace: taskNamespace}
 			Eventually(func() bool {
-				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+				return k8sClient.Get(ctx, retryPodLookupKey, createdPod) == nil
 			}, timeout*5, interval).Should(BeTrue())
 
 			By("Simulating second Pod failure (exhausts retries)")

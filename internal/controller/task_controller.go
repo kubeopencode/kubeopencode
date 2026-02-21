@@ -389,12 +389,25 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 
 	// Generate Pod name
 	// For cross-namespace, include Task namespace to avoid name conflicts
+	// For retries, include attempt to avoid collision with previous Pod (may still be terminating)
 	isCrossNamespace := agentNamespace != task.Namespace
+	attempt := task.Status.RetryAttempt
+	if attempt == 0 && task.Spec.Retry != nil {
+		attempt = 1
+	}
 	var podName string
 	if isCrossNamespace {
-		podName = fmt.Sprintf("%s-%s-pod", task.Namespace, task.Name)
+		if attempt > 1 {
+			podName = fmt.Sprintf("%s-%s-%d-pod", task.Namespace, task.Name, attempt)
+		} else {
+			podName = fmt.Sprintf("%s-%s-pod", task.Namespace, task.Name)
+		}
 	} else {
-		podName = fmt.Sprintf("%s-pod", task.Name)
+		if attempt > 1 {
+			podName = fmt.Sprintf("%s-%d-pod", task.Name, attempt)
+		} else {
+			podName = fmt.Sprintf("%s-pod", task.Name)
+		}
 	}
 
 	// Check if Pod already exists (in Agent's namespace)
