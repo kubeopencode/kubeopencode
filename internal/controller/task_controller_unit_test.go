@@ -97,6 +97,26 @@ func TestTerminalReasonFromPod(t *testing.T) {
 			},
 			want: kubeopenv1alpha1.TerminalReasonUnknown,
 		},
+		{
+			name: "Evicted (pod-level)",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Reason:  "Evicted",
+					Message: "The node was low on resource: memory",
+				},
+			},
+			want: kubeopenv1alpha1.TerminalReasonInfrastructureError,
+		},
+		{
+			name: "DeadlineExceeded (pod-level)",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Reason:  "DeadlineExceeded",
+					Message: "Pod was active beyond its deadline",
+				},
+			},
+			want: kubeopenv1alpha1.TerminalReasonTimeout,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

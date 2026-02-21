@@ -705,7 +705,13 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 			}
 		}
 
-		if retrySpec != nil && maxAttempts > 1 && currentAttempt < maxAttempts {
+		termReason := terminalReasonFromPod(pod)
+		// Non-retriable: business logic failures (AgentExitNonZero) per PR description
+		isRetriable := termReason == nil || termReason.Code != kubeopenv1alpha1.TerminalReasonAgentExitNonZero
+		if !isRetriable && retrySpec != nil && maxAttempts > 1 {
+			log.Info("pod failed with AgentExitNonZero, not retrying", "pod", task.Status.PodName)
+		}
+		if isRetriable && retrySpec != nil && maxAttempts > 1 && currentAttempt < maxAttempts {
 			// Retry: delete Pod, reset status, requeue with backoff
 			log.Info("pod failed, retrying", "pod", task.Status.PodName, "attempt", currentAttempt, "maxAttempts", maxAttempts)
 			r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Retrying", "Retry", "Pod failed (attempt %d/%d), retrying", currentAttempt, maxAttempts)
@@ -733,7 +739,6 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 		}
 
 		// Terminal failure: no retry or exhausted
-		termReason := terminalReasonFromPod(pod)
 		if retrySpec != nil && currentAttempt >= maxAttempts {
 			termReason = &kubeopenv1alpha1.TerminalReason{
 				Code:    kubeopenv1alpha1.TerminalReasonRetryExhausted,
@@ -776,6 +781,27 @@ func retryBackoffDelay(attempt int32, profile kubeopenv1alpha1.RetryProfile) tim
 
 // terminalReasonFromPod extracts a normalized TerminalReason from a failed Pod.
 func terminalReasonFromPod(pod *corev1.Pod) *kubeopenv1alpha1.TerminalReason {
+	// Pod-level reasons (Evicted, DeadlineExceeded) may not appear in container statuses
+	switch pod.Status.Reason {
+	case "Evicted":
+		msg := pod.Status.Message
+		if msg == "" {
+			msg = "Pod evicted"
+		}
+		return &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonInfrastructureError,
+			Message: msg,
+		}
+	case "DeadlineExceeded":
+		msg := pod.Status.Message
+		if msg == "" {
+			msg = "Pod deadline exceeded"
+		}
+		return &kubeopenv1alpha1.TerminalReason{
+			Code:    kubeopenv1alpha1.TerminalReasonTimeout,
+			Message: msg,
+		}
+	}
 	for _, cs := range pod.Status.ContainerStatuses {
 		if state := cs.State.Terminated; state != nil {
 			msg := state.Message
