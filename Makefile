@@ -323,6 +323,9 @@ e2e-deploy: ## Deploy controller and CRDs to kind cluster using Helm
 		--set controller.image.repository=$(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME) \
 		--set controller.image.tag=$(E2E_IMG_TAG) \
 		--set controller.image.pullPolicy=Never \
+		--set server.image.repository=$(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME) \
+		--set server.image.tag=$(E2E_IMG_TAG) \
+		--set server.image.pullPolicy=Never \
 		--set webhook.enabled=true \
 		--set webhook.service.type=NodePort \
 		--set webhook.service.nodePort=30082 \
