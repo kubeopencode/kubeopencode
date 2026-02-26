@@ -84,7 +84,9 @@ This pattern:
 
 ### Dogfooding Migration
 
-The dogfooding environment at `deploy/dogfooding/` is updated:
+The dogfooding environment was originally at `deploy/dogfooding/` and has since been moved to a dedicated repository at https://github.com/kubeopencode/dogfooding for security and separation of concerns.
+
+Historical changes (prior to the move):
 
 - **Removed**: `webhooktrigger-github.yaml`, `workflow-go-update.yaml`
 - **Added**: `argo-events/` directory with EventBus, EventSource, Sensor, and RBAC

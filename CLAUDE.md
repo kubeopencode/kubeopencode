@@ -42,7 +42,7 @@ The image constant is defined in `internal/controller/pod_builder.go` as `Defaul
 
 **Event-Driven Triggers (Argo Events):**
 
-Webhook/event handling has been delegated to [Argo Events](https://argoproj.github.io/argo-events/). See `deploy/dogfooding/argo-events/` for examples of GitHub webhook integration using EventSource and Sensor resources that create KubeOpenCode Tasks.
+Webhook/event handling has been delegated to [Argo Events](https://argoproj.github.io/argo-events/). See the [kubeopencode/dogfooding](https://github.com/kubeopencode/dogfooding) repository for examples of GitHub webhook integration using EventSource and Sensor resources that create KubeOpenCode Tasks.
 
 ## Core Concepts
 
@@ -307,10 +307,7 @@ kubeopencode/
 │   └── context_resolver.go # Context resolution logic
 ├── deploy/               # Kubernetes manifests
 │   ├── crds/            # Generated CRD YAMLs
-│   └── dogfooding/      # Dogfooding environment
-│       ├── base/        # Base resources (Agent, secrets, etc.)
-│       ├── argo-events/ # Argo Events integration (EventSource, Sensor)
-│       └── system/      # System resources (smee-client, route)
+│   └── local-dev/       # Local development environment
 ├── charts/kubeopencode/     # Helm chart
 │   └── templates/
 │       └── controller/   # Controller deployment

@@ -28,6 +28,7 @@ KubeOpenCode enables you to execute [OpenCode](https://opencode.ai) AI agent tas
 > **We eat our own dog food!** KubeOpenCode uses itself in production:
 > - GitHub webhooks trigger Tasks via [Argo Events](https://argoproj.github.io/argo-events/) for automated PR reviews, issue triage, and more
 > - The **KubeOpenCode bot** in Slack and GitHub Discussions is powered by KubeOpenCode itself
+> - See [kubeopencode/dogfooding](https://github.com/kubeopencode/dogfooding) for the full deployment configuration
 
 **Get Help & Connect:**
 

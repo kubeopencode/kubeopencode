@@ -43,7 +43,7 @@ KubeOpenCode focuses on the core Task/Agent abstraction. For advanced features, 
 | Event-driven triggers | [Argo Events](https://argoproj.github.io/argo-events/) |
 | Scheduled execution | Kubernetes CronJob |
 
-See `deploy/dogfooding/argo-events/` for examples of GitHub webhook integration using Argo Events that creates KubeOpenCode Tasks.
+See the [kubeopencode/dogfooding](https://github.com/kubeopencode/dogfooding) repository for examples of GitHub webhook integration using Argo Events that creates KubeOpenCode Tasks.
 
 ---
 
@@ -1202,7 +1202,7 @@ kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746
 
 **Event-Driven Triggers**:
 - Use [Argo Events](https://argoproj.github.io/argo-events/) for webhook-driven Task creation
-- See `deploy/dogfooding/argo-events/` for examples
+- See the [kubeopencode/dogfooding](https://github.com/kubeopencode/dogfooding) repository for examples
 
 **Workflow Orchestration**:
 - Use [Argo Workflows](https://argoproj.github.io/argo-workflows/) for multi-stage task orchestration

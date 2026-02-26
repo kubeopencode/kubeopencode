@@ -43,6 +43,3 @@ ui/coverage/
 /*_key.*
 /*_token
 /*_token.*
-
-# Dogfooding environment config (contains smee.io URL)
-deploy/dogfooding/system/configmap-smee.yaml
