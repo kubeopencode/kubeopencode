@@ -181,23 +181,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	mergedSpec, err := r.resolveTaskTemplate(ctx, task)
 	if err != nil {
 		log.Error(err, "unable to resolve TaskTemplate")
-		// Update task status to Failed
-		task.Status.ObservedGeneration = task.Generation
-		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
-		now := metav1.Now()
-		task.Status.CompletionTime = &now
-		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
-			Type:    kubeopenv1alpha1.ConditionTypeReady,
-			Status:  metav1.ConditionFalse,
-			Reason:  kubeopenv1alpha1.ReasonTaskTemplateError,
-			Message: err.Error(),
-		})
-
-		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
-			log.Error(updateErr, "unable to update Task status")
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{}, nil // Don't requeue, user needs to fix TaskTemplate
+		return r.updateTaskFailed(ctx, task, kubeopenv1alpha1.ReasonTaskTemplateError, err)
 	}
 
 	// Create a working copy of the task with merged spec for Pod creation
@@ -210,22 +194,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	agentConfig, agentName, agentNamespace, err := r.getAgentConfigWithName(ctx, workingTask)
 	if err != nil {
 		log.Error(err, "unable to get Agent")
-		// Update task status to Failed
-		task.Status.ObservedGeneration = task.Generation
-		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
-		now := metav1.Now()
-		task.Status.CompletionTime = &now
-		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
-			Type:    kubeopenv1alpha1.ConditionTypeReady,
-			Status:  metav1.ConditionFalse,
-			Reason:  kubeopenv1alpha1.ReasonAgentError,
-			Message: err.Error(),
-		})
-		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
-			log.Error(updateErr, "unable to update Task status")
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{}, nil // Don't requeue, user needs to fix Agent
+		return r.updateTaskFailed(ctx, task, kubeopenv1alpha1.ReasonAgentError, err)
 	}
 
 	// Add agent label to Task
@@ -433,26 +402,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 			return ctrl.Result{}, refreshErr
 		}
 
-		// Update task status to Failed - context errors are user configuration issues
-		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
-		now := metav1.Now()
-		task.Status.CompletionTime = &now
-		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
-			Type:    kubeopenv1alpha1.ConditionTypeReady,
-			Status:  metav1.ConditionFalse,
-			Reason:  kubeopenv1alpha1.ReasonTaskTemplateError,
-			Message: err.Error(),
-		})
-
-		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
-			if errors.IsConflict(updateErr) {
-				log.V(1).Info("conflict updating context error status, requeuing")
-				return ctrl.Result{Requeue: true}, nil
-			}
-			log.Error(updateErr, "unable to update Task status")
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{}, nil // Don't requeue, user needs to fix context configuration
+		return r.updateTaskFailed(ctx, task, kubeopenv1alpha1.ReasonTaskTemplateError, err)
 	}
 
 	// Create ConfigMap in Agent's namespace (where Pod runs)
@@ -467,25 +417,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 					return ctrl.Result{}, refreshErr
 				}
 
-				// Update task status to Failed - ConfigMap creation error is a terminal failure
-				task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
-				now := metav1.Now()
-				task.Status.CompletionTime = &now
-				meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
-					Type:    kubeopenv1alpha1.ConditionTypeReady,
-					Status:  metav1.ConditionFalse,
-					Reason:  kubeopenv1alpha1.ReasonConfigMapCreationError,
-					Message: err.Error(),
-				})
-				if updateErr := r.Status().Update(ctx, task); updateErr != nil {
-					if errors.IsConflict(updateErr) {
-						log.V(1).Info("conflict updating ConfigMap error status, requeuing")
-						return ctrl.Result{Requeue: true}, nil
-					}
-					log.Error(updateErr, "unable to update Task status")
-					return ctrl.Result{}, updateErr
-				}
-				return ctrl.Result{}, nil // Don't requeue, ConfigMap creation failed
+				return r.updateTaskFailed(ctx, task, kubeopenv1alpha1.ReasonConfigMapCreationError, err)
 			}
 		}
 	}
@@ -515,25 +447,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 				return ctrl.Result{}, refreshErr
 			}
 
-			// Fail the task - quota tracking is required when configured
-			task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
-			now := metav1.Now()
-			task.Status.CompletionTime = &now
-			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
-				Type:    kubeopenv1alpha1.ConditionTypeReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  kubeopenv1alpha1.ReasonAgentError,
-				Message: fmt.Sprintf("failed to get Agent for quota: %v", err),
-			})
-			if updateErr := r.Status().Update(ctx, task); updateErr != nil {
-				if errors.IsConflict(updateErr) {
-					log.V(1).Info("conflict updating quota error status, requeuing")
-					return ctrl.Result{Requeue: true}, nil
-				}
-				log.Error(updateErr, "unable to update Task status")
-				return ctrl.Result{}, updateErr
-			}
-			return ctrl.Result{}, nil
+			return r.updateTaskFailed(ctx, task, kubeopenv1alpha1.ReasonAgentError, fmt.Errorf("failed to get Agent for quota: %v", err))
 		}
 
 		if err := r.recordTaskStart(ctx, quotaAgent, task); err != nil {
@@ -545,25 +459,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 				return ctrl.Result{}, refreshErr
 			}
 
-			// Fail the task - quota tracking is required when configured
-			task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
-			now := metav1.Now()
-			task.Status.CompletionTime = &now
-			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
-				Type:    kubeopenv1alpha1.ConditionTypeReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  kubeopenv1alpha1.ReasonAgentError,
-				Message: fmt.Sprintf("failed to record quota: %v", err),
-			})
-			if updateErr := r.Status().Update(ctx, task); updateErr != nil {
-				if errors.IsConflict(updateErr) {
-					log.V(1).Info("conflict updating quota record error status, requeuing")
-					return ctrl.Result{Requeue: true}, nil
-				}
-				log.Error(updateErr, "unable to update Task status")
-				return ctrl.Result{}, updateErr
-			}
-			return ctrl.Result{}, nil
+			return r.updateTaskFailed(ctx, task, kubeopenv1alpha1.ReasonAgentError, fmt.Errorf("failed to record quota: %v", err))
 		}
 		log.V(1).Info("recorded task start for quota", "task", task.Name, "agent", agentName)
 	}
@@ -587,25 +483,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 			return ctrl.Result{}, refreshErr
 		}
 
-		// Update task status to Failed - Pod creation error is a terminal failure
-		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
-		now := metav1.Now()
-		task.Status.CompletionTime = &now
-		meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
-			Type:    kubeopenv1alpha1.ConditionTypeReady,
-			Status:  metav1.ConditionFalse,
-			Reason:  kubeopenv1alpha1.ReasonPodCreationError,
-			Message: err.Error(),
-		})
-		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
-			if errors.IsConflict(updateErr) {
-				log.V(1).Info("conflict updating Pod creation error status, requeuing")
-				return ctrl.Result{Requeue: true}, nil
-			}
-			log.Error(updateErr, "unable to update Task status")
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{}, nil // Don't requeue, Pod creation failed
+		return r.updateTaskFailed(ctx, task, kubeopenv1alpha1.ReasonPodCreationError, err)
 	}
 
 	// Refresh task to get latest version before final status update
@@ -629,6 +507,34 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 
 	log.Info("initialized Task", "pod", podName, "image", agentConfig.agentImage)
 	r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "PodCreated", "CreatePod", "Created pod %s in namespace %s", podName, agentNamespace)
+	return ctrl.Result{}, nil
+}
+
+// updateTaskFailed updates the Task status to Failed with a reason and error message.
+// This is used for terminal configuration errors where requeuing is not appropriate.
+func (r *TaskReconciler) updateTaskFailed(ctx context.Context, task *kubeopenv1alpha1.Task, reason string, err error) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	task.Status.ObservedGeneration = task.Generation
+	task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
+	now := metav1.Now()
+	task.Status.CompletionTime = &now
+	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+		Type:    kubeopenv1alpha1.ConditionTypeReady,
+		Status:  metav1.ConditionFalse,
+		Reason:  reason,
+		Message: err.Error(),
+	})
+
+	if updateErr := r.Status().Update(ctx, task); updateErr != nil {
+		if errors.IsConflict(updateErr) {
+			log.V(1).Info("conflict updating failed status, requeuing")
+			return ctrl.Result{Requeue: true}, nil
+		}
+		log.Error(updateErr, "unable to update Task status to Failed")
+		return ctrl.Result{}, updateErr
+	}
+
 	return ctrl.Result{}, nil
 }
 
