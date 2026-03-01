@@ -58,7 +58,7 @@ var _ = Describe("TaskController", func() {
 			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
 
 			By("Checking Pod is created")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -137,7 +137,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod uses custom executor image for worker container")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() string {
@@ -228,7 +228,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod has credential env var")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -306,7 +306,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod template has custom labels")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -376,7 +376,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod has node selector")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() map[string]string {
@@ -668,7 +668,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Waiting for Pod to be created")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -718,7 +718,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Waiting for Pod to be created")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -834,7 +834,7 @@ var _ = Describe("TaskController", func() {
 			Expect(queuedCondition.Reason).Should(Equal(kubeopenv1alpha1.ReasonAgentAtCapacity))
 
 			By("Simulating first Task completion")
-			pod1Name := fmt.Sprintf("%s-pod", "test-task-concurrent-1")
+			pod1Name := fmt.Sprintf("%s%s", "test-task-concurrent-1", TaskPodSuffix)
 			pod1LookupKey := types.NamespacedName{Name: pod1Name, Namespace: taskNamespace}
 			pod1 := &corev1.Pod{}
 			Expect(k8sClient.Get(ctx, pod1LookupKey, pod1)).Should(Succeed())
@@ -952,7 +952,7 @@ var _ = Describe("TaskController", func() {
 			Expect(task2Updated.Labels).Should(HaveKeyWithValue(AgentLabelKey, agentName))
 
 			By("Simulating first Task completion")
-			pod1Name := fmt.Sprintf("%s-pod", "test-task-template-queued-1")
+			pod1Name := fmt.Sprintf("%s%s", "test-task-template-queued-1", TaskPodSuffix)
 			pod1LookupKey := types.NamespacedName{Name: pod1Name, Namespace: taskNamespace}
 			pod1 := &corev1.Pod{}
 			Expect(k8sClient.Get(ctx, pod1LookupKey, pod1)).Should(Succeed())
@@ -1171,7 +1171,7 @@ var _ = Describe("TaskController", func() {
 			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
 
 			By("Checking Pod is created")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -1334,7 +1334,7 @@ var _ = Describe("TaskController", func() {
 			Expect(finalTask.Status.CompletionTime).ShouldNot(BeNil())
 
 			By("Checking no Pod was created for the stopped Task")
-			podName := fmt.Sprintf("%s-2-pod", taskName)
+			podName := fmt.Sprintf("%s-2%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			pod := &corev1.Pod{}
 			err := k8sClient.Get(ctx, podLookupKey, pod)
@@ -1798,7 +1798,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod uses agent from template")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() string {
@@ -1900,7 +1900,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod is created")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -2074,7 +2074,7 @@ var _ = Describe("TaskController", func() {
 			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
 
 			By("Simulating Pod completion")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -2155,7 +2155,7 @@ var _ = Describe("TaskController", func() {
 			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
 
 			By("Simulating Pod completion")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -2257,7 +2257,7 @@ var _ = Describe("TaskController", func() {
 				}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
 
 				// Simulate Pod completion
-				podName := fmt.Sprintf("%s-pod", taskName)
+				podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 				podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 				createdPod := &corev1.Pod{}
 				Eventually(func() bool {
@@ -2901,7 +2901,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod uses custom command")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -2948,7 +2948,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod uses default command")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -3011,7 +3011,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod has resource requirements")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -3087,7 +3087,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod has all Secret keys as environment variables")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -3169,7 +3169,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod has Secret mounted as directory")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -3249,7 +3249,7 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Checking Pod has ConfigMap volume for directory mount")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -3394,7 +3394,7 @@ var _ = Describe("TaskController", func() {
 			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
 
 			By("Checking Pod has git-init-0 container")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
@@ -3485,7 +3485,7 @@ var _ = Describe("TaskController", func() {
 			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
 
 			By("Checking Pod command contains --attach flag")
-			podName := fmt.Sprintf("%s-pod", taskName)
+			podName := fmt.Sprintf("%s%s", taskName, TaskPodSuffix)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
 			Eventually(func() bool {

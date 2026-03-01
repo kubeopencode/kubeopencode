@@ -45,6 +45,9 @@ const (
 	// ContextConfigMapSuffix is the suffix for ConfigMap names created for context
 	ContextConfigMapSuffix = "-context"
 
+	// TaskPodSuffix is the suffix for Pod names created for a Task
+	TaskPodSuffix = "-pod"
+
 	// AgentLabelKey is the label key used to identify which Agent a Task uses
 	AgentLabelKey = "kubeopencode.io/agent"
 
@@ -392,9 +395,9 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	isCrossNamespace := agentNamespace != task.Namespace
 	var podName string
 	if isCrossNamespace {
-		podName = fmt.Sprintf("%s-%s-pod", task.Namespace, task.Name)
+		podName = fmt.Sprintf("%s-%s%s", task.Namespace, task.Name, TaskPodSuffix)
 	} else {
-		podName = fmt.Sprintf("%s-pod", task.Name)
+		podName = fmt.Sprintf("%s%s", task.Name, TaskPodSuffix)
 	}
 
 	// Check if Pod already exists (in Agent's namespace)
