@@ -1235,13 +1235,16 @@ func (r *TaskReconciler) checkAgentCapacity(ctx context.Context, namespace, agen
 		return false, err
 	}
 
-	// Count running tasks (those with Jobs created and in progress)
+	// Count running and queued tasks
 	runningCount := int32(0)
+	queuedCount := int32(0)
 	for i := range taskList.Items {
 		task := &taskList.Items[i]
-		// Count tasks that are Running
-		if task.Status.Phase == kubeopenv1alpha1.TaskPhaseRunning {
+		switch task.Status.Phase {
+		case kubeopenv1alpha1.TaskPhaseRunning:
 			runningCount++
+		case kubeopenv1alpha1.TaskPhaseQueued:
+			queuedCount++
 		}
 	}
 
@@ -1249,14 +1252,6 @@ func (r *TaskReconciler) checkAgentCapacity(ctx context.Context, namespace, agen
 
 	// Record capacity metric
 	AgentCapacity.WithLabelValues(agentName, namespace).Set(float64(maxConcurrent - runningCount))
-
-	// Count queued tasks for this agent
-	queuedCount := int32(0)
-	for i := range taskList.Items {
-		if taskList.Items[i].Status.Phase == kubeopenv1alpha1.TaskPhaseQueued {
-			queuedCount++
-		}
-	}
 	AgentQueueLength.WithLabelValues(agentName, namespace).Set(float64(queuedCount))
 
 	return runningCount < maxConcurrent, nil
