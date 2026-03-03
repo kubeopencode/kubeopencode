@@ -346,6 +346,107 @@ func buildContextInitContainer(workspaceDir string, fileMounts []fileMount, dirM
 	}
 }
 
+// buildCredentials resolves credentials into volumes, volume mounts, and environment variables.
+func buildCredentials(credentials []kubeopenv1alpha1.Credential) ([]corev1.Volume, []corev1.VolumeMount, []corev1.EnvVar, []corev1.EnvFromSource) {
+	var volumes []corev1.Volume
+	var volumeMounts []corev1.VolumeMount
+	var envVars []corev1.EnvVar
+	var envFromSources []corev1.EnvFromSource
+
+	// Add credentials (secrets as env vars or file mounts)
+	for i, cred := range credentials {
+		// Check if Key is specified - determines mounting behavior
+		if cred.SecretRef.Key == nil || *cred.SecretRef.Key == "" {
+			// No key specified: mount entire secret
+			if cred.MountPath != nil && *cred.MountPath != "" {
+				// Mount entire secret as a directory (each key becomes a file)
+				volumeName := fmt.Sprintf("credential-%d", i)
+
+				// Default file mode is 0600 (read/write for owner only)
+				var fileMode = DefaultSecretFileMode
+				if cred.FileMode != nil {
+					fileMode = *cred.FileMode
+				}
+
+				volumes = append(volumes, corev1.Volume{
+					Name: volumeName,
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName:  cred.SecretRef.Name,
+							DefaultMode: &fileMode,
+						},
+					},
+				})
+				volumeMounts = append(volumeMounts, corev1.VolumeMount{
+					Name:      volumeName,
+					MountPath: *cred.MountPath,
+				})
+			} else {
+				// Mount entire secret as environment variables
+				envFromSources = append(envFromSources, corev1.EnvFromSource{
+					SecretRef: &corev1.SecretEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: cred.SecretRef.Name,
+						},
+					},
+				})
+			}
+			continue
+		}
+
+		// Key is specified: use the existing single-key mounting behavior
+		// Add as environment variable if Env is specified
+		if cred.Env != nil && *cred.Env != "" {
+			envVars = append(envVars, corev1.EnvVar{
+				Name: *cred.Env,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: cred.SecretRef.Name,
+						},
+						Key: *cred.SecretRef.Key,
+					},
+				},
+			})
+		}
+
+		// Add as file mount if MountPath is specified
+		if cred.MountPath != nil && *cred.MountPath != "" {
+			volumeName := fmt.Sprintf("credential-%d", i)
+
+			// Default file mode is 0600 (read/write for owner only)
+			var fileMode = DefaultSecretFileMode
+			if cred.FileMode != nil {
+				fileMode = *cred.FileMode
+			}
+
+			volumes = append(volumes, corev1.Volume{
+				Name: volumeName,
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: cred.SecretRef.Name,
+						Items: []corev1.KeyToPath{
+							{
+								Key:  *cred.SecretRef.Key,
+								Path: "secret-file",
+								Mode: &fileMode,
+							},
+						},
+						DefaultMode: &fileMode,
+					},
+				},
+			})
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{
+				Name:      volumeName,
+				MountPath: *cred.MountPath,
+				SubPath:   "secret-file",
+			})
+		}
+	}
+
+	return volumes, volumeMounts, envVars, envFromSources
+}
+
 // buildPod creates a Pod object for the task with context mounts.
 // The agentNamespace parameter specifies where the Pod will be created (may differ from Task namespace
 // when using cross-namespace Agent reference).
@@ -437,99 +538,12 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 		}
 	}
 
-	// envFromSources collects secretRef entries for mounting entire secrets
-	var envFromSources []corev1.EnvFromSource
-
 	// Add credentials (secrets as env vars or file mounts)
-	for i, cred := range cfg.credentials {
-		// Check if Key is specified - determines mounting behavior
-		if cred.SecretRef.Key == nil || *cred.SecretRef.Key == "" {
-			// No key specified: mount entire secret
-			if cred.MountPath != nil && *cred.MountPath != "" {
-				// Mount entire secret as a directory (each key becomes a file)
-				volumeName := fmt.Sprintf("credential-%d", i)
-
-				// Default file mode is 0600 (read/write for owner only)
-				var fileMode = DefaultSecretFileMode
-				if cred.FileMode != nil {
-					fileMode = *cred.FileMode
-				}
-
-				volumes = append(volumes, corev1.Volume{
-					Name: volumeName,
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName:  cred.SecretRef.Name,
-							DefaultMode: &fileMode,
-						},
-					},
-				})
-				volumeMounts = append(volumeMounts, corev1.VolumeMount{
-					Name:      volumeName,
-					MountPath: *cred.MountPath,
-				})
-			} else {
-				// Mount entire secret as environment variables
-				envFromSources = append(envFromSources, corev1.EnvFromSource{
-					SecretRef: &corev1.SecretEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: cred.SecretRef.Name,
-						},
-					},
-				})
-			}
-			continue
-		}
-
-		// Key is specified: use the existing single-key mounting behavior
-		// Add as environment variable if Env is specified
-		if cred.Env != nil && *cred.Env != "" {
-			envVars = append(envVars, corev1.EnvVar{
-				Name: *cred.Env,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: cred.SecretRef.Name,
-						},
-						Key: *cred.SecretRef.Key,
-					},
-				},
-			})
-		}
-
-		// Add as file mount if MountPath is specified
-		if cred.MountPath != nil && *cred.MountPath != "" {
-			volumeName := fmt.Sprintf("credential-%d", i)
-
-			// Default file mode is 0600 (read/write for owner only)
-			var fileMode = DefaultSecretFileMode
-			if cred.FileMode != nil {
-				fileMode = *cred.FileMode
-			}
-
-			volumes = append(volumes, corev1.Volume{
-				Name: volumeName,
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: cred.SecretRef.Name,
-						Items: []corev1.KeyToPath{
-							{
-								Key:  *cred.SecretRef.Key,
-								Path: "secret-file",
-								Mode: &fileMode,
-							},
-						},
-						DefaultMode: &fileMode,
-					},
-				},
-			})
-			volumeMounts = append(volumeMounts, corev1.VolumeMount{
-				Name:      volumeName,
-				MountPath: *cred.MountPath,
-				SubPath:   "secret-file",
-			})
-		}
-	}
+	vols, mounts, envs, envFroms := buildCredentials(cfg.credentials)
+	volumes = append(volumes, vols...)
+	volumeMounts = append(volumeMounts, mounts...)
+	envVars = append(envVars, envs...)
+	envFromSources := envFroms
 
 	// Track volume mounts for the context-init container
 	var contextInitMounts []corev1.VolumeMount
