@@ -29,19 +29,6 @@ import (
 )
 
 const (
-	// DefaultAgentImage is the default OpenCode init container image.
-	// This image copies the OpenCode binary to /tools volume.
-	DefaultAgentImage = "quay.io/kubeopencode/kubeopencode-agent-opencode:latest"
-
-	// DefaultExecutorImage is the default worker container image for task execution.
-	// This is the development environment where tasks actually run.
-	DefaultExecutorImage = "quay.io/kubeopencode/kubeopencode-agent-devbox:latest"
-
-	// DefaultAttachImage is the lightweight image for Server-mode --attach Pods.
-	// This minimal image (~25MB) contains only the OpenCode binary + shell + CA certs.
-	// Used when Tasks connect to a persistent OpenCode server via --attach flag.
-	DefaultAttachImage = "quay.io/kubeopencode/kubeopencode-agent-attach:latest"
-
 	// ContextConfigMapSuffix is the suffix for ConfigMap names created for context
 	ContextConfigMapSuffix = "-context"
 
@@ -640,40 +627,12 @@ func (r *TaskReconciler) getAgentConfigWithName(ctx context.Context, task *kubeo
 		}
 	}
 
-	// Get agent image (optional, has default)
-	// This is the OpenCode init container image that copies the binary to /tools
-	agentImage := defaultString(agent.Spec.AgentImage, DefaultAgentImage)
-
-	// Get executor image (optional, has default)
-	// This is the worker container image where tasks actually run
-	executorImage := defaultString(agent.Spec.ExecutorImage, DefaultExecutorImage)
-
-	// Get workspace directory (required)
-	workspaceDir := agent.Spec.WorkspaceDir
-
 	// ServiceAccountName is required
 	if agent.Spec.ServiceAccountName == "" {
 		return agentConfig{}, "", "", fmt.Errorf("agent %q is missing required field serviceAccountName", agentName)
 	}
 
-	// Resolve attach image (only used for Server mode)
-	attachImage := defaultString(agent.Spec.AttachImage, DefaultAttachImage)
-
-	return agentConfig{
-		agentImage:         agentImage,
-		executorImage:      executorImage,
-		attachImage:        attachImage,
-		command:            agent.Spec.Command,
-		workspaceDir:       workspaceDir,
-		contexts:           agent.Spec.Contexts,
-		config:             agent.Spec.Config,
-		credentials:        agent.Spec.Credentials,
-		podSpec:            agent.Spec.PodSpec,
-		serviceAccountName: agent.Spec.ServiceAccountName,
-		maxConcurrentTasks: agent.Spec.MaxConcurrentTasks,
-		quota:              agent.Spec.Quota,
-		serverConfig:       agent.Spec.ServerConfig,
-	}, agentName, agentNamespace, nil
+	return ResolveAgentConfig(agent), agentName, agentNamespace, nil
 }
 
 // getAgentForQuota fetches the Agent object for quota operations.

@@ -74,7 +74,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	logger.Info("Reconciling Server-mode Agent", "agent", agent.Name)
 
 	// Resolve agent configuration
-	agentCfg := r.resolveAgentConfig(&agent)
+	agentCfg := ResolveAgentConfig(&agent)
 	sysCfg := systemConfig{
 		systemImage:           DefaultKubeOpenCodeImage,
 		systemImagePullPolicy: corev1.PullIfNotPresent,
@@ -100,24 +100,6 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// Requeue periodically to check server health
 	return ctrl.Result{RequeueAfter: DefaultServerReconcileInterval}, nil
-}
-
-// resolveAgentConfig extracts configuration from the Agent spec.
-func (r *AgentReconciler) resolveAgentConfig(agent *kubeopenv1alpha1.Agent) agentConfig {
-	return agentConfig{
-		agentImage:         defaultString(agent.Spec.AgentImage, DefaultAgentImage),
-		executorImage:      defaultString(agent.Spec.ExecutorImage, DefaultExecutorImage),
-		attachImage:        defaultString(agent.Spec.AttachImage, DefaultAttachImage),
-		command:            agent.Spec.Command,
-		workspaceDir:       agent.Spec.WorkspaceDir,
-		contexts:           agent.Spec.Contexts,
-		config:             agent.Spec.Config,
-		credentials:        agent.Spec.Credentials,
-		podSpec:            agent.Spec.PodSpec,
-		serviceAccountName: agent.Spec.ServiceAccountName,
-		maxConcurrentTasks: agent.Spec.MaxConcurrentTasks,
-		quota:              agent.Spec.Quota,
-	}
 }
 
 // reconcileDeployment ensures the Deployment exists and is up-to-date.
