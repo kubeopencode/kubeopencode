@@ -187,30 +187,22 @@ func (r *AgentReconciler) reconcileService(ctx context.Context, agent *kubeopenv
 // Health is determined by Deployment readiness (liveness/readiness probes on the Deployment
 // already check the server's /session/status endpoint).
 func (r *AgentReconciler) updateAgentStatus(ctx context.Context, agent *kubeopenv1alpha1.Agent) error {
-	// Get the Deployment to check ready replicas
-	var deployment appsv1.Deployment
 	deploymentName := ServerDeploymentName(agent.Name)
+	if agent.Status.ServerStatus == nil {
+		agent.Status.ServerStatus = &kubeopenv1alpha1.ServerStatus{}
+	}
+	agent.Status.ServerStatus.DeploymentName = deploymentName
+	agent.Status.ServerStatus.ServiceName = ServerServiceName(agent.Name)
+	agent.Status.ServerStatus.URL = ServerURL(agent.Name, agent.Namespace, GetServerPort(agent))
+
+	var deployment appsv1.Deployment
 	err := r.Get(ctx, client.ObjectKey{Namespace: agent.Namespace, Name: deploymentName}, &deployment)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			// Deployment not found yet, set status to pending
-			agent.Status.ServerStatus = &kubeopenv1alpha1.ServerStatus{
-				DeploymentName: deploymentName,
-				ServiceName:    ServerServiceName(agent.Name),
-				URL:            ServerURL(agent.Name, agent.Namespace, GetServerPort(agent)),
-				ReadyReplicas:  0,
-			}
-		} else {
+		if !apierrors.IsNotFound(err) {
 			return fmt.Errorf("failed to get Deployment: %w", err)
 		}
+		agent.Status.ServerStatus.ReadyReplicas = 0
 	} else {
-		// Initialize or update ServerStatus
-		if agent.Status.ServerStatus == nil {
-			agent.Status.ServerStatus = &kubeopenv1alpha1.ServerStatus{}
-		}
-		agent.Status.ServerStatus.DeploymentName = deploymentName
-		agent.Status.ServerStatus.ServiceName = ServerServiceName(agent.Name)
-		agent.Status.ServerStatus.URL = ServerURL(agent.Name, agent.Namespace, GetServerPort(agent))
 		agent.Status.ServerStatus.ReadyReplicas = deployment.Status.ReadyReplicas
 
 		// Server health is determined by Deployment readiness
