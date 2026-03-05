@@ -279,22 +279,6 @@ func extractHost(repoURL string) string {
 	return url
 }
 
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvIntOrDefault(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		if intValue, err := strconv.Atoi(value); err == nil {
-			return intValue
-		}
-	}
-	return defaultValue
-}
-
 func validateRepoURL(repo string) error {
 	if strings.HasPrefix(repo, "https://") || strings.HasPrefix(repo, "git@") {
 		return nil
