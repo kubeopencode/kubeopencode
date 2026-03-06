@@ -136,6 +136,10 @@ function AgentsPage() {
                     )}
                   </div>
 
+                  {agent.profile && (
+                    <p className="mt-2 text-sm text-gray-600 line-clamp-2">{agent.profile}</p>
+                  )}
+
                   <div className="mt-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Contexts</span>

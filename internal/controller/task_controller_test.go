@@ -82,7 +82,12 @@ var _ = Describe("TaskController", func() {
 			Expect(createdPod.Spec.InitContainers[0].Image).Should(Equal(DefaultAgentImage))
 
 			By("Verifying Task status has PodName set")
-			Expect(createdTask.Status.PodName).Should(Equal(podName))
+			Eventually(func() string {
+				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
+					return ""
+				}
+				return createdTask.Status.PodName
+			}, timeout, interval).Should(Equal(podName))
 			Expect(createdTask.Status.StartTime).ShouldNot(BeNil())
 
 			By("Checking context ConfigMap is created")

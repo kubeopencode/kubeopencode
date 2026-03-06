@@ -63,6 +63,7 @@ metadata:
   name: default
   namespace: kubeopencode-system
 spec:
+  profile: "Default development agent for general tasks"
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace

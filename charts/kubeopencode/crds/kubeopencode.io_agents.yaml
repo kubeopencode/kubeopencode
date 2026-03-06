@@ -17,6 +17,10 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.profile
+      name: Profile
+      priority: 1
+      type: string
     - jsonPath: .spec.executorImage
       name: Image
       priority: 1
@@ -1549,6 +1553,15 @@ spec:
                         type: array
                     type: object
                 type: object
+              profile:
+                description: |-
+                  Profile is a brief, human-readable summary of the Agent's purpose and capabilities.
+                  This is for documentation and discovery only — it has no functional effect on execution.
+                  Visible via `kubectl get agents -o wide` for quick identification.
+
+                  Example:
+                    profile: "Full-stack development agent with GitHub and AWS access"
+                type: string
               quota:
                 description: |-
                   Quota defines rate limiting for Task starts within a sliding time window.

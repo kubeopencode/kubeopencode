@@ -57,6 +57,9 @@ function AgentDetailPage() {
             <div>
               <h2 className="text-xl font-bold text-gray-900">{agent.name}</h2>
               <p className="text-sm text-gray-500">{agent.namespace}</p>
+              {agent.profile && (
+                <p className="mt-1 text-sm text-gray-600">{agent.profile}</p>
+              )}
             </div>
             <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
               agent.mode === 'Server'

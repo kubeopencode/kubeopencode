@@ -52,6 +52,7 @@ kind: Agent
 metadata:
   name: default
 spec:
+  profile: "Default development agent with org standards and GitHub access"
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
@@ -91,6 +92,7 @@ kind: Agent
 metadata:
   name: opencode-agent
 spec:
+  profile: "OpenCode agent with custom model configuration"
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
@@ -116,6 +118,7 @@ kind: Agent
 metadata:
   name: opencode-devbox
 spec:
+  profile: "Standard OpenCode agent with devbox environment"
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
@@ -157,6 +160,7 @@ kind: Agent
 metadata:
   name: rate-limited-agent
 spec:
+  profile: "Rate-limited agent for API-quota-constrained backends"
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
@@ -179,6 +183,7 @@ kind: Agent
 metadata:
   name: rate-limited-agent
 spec:
+  profile: "Rate-limited agent with sliding window quota"
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
@@ -233,6 +238,7 @@ metadata:
   name: opencode-agent
   namespace: platform-agents
 spec:
+  profile: "Platform agent with cross-namespace access for dev and staging"
   # Restrict which namespaces can use this Agent
   allowedNamespaces:
     - "dev-*"
@@ -285,6 +291,7 @@ kind: Agent
 metadata:
   name: advanced-agent
 spec:
+  profile: "Advanced agent with gVisor isolation and GPU scheduling"
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace

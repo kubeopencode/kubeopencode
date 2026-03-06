@@ -99,6 +99,7 @@ metadata:
   name: default
   namespace: kubeopencode-system
 spec:
+  profile: "General-purpose development agent"
   workspaceDir: /workspace
   serviceAccountName: kubeopencode-agent
   credentials:
