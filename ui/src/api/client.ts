@@ -96,6 +96,7 @@ export interface ServerStatusInfo {
 export interface Agent {
   name: string;
   namespace: string;
+  profile?: string;
   executorImage?: string;
   agentImage?: string;
   workspaceDir?: string;

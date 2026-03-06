@@ -42,6 +42,14 @@ describe('AgentDetailPage', () => {
     });
   });
 
+  it('shows agent profile when available', async () => {
+    renderAgentDetailPage('default', 'opencode-agent');
+
+    await waitFor(() => {
+      expect(screen.getByText('Full-stack development agent with GitHub access')).toBeInTheDocument();
+    });
+  });
+
   it('shows executor and agent images', async () => {
     renderAgentDetailPage('default', 'opencode-agent');
 

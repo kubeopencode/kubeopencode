@@ -186,6 +186,7 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 	resp := types.AgentResponse{
 		Name:              agent.Name,
 		Namespace:         agent.Namespace,
+		Profile:           agent.Spec.Profile,
 		ExecutorImage:     agent.Spec.ExecutorImage,
 		AgentImage:        agent.Spec.AgentImage,
 		WorkspaceDir:      agent.Spec.WorkspaceDir,

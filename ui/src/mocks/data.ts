@@ -60,6 +60,7 @@ export const mockAgents: Agent[] = [
   {
     name: 'opencode-agent',
     namespace: 'default',
+    profile: 'Full-stack development agent with GitHub access',
     executorImage: 'quay.io/kubeopencode/kubeopencode-agent-devbox:latest',
     agentImage: 'quay.io/kubeopencode/kubeopencode-agent-opencode:latest',
     workspaceDir: '/workspace',

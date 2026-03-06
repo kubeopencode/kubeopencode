@@ -105,6 +105,7 @@ type QuotaInfo struct {
 type AgentResponse struct {
 	Name               string            `json:"name"`
 	Namespace          string            `json:"namespace"`
+	Profile            string            `json:"profile,omitempty"`
 	ExecutorImage      string            `json:"executorImage,omitempty"`
 	AgentImage         string            `json:"agentImage,omitempty"`
 	WorkspaceDir       string            `json:"workspaceDir,omitempty"`

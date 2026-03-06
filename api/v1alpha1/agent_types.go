@@ -11,6 +11,7 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope="Namespaced",shortName=ag
+// +kubebuilder:printcolumn:JSONPath=`.spec.profile`,name="Profile",type=string,priority=1
 // +kubebuilder:printcolumn:JSONPath=`.spec.executorImage`,name="Image",type=string,priority=1
 // +kubebuilder:printcolumn:JSONPath=`.spec.serviceAccountName`,name="ServiceAccount",type=string
 // +kubebuilder:printcolumn:JSONPath=`.spec.maxConcurrentTasks`,name="MaxTasks",type=integer,priority=1
@@ -108,6 +109,15 @@ type ServerStatus struct {
 
 // AgentSpec defines agent configuration
 type AgentSpec struct {
+	// Profile is a brief, human-readable summary of the Agent's purpose and capabilities.
+	// This is for documentation and discovery only — it has no functional effect on execution.
+	// Visible via `kubectl get agents -o wide` for quick identification.
+	//
+	// Example:
+	//   profile: "Full-stack development agent with GitHub and AWS access"
+	// +optional
+	Profile string `json:"profile,omitempty"`
+
 	// AgentImage specifies the OpenCode init container image.
 	// This image contains the OpenCode binary that gets copied to /tools volume.
 	// The init container runs this image and copies the opencode binary to /tools/opencode.

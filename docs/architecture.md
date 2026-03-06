@@ -124,6 +124,7 @@ Task (single task execution)
 
 Agent (execution configuration)
 └── AgentSpec
+    ├── profile: string             (brief human-readable summary, for documentation/discovery)
     ├── agentImage: string           (OpenCode init container image)
     ├── executorImage: string        (Main worker container image)
     ├── workspaceDir: string         (default: "/workspace")
@@ -226,6 +227,7 @@ type Agent struct {
 }
 
 type AgentSpec struct {
+    Profile            string           // Brief human-readable summary of Agent's purpose (optional, for documentation/discovery)
     AgentImage         string           // OpenCode init container image (copies binary to /tools)
     ExecutorImage      string           // Main worker container image (runs tasks)
     WorkspaceDir       string           // Working directory (default: "/workspace")
@@ -477,6 +479,8 @@ metadata:
   name: my-agent
   namespace: kubeopencode-system
 spec:
+  profile: "Full-stack development agent with GitHub and AWS access"
+
   # OpenCode init container image (optional, has default)
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
 
@@ -620,6 +624,7 @@ metadata:
   name: opencode-agent
   namespace: platform-agents
 spec:
+  profile: "Platform agent with cross-namespace access for dev and staging"
   # Restrict which namespaces can use this Agent
   allowedNamespaces:
     - "dev-*"
@@ -713,6 +718,7 @@ kind: Agent
 metadata:
   name: opencode-agent
 spec:
+  profile: "General-purpose OpenCode agent with concurrency limits"
   # OpenCode init container (optional, has default)
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   # Executor container (optional, has default)
@@ -757,6 +763,7 @@ kind: Agent
 metadata:
   name: rate-limited-agent
 spec:
+  profile: "Rate-limited agent for API-quota-constrained backends"
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
@@ -814,6 +821,7 @@ metadata:
   name: slack-agent
   namespace: platform-agents
 spec:
+  profile: "Persistent Slack bot agent for interactive sessions"
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
   serviceAccountName: kubeopencode-agent
@@ -967,6 +975,7 @@ metadata:
   name: default
   namespace: kubeopencode-system
 spec:
+  profile: "Default development agent for general tasks"
   # OpenCode init container (optional, uses default if not specified)
   agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
   # Executor image (worker container)
