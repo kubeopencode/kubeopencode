@@ -158,7 +158,7 @@ jobs:
           password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Build and push kubeopencode
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -194,7 +194,7 @@ jobs:
           password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Build and push opencode agent
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./agents/opencode
           platforms: linux/amd64,linux/arm64
@@ -226,7 +226,7 @@ jobs:
           password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Build and push devbox agent
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./agents/devbox
           platforms: linux/amd64,linux/arm64
@@ -258,7 +258,7 @@ jobs:
           password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Build and push attach agent
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./agents/attach
           platforms: linux/amd64,linux/arm64
