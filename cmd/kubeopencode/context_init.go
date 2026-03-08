@@ -19,6 +19,8 @@ import (
 const (
 	defaultWorkspaceDir  = "/workspace"
 	defaultConfigMapPath = "/configmap-files"
+	defaultDirMode       = 0755
+	defaultFileMode      = 0644
 )
 
 // FileMapping represents a mapping from ConfigMap key to target file path
@@ -72,7 +74,7 @@ func runContextInit(cmd *cobra.Command, args []string) error {
 
 	// Ensure workspace directory exists
 	// Use 0755 for environments where containers run with random UIDs
-	if err := os.MkdirAll(workspaceDir, 0755); err != nil { //nolint:gosec // Needs group/others access for random UID environments
+	if err := os.MkdirAll(workspaceDir, defaultDirMode); err != nil { //nolint:gosec // Needs group/others access for random UID environments
 		return fmt.Errorf("failed to create workspace directory: %w", err)
 	}
 
@@ -90,7 +92,7 @@ func runContextInit(cmd *cobra.Command, args []string) error {
 				// Log warning but continue - some files might be optional
 				fmt.Printf("context-init: Warning: failed to copy %s to %s: %v\n", srcPath, fm.TargetPath, err)
 			} else {
-				modeStr := "0644"
+				modeStr := fmt.Sprintf("%04o", defaultFileMode)
 				if fm.FileMode != nil {
 					modeStr = fmt.Sprintf("%04o", *fm.FileMode)
 				}
@@ -146,7 +148,7 @@ func copyFileWithMode(src, dst string, fileMode *int32) error {
 	// Create parent directory if needed
 	dstDir := filepath.Dir(dst)
 	if dstDir != "" && dstDir != "." {
-		if err := os.MkdirAll(dstDir, 0755); err != nil { //nolint:gosec // Needs group/others access for random UID environments
+		if err := os.MkdirAll(dstDir, defaultDirMode); err != nil { //nolint:gosec // Needs group/others access for random UID environments
 			return fmt.Errorf("failed to create parent directory: %w", err)
 		}
 	}
@@ -170,8 +172,8 @@ func copyFileWithMode(src, dst string, fileMode *int32) error {
 		return fmt.Errorf("failed to copy content: %w", err)
 	}
 
-	// Set permissions - use provided fileMode or default to 0644
-	mode := os.FileMode(0644)
+	// Set permissions - use provided fileMode or default to defaultFileMode
+	mode := os.FileMode(defaultFileMode)
 	if fileMode != nil {
 		mode = os.FileMode(uint32(*fileMode)) //nolint:gosec // fileMode is validated by Kubernetes API
 	}
@@ -194,7 +196,7 @@ func copyDir(src, dst string) error {
 	}
 
 	// Create destination directory
-	if err := os.MkdirAll(dst, 0755); err != nil { //nolint:gosec // Needs group/others access for random UID environments
+	if err := os.MkdirAll(dst, defaultDirMode); err != nil { //nolint:gosec // Needs group/others access for random UID environments
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
@@ -253,7 +255,7 @@ func makeWritable(dir string) error {
 		mode := info.Mode()
 		if info.IsDir() {
 			// Directories need execute permission too
-			newMode := mode | 0755
+			newMode := mode | defaultDirMode
 			if mode != newMode {
 				if err := os.Chmod(path, newMode); err != nil {
 					// Log but don't fail - some files might have restrictive permissions
@@ -262,7 +264,7 @@ func makeWritable(dir string) error {
 			}
 		} else {
 			// Files just need read/write
-			newMode := mode | 0644
+			newMode := mode | defaultFileMode
 			if mode != newMode {
 				if err := os.Chmod(path, newMode); err != nil {
 					fmt.Printf("context-init: Warning: could not chmod %s: %v\n", path, err)
