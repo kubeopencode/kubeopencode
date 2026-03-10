@@ -238,45 +238,20 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 			taskName := uniqueName("task-no-agent")
 			content := "# No Agent Test"
 
-			By("Creating Task without AgentRef")
+			By("Creating Task without AgentRef - should be rejected by API server")
 			task := &kubeopenv1alpha1.Task{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      taskName,
 					Namespace: testNS,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					// AgentRef is NOT specified - this should fail
+					// AgentRef is NOT specified - CRD validation requires it
 					Description: &content,
 				},
 			}
-			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
-
-			By("Waiting for Task to fail with agentRef required error")
-			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
-			Eventually(func() kubeopenv1alpha1.TaskPhase {
-				t := &kubeopenv1alpha1.Task{}
-				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
-					return ""
-				}
-				return t.Status.Phase
-			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseFailed))
-
-			By("Verifying error condition mentions agentRef is required")
-			failedTask := &kubeopenv1alpha1.Task{}
-			Expect(k8sClient.Get(ctx, taskKey, failedTask)).Should(Succeed())
-			// Check that the Ready condition is False with the error message
-			var foundError bool
-			for _, cond := range failedTask.Status.Conditions {
-				if cond.Type == kubeopenv1alpha1.ConditionTypeReady && cond.Status == metav1.ConditionFalse {
-					Expect(cond.Message).Should(ContainSubstring("agentRef is required"))
-					foundError = true
-					break
-				}
-			}
-			Expect(foundError).Should(BeTrue(), "Expected Ready=False condition with agentRef error message")
-
-			By("Cleaning up")
-			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			err := k8sClient.Create(ctx, task)
+			Expect(err).Should(HaveOccurred(), "Expected API server to reject Task without agentRef")
+			Expect(err.Error()).Should(ContainSubstring("agentRef"))
 		})
 	})
 
