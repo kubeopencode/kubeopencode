@@ -55,16 +55,10 @@ export interface ListTasksParams extends FilterParams {
   phase?: string;
 }
 
-export interface TaskTemplateReference {
-  name: string;
-  namespace?: string;
-}
-
 export interface CreateTaskRequest {
   name?: string;
   description?: string;
   agentRef?: AgentReference;
-  taskTemplateRef?: TaskTemplateReference;
 }
 
 export interface ContextItem {
@@ -116,23 +110,6 @@ export interface Agent {
 
 export interface AgentListResponse {
   agents: Agent[];
-  total: number;
-  pagination?: Pagination;
-}
-
-export interface TaskTemplate {
-  name: string;
-  namespace: string;
-  description?: string;
-  agentRef?: AgentReference;
-  contextsCount: number;
-  contexts?: ContextItem[];
-  createdAt: string;
-  labels?: Record<string, string>;
-}
-
-export interface TaskTemplateListResponse {
-  templates: TaskTemplate[];
   total: number;
   pagination?: Pagination;
 }
@@ -266,37 +243,6 @@ export const api = {
     return response.text();
   },
 
-  // TaskTemplates
-  listAllTaskTemplates: (params?: FilterParams) => {
-    const searchParams = new URLSearchParams();
-    if (params?.name) searchParams.set('name', params.name);
-    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
-    if (params?.limit) searchParams.set('limit', params.limit.toString());
-    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
-    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
-    const queryString = searchParams.toString();
-    return request<TaskTemplateListResponse>(`/tasktemplates${queryString ? `?${queryString}` : ''}`);
-  },
-
-  listTaskTemplates: (namespace: string, params?: FilterParams) => {
-    const searchParams = new URLSearchParams();
-    if (params?.name) searchParams.set('name', params.name);
-    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
-    if (params?.limit) searchParams.set('limit', params.limit.toString());
-    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
-    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
-    const queryString = searchParams.toString();
-    return request<TaskTemplateListResponse>(`/namespaces/${namespace}/tasktemplates${queryString ? `?${queryString}` : ''}`);
-  },
-
-  getTaskTemplate: (namespace: string, name: string) =>
-    request<TaskTemplate>(`/namespaces/${namespace}/tasktemplates/${name}`),
-
-  getTaskTemplateYaml: async (namespace: string, name: string): Promise<string> => {
-    const response = await fetch(`${API_BASE}/namespaces/${namespace}/tasktemplates/${name}?output=yaml`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.text();
-  },
 };
 
 export default api;

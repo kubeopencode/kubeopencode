@@ -5,7 +5,6 @@ import ToastContainer from './ToastContainer';
 const navItems = [
   { to: '/', label: 'Dashboard', exact: true },
   { to: '/tasks', label: 'Tasks' },
-  { to: '/templates', label: 'Templates' },
   { to: '/agents', label: 'Agents' },
 ];
 

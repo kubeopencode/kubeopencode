@@ -112,45 +112,6 @@ kubectl describe task update-service-a -n kubeopencode-system
 kubectl logs $(kubectl get task update-service-a -o jsonpath='{.status.podName}') -n kubeopencode-system
 ```
 
-### 4. Use TaskTemplate for Reusable Configurations
-
-TaskTemplates let you define common Task configurations that can be shared across multiple Tasks:
-
-```yaml
-# Create a TaskTemplate with shared configuration
-apiVersion: kubeopencode.io/v1alpha1
-kind: TaskTemplate
-metadata:
-  name: pr-task-template
-  namespace: kubeopencode-system
-spec:
-  agentRef:
-    name: default
-  contexts:
-    - type: ConfigMap
-      configMap:
-        name: coding-standards
----
-# Create Tasks that reference the template
-apiVersion: kubeopencode.io/v1alpha1
-kind: Task
-metadata:
-  name: fix-issue-123
-spec:
-  taskTemplateRef:
-    name: pr-task-template
-  description: |
-    Fix issue #123: Login button not working on mobile.
-```
-
-**Merge Strategy:**
-
-| Field | Merge Behavior |
-|-------|----------------|
-| `agentRef` | Task takes precedence; if not specified, uses Template's |
-| `description` | Task takes precedence; if not specified, uses Template's |
-| `contexts` | Template contexts first, then Task contexts (both included) |
-
 ## Batch Operations with Helm
 
 For running the same task across multiple targets, use Helm templating:

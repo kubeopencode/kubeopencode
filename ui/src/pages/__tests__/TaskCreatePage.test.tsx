@@ -63,37 +63,6 @@ describe('TaskCreatePage', () => {
     });
   });
 
-  it('shows template toggle and template selector', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<TaskCreatePage />, { initialEntries: ['/tasks/create'] });
-
-    const templateToggle = screen.getByLabelText('Use a template');
-    expect(templateToggle).toBeInTheDocument();
-
-    // Template selector should not be visible initially
-    expect(screen.queryByText('Select a template...')).not.toBeInTheDocument();
-
-    // Enable template mode
-    await user.click(templateToggle);
-
-    // Template selector should now be visible
-    await waitFor(() => {
-      expect(screen.getByText('Select a template...')).toBeInTheDocument();
-    });
-  });
-
-  it('loads templates when template mode is enabled', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<TaskCreatePage />, { initialEntries: ['/tasks/create'] });
-
-    await user.click(screen.getByLabelText('Use a template'));
-
-    await waitFor(() => {
-      // Find the template select by looking for the option text
-      expect(screen.getByText('default/pr-template')).toBeInTheDocument();
-    });
-  });
-
   it('disables Create Task button when form is invalid', async () => {
     renderWithProviders(<TaskCreatePage />, { initialEntries: ['/tasks/create'] });
 

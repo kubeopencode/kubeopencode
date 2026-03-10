@@ -14,8 +14,6 @@ function TaskCreatePage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedAgent, setSelectedAgent] = useState('');
-  const [selectedTemplate, setSelectedTemplate] = useState('');
-  const [useTemplate, setUseTemplate] = useState(false);
 
   const { data: namespacesData } = useQuery({
     queryKey: ['namespaces'],
@@ -25,11 +23,6 @@ function TaskCreatePage() {
   const { data: agentsData } = useQuery({
     queryKey: ['agents'],
     queryFn: () => api.listAllAgents(),
-  });
-
-  const { data: templatesData } = useQuery({
-    queryKey: ['tasktemplates'],
-    queryFn: () => api.listAllTaskTemplates(),
   });
 
   // Query for rerun task data
@@ -46,11 +39,6 @@ function TaskCreatePage() {
     const namespaceParam = searchParams.get('namespace');
     if (namespaceParam) {
       setNamespace(namespaceParam);
-    }
-    const templateParam = searchParams.get('template');
-    if (templateParam) {
-      setUseTemplate(true);
-      setSelectedTemplate(templateParam);
     }
     const agentParam = searchParams.get('agent');
     if (agentParam) {
@@ -78,13 +66,6 @@ function TaskCreatePage() {
       isAgentAvailableForNamespace(agent, namespace)
     );
   }, [agentsData?.agents, namespace]);
-
-  // Get selected template details
-  const selectedTemplateDetails = useMemo(() => {
-    if (!selectedTemplate || !templatesData?.templates) return null;
-    const [ns, nm] = selectedTemplate.split('/');
-    return templatesData.templates.find((t) => t.namespace === ns && t.name === nm);
-  }, [selectedTemplate, templatesData?.templates]);
 
   // Reset selected agent if it's no longer available for the new namespace
   const handleNamespaceChange = (newNamespace: string) => {
@@ -119,21 +100,10 @@ function TaskCreatePage() {
       task.name = name;
     }
 
-    // Set template reference if using a template
-    if (useTemplate && selectedTemplate) {
-      const [templateNs, templateName] = selectedTemplate.split('/');
-      task.taskTemplateRef = {
-        name: templateName,
-        namespace: templateNs,
-      };
-    }
-
-    // Description overrides template's description if provided
     if (description) {
       task.description = description;
     }
 
-    // Agent overrides template's agent if provided
     if (selectedAgent) {
       const agent = agentsData?.agents.find(
         (a) => `${a.namespace}/${a.name}` === selectedAgent
@@ -150,18 +120,7 @@ function TaskCreatePage() {
   };
 
   // Determine if form is valid
-  const isValid = useMemo(() => {
-    // If using template, we need either template OR (description AND agent)
-    if (useTemplate && selectedTemplate) {
-      // Template provides defaults, so we just need the template
-      // But if no description and template has no description, we need one
-      const hasDescription = description || selectedTemplateDetails?.description;
-      const hasAgent = selectedAgent || selectedTemplateDetails?.agentRef;
-      return hasDescription && hasAgent;
-    }
-    // If not using template, we need description and agent
-    return description && selectedAgent;
-  }, [useTemplate, selectedTemplate, description, selectedAgent, selectedTemplateDetails]);
+  const isValid = description && selectedAgent;
 
   return (
     <div>
@@ -217,84 +176,24 @@ function TaskCreatePage() {
             </div>
           </div>
 
-          {/* Template Toggle */}
-          <div className="border border-gray-200 rounded-md p-4 bg-gray-50">
-            <div className="flex items-center">
-              <input
-                id="use-template"
-                type="checkbox"
-                checked={useTemplate}
-                onChange={(e) => {
-                  setUseTemplate(e.target.checked);
-                  if (!e.target.checked) {
-                    setSelectedTemplate('');
-                  }
-                }}
-                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-              />
-              <label htmlFor="use-template" className="ml-2 block text-sm font-medium text-gray-700">
-                Use a template
-              </label>
-            </div>
-
-            {useTemplate && (
-              <div className="mt-3">
-                <select
-                  id="template"
-                  value={selectedTemplate}
-                  onChange={(e) => setSelectedTemplate(e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                >
-                  <option value="">Select a template...</option>
-                  {templatesData?.templates.map((template) => (
-                    <option
-                      key={`${template.namespace}/${template.name}`}
-                      value={`${template.namespace}/${template.name}`}
-                    >
-                      {template.namespace}/{template.name}
-                    </option>
-                  ))}
-                </select>
-                {selectedTemplateDetails && (
-                  <div className="mt-2 text-sm text-gray-600">
-                    <p>
-                      <span className="font-medium">Agent:</span>{' '}
-                      {selectedTemplateDetails.agentRef
-                        ? `${selectedTemplateDetails.agentRef.namespace || selectedTemplateDetails.namespace}/${selectedTemplateDetails.agentRef.name}`
-                        : 'None (must specify below)'}
-                    </p>
-                    {selectedTemplateDetails.description && (
-                      <p className="mt-1">
-                        <span className="font-medium">Default description:</span>{' '}
-                        <span className="text-gray-500">(provided by template)</span>
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
           <div>
             <label
               htmlFor="agent"
               className="block text-sm font-medium text-gray-700"
             >
-              Agent {useTemplate && selectedTemplateDetails?.agentRef ? '(optional - template provides default)' : ''}
+              Agent
             </label>
             <select
               id="agent"
               value={selectedAgent}
               onChange={(e) => setSelectedAgent(e.target.value)}
-              required={!useTemplate || !selectedTemplateDetails?.agentRef}
+              required
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
             >
               <option value="">
-                {useTemplate && selectedTemplateDetails?.agentRef
-                  ? 'Use template default'
-                  : availableAgents.length === 0
-                    ? 'No agents available'
-                    : 'Select an agent...'}
+                {availableAgents.length === 0
+                  ? 'No agents available'
+                  : 'Select an agent...'}
               </option>
               {availableAgents.map((agent) => (
                 <option
@@ -306,7 +205,7 @@ function TaskCreatePage() {
               ))}
             </select>
             <p className="mt-1 text-sm text-gray-500">
-              {availableAgents.length === 0 && !useTemplate
+              {availableAgents.length === 0
                 ? 'No agents available for this namespace. Contact your administrator.'
                 : `${availableAgents.length} agent${availableAgents.length !== 1 ? 's' : ''} available for this namespace`}
             </p>
@@ -317,25 +216,19 @@ function TaskCreatePage() {
               htmlFor="description"
               className="block text-sm font-medium text-gray-700"
             >
-              Description / Task Prompt {useTemplate && selectedTemplateDetails?.description ? '(optional - template provides default)' : ''}
+              Description / Task Prompt
             </label>
             <textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={10}
-              required={!useTemplate || !selectedTemplateDetails?.description}
-              placeholder={
-                useTemplate && selectedTemplateDetails?.description
-                  ? 'Leave empty to use template default, or enter to override...'
-                  : 'Describe what you want the AI agent to do...'
-              }
+              required
+              placeholder="Describe what you want the AI agent to do..."
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm font-mono"
             />
             <p className="mt-1 text-sm text-gray-500">
-              {useTemplate && selectedTemplateDetails?.description
-                ? 'Template provides a default description. Enter your own to override it.'
-                : 'This will be the main instruction for the AI agent'}
+              This will be the main instruction for the AI agent
             </p>
           </div>
 

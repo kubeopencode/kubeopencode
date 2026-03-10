@@ -49,9 +49,8 @@ Webhook/event handling has been delegated to [Argo Events](https://argoproj.gith
 ### Resource Hierarchy
 
 1. **Task** - Single task execution (the primary API)
-2. **TaskTemplate** - Reusable template for Task creation (similar to Argo WorkflowTemplate)
-3. **Agent** - AI agent configuration (HOW to execute)
-4. **KubeOpenCodeConfig** - Cluster-scoped system-level configuration (optional)
+2. **Agent** - AI agent configuration (HOW to execute)
+3. **KubeOpenCodeConfig** - Cluster-scoped system-level configuration (optional)
 
 > **Note**: Workflow orchestration and webhook triggers have been delegated to Argo Workflows and Argo Events respectively. KubeOpenCode focuses on the core Task/Agent abstraction.
 
@@ -750,8 +749,8 @@ Image resolution:
 - If both are set: `agentImage` for init container, `executorImage` for worker container
 
 Agent lookup:
-- Task must specify `agentRef` to reference an Agent (required unless using TaskTemplate with agentRef)
-- If `agentRef` is not specified and no TaskTemplate provides one, the Task will fail with an error
+- Task must specify `agentRef` to reference an Agent (required)
+- If `agentRef` is not specified, the Task will fail with an error
 
 The controller generates Pods with:
 - Init containers for context initialization (git-init, context-init, url-fetch)
@@ -794,62 +793,6 @@ spec:
 
 **Note:** Deleting a Task cascades to its Pod and ConfigMap via Finalizer.
 
-### TaskTemplate
-
-TaskTemplate defines a reusable template for Task creation. Similar to Argo Workflows' WorkflowTemplate.
-
-**TaskTemplate Spec:**
-- `description`: Default task instruction/prompt (Task can override)
-- `agentRef`: Default Agent reference (Task can override)
-- `contexts`: Default contexts (merged with Task contexts)
-
-**Example TaskTemplate:**
-```yaml
-apiVersion: kubeopencode.io/v1alpha1
-kind: TaskTemplate
-metadata:
-  name: pr-task-template
-spec:
-  agentRef:
-    name: opencode-agent
-  description: |
-    ## PR Creation Task
-    Follow coding standards and create a PR.
-  contexts:
-    - type: Git
-      git:
-        repository: https://github.com/org/repo
-        ref: main
-      mountPath: source
-    - type: ConfigMap
-      configMap:
-        name: coding-standards
-```
-
-**Task using TaskTemplate:**
-```yaml
-apiVersion: kubeopencode.io/v1alpha1
-kind: Task
-metadata:
-  name: fix-issue-123
-spec:
-  taskTemplateRef:
-    name: pr-task-template
-    # namespace: other-ns  # Optional cross-namespace reference
-  # Override template's description
-  description: |
-    Fix issue #123: Login button not working on mobile.
-  # Additional contexts (appended to template's)
-  contexts:
-    - type: Text
-      text: "Focus on mobile responsiveness"
-```
-
-**Merge Strategy:**
-- `agentRef`: Task takes precedence
-- `contexts`: Template contexts first, then Task contexts (both included)
-- `description`: Task takes precedence (if Task doesn't specify, uses Template's)
-
 ## Kubernetes Integration
 
 ### RBAC
@@ -868,7 +811,7 @@ The controller requires permissions for:
 | File | Description | When to Update |
 |------|-------------|----------------|
 | `README.md` | High-level overview, community, quick start | User-facing changes, new features |
-| `docs/getting-started.md` | Installation, Web UI, detailed examples (Agent, Task, TaskTemplate, batch operations) | Installation changes, new examples |
+| `docs/getting-started.md` | Installation, Web UI, detailed examples (Agent, Task, batch operations) | Installation changes, new examples |
 | `docs/features.md` | Context system, Agent configuration, concurrency, quota, cross-namespace, pod configuration | Feature changes, new configuration options |
 | `docs/agent-images.md` | Two-container pattern, available images, image resolution, building agent images | Agent image changes, new images |
 | `docs/security.md` | RBAC, credential management, controller/agent pod security, best practices | Security-related changes |

@@ -64,7 +64,6 @@ KubeOpenCode enables you to execute [OpenCode](https://opencode.ai) AI agent tas
 ### Core Concepts
 
 - **Task**: Single task execution (the primary API)
-- **TaskTemplate**: Reusable template for Task creation (similar to Argo WorkflowTemplate)
 - **Agent**: AI agent configuration (HOW to execute)
 - **KubeOpenCodeConfig**: System-level configuration (optional)
 
@@ -129,7 +128,7 @@ kubectl get tasks -n kubeopencode-system -w
 kubectl logs $(kubectl get task my-task -o jsonpath='{.status.podName}') -n kubeopencode-system
 ```
 
-See the [Getting Started Guide](docs/getting-started.md) for detailed examples including TaskTemplates, batch operations, and Web UI access.
+See the [Getting Started Guide](docs/getting-started.md) for detailed examples including batch operations and Web UI access.
 
 ## Documentation
 

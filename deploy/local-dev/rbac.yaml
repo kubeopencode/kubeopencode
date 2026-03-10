@@ -3,7 +3,7 @@
 #
 # Note: Most Kubernetes API permissions are NOT needed because:
 # - ConfigMaps/Secrets are mounted as volumes (not read via API)
-# - Agent/TaskTemplate/KubeOpenCodeConfig are read by Controller before Pod creation
+# - Agent/KubeOpenCodeConfig are read by Controller before Pod creation
 # - Task status is updated by Controller, not Agent
 # - Init containers (git-init, context-init, url-fetch) only do file I/O
 ---

@@ -154,9 +154,9 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Description is required unless a template is specified
-	if req.Description == "" && req.TaskTemplateRef == nil {
-		writeError(w, http.StatusBadRequest, "Description is required when not using a template", "")
+	// Description is required
+	if req.Description == "" {
+		writeError(w, http.StatusBadRequest, "Description is required", "")
 		return
 	}
 
@@ -170,14 +170,6 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Set description if provided
 	if req.Description != "" {
 		task.Spec.Description = &req.Description
-	}
-
-	// Set task template reference if provided
-	if req.TaskTemplateRef != nil {
-		task.Spec.TaskTemplateRef = &kubeopenv1alpha1.TaskTemplateReference{
-			Name:      req.TaskTemplateRef.Name,
-			Namespace: req.TaskTemplateRef.Namespace,
-		}
 	}
 
 	// Set name or generate name

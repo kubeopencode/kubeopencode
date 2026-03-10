@@ -1,6 +1,6 @@
 // Mock data fixtures for tests
 
-import type { Task, Agent, TaskTemplate, TaskListResponse, AgentListResponse, TaskTemplateListResponse } from '../api/client';
+import type { Task, Agent, TaskListResponse, AgentListResponse } from '../api/client';
 
 export const mockNamespaces = {
   namespaces: ['default', 'production', 'staging'],
@@ -121,38 +121,6 @@ export const mockAgentListResponse: AgentListResponse = {
     limit: 20,
     offset: 0,
     totalCount: mockAgents.length,
-    hasMore: false,
-  },
-};
-
-export const mockTemplates: TaskTemplate[] = [
-  {
-    name: 'pr-template',
-    namespace: 'default',
-    description: 'Create a pull request following coding standards',
-    agentRef: { name: 'opencode-agent', namespace: 'default' },
-    contextsCount: 1,
-    createdAt: '2026-02-01T00:00:00Z',
-    contexts: [
-      { name: 'source', type: 'Git', mountPath: 'source-code', description: 'Repository source' },
-    ],
-  },
-  {
-    name: 'review-template',
-    namespace: 'default',
-    description: 'Review code changes',
-    contextsCount: 0,
-    createdAt: '2026-02-05T00:00:00Z',
-  },
-];
-
-export const mockTemplateListResponse: TaskTemplateListResponse = {
-  templates: mockTemplates,
-  total: mockTemplates.length,
-  pagination: {
-    limit: 20,
-    offset: 0,
-    totalCount: mockTemplates.length,
     hasMore: false,
   },
 };

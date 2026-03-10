@@ -345,7 +345,7 @@ spec:
         name: security-policy
       # Empty mountPath = write to .kubeopencode/context.md with XML tags
 
-  # Required: Reference to Agent (unless using TaskTemplate with agentRef)
+  # Required: Reference to Agent
   agentRef: my-agent
 
 status:
@@ -366,7 +366,7 @@ status:
 |-------|------|----------|-------------|
 | `spec.description` | String | No | Task instruction (creates /workspace/task.md) |
 | `spec.contexts` | []ContextItem | No | Inline context definitions (see below) |
-| `spec.agentRef` | *AgentReference | Yes* | Cross-namespace Agent reference (*required unless using TaskTemplate with agentRef) |
+| `spec.agentRef` | *AgentReference | Yes | Cross-namespace Agent reference (required) |
 
 **Status Field Description:**
 

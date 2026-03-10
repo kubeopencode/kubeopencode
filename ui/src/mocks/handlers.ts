@@ -5,10 +5,8 @@ import {
   mockNamespaces,
   mockTaskListResponse,
   mockAgentListResponse,
-  mockTemplateListResponse,
   mockTasks,
   mockAgents,
-  mockTemplates,
 } from './data';
 
 const API_BASE = '/api/v1';
@@ -139,46 +137,5 @@ export const handlers = [
     }
 
     return HttpResponse.json(agent);
-  }),
-
-  // TaskTemplates - list all
-  http.get(`${API_BASE}/tasktemplates`, () => {
-    return HttpResponse.json(mockTemplateListResponse);
-  }),
-
-  // TaskTemplates - list by namespace
-  http.get(`${API_BASE}/namespaces/:namespace/tasktemplates`, ({ params }) => {
-    const { namespace } = params;
-    const filtered = mockTemplates.filter((t) => t.namespace === namespace);
-    return HttpResponse.json({
-      templates: filtered,
-      total: filtered.length,
-      pagination: {
-        limit: 20,
-        offset: 0,
-        totalCount: filtered.length,
-        hasMore: false,
-      },
-    });
-  }),
-
-  // TaskTemplates - get single
-  http.get(`${API_BASE}/namespaces/:namespace/tasktemplates/:name`, ({ params, request }) => {
-    const { namespace, name } = params;
-    const url = new URL(request.url);
-    const output = url.searchParams.get('output');
-
-    const template = mockTemplates.find((t) => t.namespace === namespace && t.name === name);
-    if (!template) {
-      return HttpResponse.json({ error: 'template not found' }, { status: 404 });
-    }
-
-    if (output === 'yaml') {
-      return new HttpResponse(`apiVersion: kubeopencode.io/v1alpha1\nkind: TaskTemplate\nmetadata:\n  name: ${name}\n  namespace: ${namespace}`, {
-        headers: { 'Content-Type': 'text/plain' },
-      });
-    }
-
-    return HttpResponse.json(template);
   }),
 ];

@@ -36,8 +36,6 @@ const (
 	// ConditionTypeStopped is the condition type for Task stop
 	ConditionTypeStopped = "Stopped"
 
-	// ReasonTaskTemplateError is the reason for TaskTemplate errors
-	ReasonTaskTemplateError = "TaskTemplateError"
 	// ReasonAgentError is the reason for Agent errors
 	ReasonAgentError = "AgentError"
 	// ReasonAgentAtCapacity is the reason for Agent capacity limit
@@ -102,28 +100,10 @@ type AgentReference struct {
 
 // TaskSpec defines the Task configuration
 type TaskSpec struct {
-	// TaskTemplateRef references a TaskTemplate to use as base configuration.
-	// The template's settings are merged with this Task's settings.
-	//
-	// When using a template:
-	//   - TaskTemplate.agentRef is used if Task.agentRef is not specified
-	//   - TaskTemplate.contexts are prepended to Task.contexts
-	//   - TaskTemplate.description is used if Task.description is not specified
-	//
-	// Example:
-	//   taskTemplateRef:
-	//     name: pr-task-template
-	//     namespace: platform-templates
-	// +optional
-	TaskTemplateRef *TaskTemplateReference `json:"taskTemplateRef,omitempty"`
-
 	// Description is the task instruction/prompt.
 	// The controller creates ${WORKSPACE_DIR}/task.md with this content
 	// (where WORKSPACE_DIR is configured in Agent.spec.workspaceDir, defaulting to "/workspace").
 	// This is the primary way to tell the agent what to do.
-	//
-	// If taskTemplateRef is specified and description is not set,
-	// the template's description is used.
 	//
 	// Example:
 	//   description: "Update all dependencies and create a PR"
@@ -135,9 +115,8 @@ type TaskSpec struct {
 	//
 	// Context priority (lowest to highest):
 	//   1. Agent.contexts (Agent-level defaults)
-	//   2. TaskTemplate.contexts (Template-level defaults, if taskTemplateRef is set)
-	//   3. Task.contexts (Task-specific contexts)
-	//   4. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
+	//   2. Task.contexts (Task-specific contexts)
+	//   3. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
 	//
 	// Example:
 	//   contexts:
@@ -155,9 +134,7 @@ type TaskSpec struct {
 	// Supports cross-namespace references: when Agent is in a different namespace,
 	// the Pod runs in the Agent's namespace to keep credentials isolated.
 	//
-	// Required unless taskTemplateRef is set with an agentRef.
-	// If not specified and taskTemplateRef is set, uses the template's agentRef.
-	// +optional
+	// +required
 	AgentRef *AgentReference `json:"agentRef,omitempty"`
 }
 
@@ -172,7 +149,6 @@ type TaskExecutionStatus struct {
 	Phase TaskPhase `json:"phase,omitempty"`
 
 	// AgentRef is the resolved Agent reference used for this task.
-	// This comes from Task.spec.agentRef or TaskTemplate.spec.agentRef.
 	// +optional
 	AgentRef *AgentReference `json:"agentRef,omitempty"`
 
@@ -209,69 +185,4 @@ type TaskList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Task `json:"items"`
-}
-
-// TaskTemplateReference specifies which TaskTemplate to use.
-// Supports cross-namespace references to enable sharing templates across namespaces.
-type TaskTemplateReference struct {
-	// Name of the TaskTemplate.
-	// +required
-	Name string `json:"name"`
-
-	// Namespace of the TaskTemplate.
-	// If empty, defaults to the Task's namespace.
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-}
-
-// +genclient
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Namespaced",shortName=tt
-// +kubebuilder:printcolumn:JSONPath=`.spec.agentRef.name`,name="Agent",type=string
-// +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
-
-// TaskTemplate defines a reusable template for Task creation.
-// TaskTemplates allow users to define common Task configurations (contexts, agentRef)
-// that can be shared across multiple Tasks. Similar to Argo WorkflowTemplate.
-type TaskTemplate struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	// Spec defines the template configuration
-	Spec TaskTemplateSpec `json:"spec"`
-}
-
-// TaskTemplateSpec defines the template for Task creation.
-// It contains all TaskSpec fields that can be shared across multiple Tasks.
-type TaskTemplateSpec struct {
-	// Description is the default task instruction/prompt.
-	// Can be overridden by Task.spec.description.
-	// If Task doesn't specify description, this value is used.
-	// +optional
-	Description *string `json:"description,omitempty"`
-
-	// AgentRef references an Agent for tasks using this template.
-	// Can be overridden by Task.spec.agentRef.
-	// +optional
-	AgentRef *AgentReference `json:"agentRef,omitempty"`
-
-	// Contexts provides default contexts for tasks using this template.
-	// These are merged with Task.spec.contexts (Task contexts appended after template contexts).
-	//
-	// Context priority (lowest to highest):
-	//   1. Agent.contexts (Agent-level defaults)
-	//   2. TaskTemplate.contexts (Template-level defaults)
-	//   3. Task.contexts (Task-specific contexts)
-	//   4. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
-	// +optional
-	Contexts []ContextItem `json:"contexts,omitempty"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// TaskTemplateList contains a list of TaskTemplate
-type TaskTemplateList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []TaskTemplate `json:"items"`
 }

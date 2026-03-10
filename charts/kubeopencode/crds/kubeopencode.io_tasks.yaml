@@ -67,9 +67,6 @@ spec:
                   AgentRef references an Agent for this task.
                   Supports cross-namespace references: when Agent is in a different namespace,
                   the Pod runs in the Agent's namespace to keep credentials isolated.
-
-                  Required unless taskTemplateRef is set with an agentRef.
-                  If not specified and taskTemplateRef is set, uses the template's agentRef.
                 properties:
                   name:
                     description: Name of the Agent.
@@ -91,9 +88,8 @@ spec:
 
                   Context priority (lowest to highest):
                     1. Agent.contexts (Agent-level defaults)
-                    2. TaskTemplate.contexts (Template-level defaults, if taskTemplateRef is set)
-                    3. Task.contexts (Task-specific contexts)
-                    4. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
+                    2. Task.contexts (Task-specific contexts)
+                    3. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
 
                   Example:
                     contexts:
@@ -287,7 +283,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: text is required when type is Text
-                    rule: self.type != 'Text' || self.text != ''
+                    rule: self.type != 'Text' || self.text != ”
                   - message: configMap is required when type is ConfigMap
                     rule: self.type != 'ConfigMap' || has(self.configMap)
                   - message: git is required when type is Git
@@ -295,7 +291,7 @@ spec:
                   - message: url is required when type is URL
                     rule: self.type != 'URL' || has(self.url)
                   - message: mountPath is required for Git context type
-                    rule: self.type != 'Git' || self.mountPath != ''
+                    rule: self.type != 'Git' || self.mountPath != ”
                 type: array
               description:
                 description: |-
@@ -304,46 +300,18 @@ spec:
                   (where WORKSPACE_DIR is configured in Agent.spec.workspaceDir, defaulting to "/workspace").
                   This is the primary way to tell the agent what to do.
 
-                  If taskTemplateRef is specified and description is not set,
-                  the template's description is used.
-
                   Example:
                     description: "Update all dependencies and create a PR"
                 type: string
-              taskTemplateRef:
-                description: |-
-                  TaskTemplateRef references a TaskTemplate to use as base configuration.
-                  The template's settings are merged with this Task's settings.
-
-                  When using a template:
-                    - TaskTemplate.agentRef is used if Task.agentRef is not specified
-                    - TaskTemplate.contexts are prepended to Task.contexts
-                    - TaskTemplate.description is used if Task.description is not specified
-
-                  Example:
-                    taskTemplateRef:
-                      name: pr-task-template
-                      namespace: platform-templates
-                properties:
-                  name:
-                    description: Name of the TaskTemplate.
-                    type: string
-                  namespace:
-                    description: |-
-                      Namespace of the TaskTemplate.
-                      If empty, defaults to the Task's namespace.
-                    type: string
-                required:
-                - name
-                type: object
+            required:
+            - agentRef
             type: object
           status:
             description: Status represents the current status of the Task
             properties:
               agentRef:
-                description: |-
-                  AgentRef is the resolved Agent reference used for this task.
-                  This comes from Task.spec.agentRef or TaskTemplate.spec.agentRef.
+                description: AgentRef is the resolved Agent reference used for this
+                  task.
                 properties:
                   name:
                     description: Name of the Agent.

@@ -39,8 +39,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(GroupVersion,
 		&Task{},
 		&TaskList{},
-		&TaskTemplate{},
-		&TaskTemplateList{},
 		&Agent{},
 		&AgentList{},
 		&KubeOpenCodeConfig{},

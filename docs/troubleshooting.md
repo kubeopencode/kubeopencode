@@ -49,7 +49,6 @@ Expected output:
 agents.kubeopencode.io                <timestamp>
 kubeopencodeconfigs.kubeopencode.io   <timestamp>
 tasks.kubeopencode.io                 <timestamp>
-tasktemplates.kubeopencode.io         <timestamp>
 ```
 
 If missing, reinstall with Helm or apply manually:
@@ -255,7 +254,7 @@ Common causes:
 ### Get All KubeOpenCode Resources
 
 ```bash
-kubectl get tasks,agents,tasktemplates,kubeopencodeconfigs --all-namespaces
+kubectl get tasks,agents,kubeopencodeconfigs --all-namespaces
 ```
 
 ### Watch Task Status Changes

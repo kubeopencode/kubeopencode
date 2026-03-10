@@ -171,13 +171,12 @@ Add to `/etc/hosts`:
 | **Task Create** | Create new Tasks with Agent selection (filtered by namespace permissions) |
 | **Agent List** | Browse available Agents with namespace filter |
 | **Agent Detail** | View Agent configuration, contexts, credentials |
-| **Template List** | Browse TaskTemplates with filtering and pagination |
 | **Filtering** | Filter resources by name and Kubernetes label selectors |
 | **Pagination** | Server-side pagination for efficient browsing of large resource lists |
 
 #### Resource Filtering
 
-All list pages (Tasks, Agents, Templates) support filtering:
+All list pages (Tasks, Agents) support filtering:
 
 - **Name Filter**: Filter resources by name (substring match)
 - **Label Selector**: Filter by Kubernetes labels using standard selector syntax (e.g., `app=myapp,env=prod`)
