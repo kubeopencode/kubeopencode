@@ -15,15 +15,17 @@ import (
 
 // Environment variable names for git-init
 const (
-	envRepo        = "GIT_REPO"
-	envRef         = "GIT_REF"
-	envDepth       = "GIT_DEPTH"
-	envRoot        = "GIT_ROOT"
-	envLink        = "GIT_LINK"
-	envUsername    = "GIT_USERNAME"
-	envPassword    = "GIT_PASSWORD"
-	envSSHKey      = "GIT_SSH_KEY"
-	envSSHHostKeys = "GIT_SSH_KNOWN_HOSTS"
+	envRepo            = "GIT_REPO"
+	envRef             = "GIT_REF"
+	envDepth           = "GIT_DEPTH"
+	envRoot            = "GIT_ROOT"
+	envLink            = "GIT_LINK"
+	envUsername        = "GIT_USERNAME"
+	envPassword        = "GIT_PASSWORD"
+	envSSHKey          = "GIT_SSH_KEY"
+	envSSHHostKeys     = "GIT_SSH_KNOWN_HOSTS"
+	envGitWorkspaceDir = "GIT_WORKSPACE_DIR"
+	envGitRepoSubpath  = "GIT_REPO_SUBPATH"
 )
 
 // Default values for git-init
@@ -153,6 +155,25 @@ func runGitInit(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("git-init: Clone successful!\n")
 		fmt.Printf("  Commit: %s\n", strings.TrimSpace(string(commitOutput)))
+	}
+
+	// If GIT_WORKSPACE_DIR is set, merge cloned content into the workspace directory.
+	// This is used when a Git context has mountPath equal to workspaceDir (e.g., mountPath: ".").
+	// Instead of overlaying the workspace with a separate volume mount (which would shadow
+	// files like task.md written by context-init), we copy the repo content so both coexist.
+	if wsDir := os.Getenv(envGitWorkspaceDir); wsDir != "" {
+		sourceDir := targetDir
+		if subpath := os.Getenv(envGitRepoSubpath); subpath != "" {
+			sourceDir = filepath.Join(targetDir, subpath)
+		}
+		fmt.Printf("git-init: Merging repository content into workspace %s...\n", wsDir)
+		cpCmd := exec.Command("cp", "-a", sourceDir+"/.", wsDir+"/") //nolint:gosec // paths are from controlled env vars
+		cpCmd.Stdout = os.Stdout
+		cpCmd.Stderr = os.Stderr
+		if err := cpCmd.Run(); err != nil {
+			return fmt.Errorf("failed to merge repository into workspace: %w", err)
+		}
+		fmt.Println("git-init: Repository content merged into workspace successfully")
 	}
 
 	// Clean up credentials file after successful clone
