@@ -5,6 +5,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -702,20 +703,50 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 			},
 		})
 
-		// Build init container for git clone
-		initContainers = append(initContainers, buildGitInitContainer(gm, volumeName, i, sysCfg))
+		// Check if this git context should be merged into the workspace root.
+		// When mountPath resolves to workspaceDir (e.g., mountPath: "."), we can't
+		// overlay the workspace with a separate volume mount because it would shadow
+		// files already in the workspace emptyDir (e.g., task.md from context-init).
+		// Instead, git-init copies the cloned content into the workspace emptyDir.
+		isWorkspaceRoot := filepath.Clean(gm.mountPath) == filepath.Clean(cfg.workspaceDir)
 
-		// Add volume mount to agent container
-		// If repoPath is specified, use subPath to mount only that path
-		subPath := DefaultGitLink
-		if gm.repoPath != "" {
-			subPath = DefaultGitLink + "/" + strings.TrimPrefix(gm.repoPath, "/")
+		// Build init container for git clone
+		gitInitContainer := buildGitInitContainer(gm, volumeName, i, sysCfg)
+
+		if isWorkspaceRoot {
+			// Workspace root mode: after cloning, git-init merges repo content
+			// into the workspace emptyDir so task.md and repo files coexist.
+			gitInitContainer.Env = append(gitInitContainer.Env,
+				corev1.EnvVar{Name: "GIT_WORKSPACE_DIR", Value: cfg.workspaceDir},
+			)
+			if gm.repoPath != "" {
+				gitInitContainer.Env = append(gitInitContainer.Env,
+					corev1.EnvVar{Name: "GIT_REPO_SUBPATH", Value: gm.repoPath},
+				)
+			}
+			gitInitContainer.VolumeMounts = append(gitInitContainer.VolumeMounts,
+				corev1.VolumeMount{
+					Name:      WorkspaceVolumeName,
+					MountPath: cfg.workspaceDir,
+				},
+			)
 		}
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      volumeName,
-			MountPath: gm.mountPath,
-			SubPath:   subPath,
-		})
+
+		initContainers = append(initContainers, gitInitContainer)
+
+		if !isWorkspaceRoot {
+			// Normal case: mount git volume at the specified path in agent container.
+			// If repoPath is specified, use subPath to mount only that path.
+			subPath := DefaultGitLink
+			if gm.repoPath != "" {
+				subPath = DefaultGitLink + "/" + strings.TrimPrefix(gm.repoPath, "/")
+			}
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{
+				Name:      volumeName,
+				MountPath: gm.mountPath,
+				SubPath:   subPath,
+			})
+		}
 	}
 
 	// If we have Git mounts, add GIT_CONFIG_GLOBAL to point to shared gitconfig
