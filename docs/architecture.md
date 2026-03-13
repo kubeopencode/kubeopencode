@@ -113,11 +113,10 @@ Task (single task execution)
 ├── TaskSpec
 │   ├── description: *string         (syntactic sugar for /workspace/task.md)
 │   ├── contexts: []ContextItem      (inline context definitions)
-│   └── agentRef: *AgentReference    (cross-namespace Agent reference)
+│   └── agentRef: *AgentReference    (Agent reference, same namespace)
 └── TaskExecutionStatus
     ├── phase: TaskPhase
     ├── podName: string
-    ├── podNamespace: string         (where Pod runs - may differ from Task namespace)
     ├── startTime: Time
     ├── completionTime: Time
     └── conditions: []Condition
@@ -133,7 +132,6 @@ Agent (execution configuration)
     ├── credentials: []Credential
     ├── podSpec: *AgentPodSpec
     ├── serviceAccountName: string
-    ├── allowedNamespaces: []string  (restrict cross-namespace access)
     ├── maxConcurrentTasks: *int32   (limit concurrent Tasks, nil/0 = unlimited)
     └── quota: *QuotaConfig          (rate limiting for Task starts)
         ├── maxTaskStarts: int32     (max starts within window)
@@ -161,13 +159,12 @@ type Task struct {
 type TaskSpec struct {
     Description *string          // Syntactic sugar for /workspace/task.md
     Contexts    []ContextItem    // Inline context definitions
-    AgentRef    *AgentReference  // Cross-namespace Agent reference
+    AgentRef    *AgentReference  // Agent reference (same namespace)
 }
 
-// AgentReference supports cross-namespace Agent references
+// AgentReference references an Agent in the same namespace
 type AgentReference struct {
-    Name      string // Agent name (required)
-    Namespace string // Agent namespace (optional, defaults to Task namespace)
+    Name string // Agent name (required)
 }
 
 // ContextItem defines inline context content
@@ -184,7 +181,6 @@ type ContextItem struct {
 type TaskExecutionStatus struct {
     Phase          TaskPhase
     PodName        string
-    PodNamespace   string             // Where Pod runs (may differ from Task namespace)
     StartTime      *metav1.Time
     CompletionTime *metav1.Time
     Conditions     []metav1.Condition
@@ -236,7 +232,6 @@ type AgentSpec struct {
     Credentials        []Credential
     PodSpec            *AgentPodSpec    // Pod configuration (labels, scheduling, runtime)
     ServiceAccountName string
-    AllowedNamespaces  []string         // Restrict which namespaces can use this Agent
     MaxConcurrentTasks *int32           // Limit concurrent Tasks (nil/0 = unlimited)
 }
 
@@ -366,7 +361,7 @@ status:
 |-------|------|----------|-------------|
 | `spec.description` | String | No | Task instruction (creates /workspace/task.md) |
 | `spec.contexts` | []ContextItem | No | Inline context definitions (see below) |
-| `spec.agentRef` | *AgentReference | Yes | Cross-namespace Agent reference (required) |
+| `spec.agentRef` | *AgentReference | Yes | Agent reference, must be in the same namespace (required) |
 
 **Status Field Description:**
 
@@ -374,7 +369,6 @@ status:
 |-------|------|-------------|
 | `status.phase` | TaskPhase | Execution phase: Pending\|Queued\|Running\|Completed\|Failed |
 | `status.podName` | String | Kubernetes Pod name |
-| `status.podNamespace` | String | Pod namespace (may differ from Task namespace for cross-namespace Agent) |
 | `status.startTime` | Timestamp | Start time |
 | `status.completionTime` | Timestamp | End time |
 
@@ -456,7 +450,6 @@ Contexts provide additional information to AI agents during task execution. They
 - **Runtime context**: Provides KubeOpenCode platform awareness to agents, explaining environment variables, kubectl commands, and system concepts
 - **Path resolution**: Relative paths are prefixed with workspaceDir; absolute paths are used as-is
 - **URL context**: Fetches content at task execution time via an init container. Requires `mountPath` to be specified
-- **Cross-namespace ConfigMap**: When Task references a cross-namespace Agent, ConfigMap contexts are read from Task's namespace and embedded into the execution namespace
 
 **Context Priority (lowest to highest):**
 
@@ -564,7 +557,6 @@ spec:
 | `spec.contexts` | []ContextItem | No | Inline contexts (applied to all tasks) |
 | `spec.credentials` | []Credential | No | Secrets as env vars or file mounts |
 | `spec.podSpec` | *AgentPodSpec | No | Advanced Pod configuration (labels, scheduling, runtimeClass) |
-| `spec.allowedNamespaces` | []String | No | Restrict which namespaces can use this Agent (empty = all allowed) |
 | `spec.maxConcurrentTasks` | *int32 | No | Limit concurrent Tasks (nil/0 = unlimited) |
 | `spec.quota` | *QuotaConfig | No | Rate limiting for Task starts |
 | `spec.quota.maxTaskStarts` | int32 | Yes (if quota set) | Maximum Task starts within the window |
@@ -584,94 +576,6 @@ When this annotation is detected:
 - Kubernetes sends SIGTERM to all running Pods, triggering graceful shutdown
 - Pod is deleted after termination (logs are not preserved)
 - Task status is set to `Completed` with a `Stopped` condition
-
-### Cross-Namespace Task/Agent Separation
-
-KubeOpenCode supports cross-namespace Agent references, enabling separation of concerns:
-
-- **Platform teams** manage Agents with credentials in a dedicated namespace
-- **Dev teams** create Tasks in their own namespaces, referencing shared Agents
-- **Pods run in Agent's namespace**, keeping credentials isolated from Task creators
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Task Namespace (dev-team-a)                  │
-│  ┌──────────┐                                                   │
-│  │   Task   │  agentRef:                                        │
-│  │          │    name: opencode-agent                           │
-│  │          │    namespace: platform-agents                     │
-│  └──────────┘                                                   │
-│       │                                                         │
-└───────│─────────────────────────────────────────────────────────┘
-        │ references
-        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  Agent Namespace (platform-agents)              │
-│  ┌──────────┐     ┌──────────┐     ┌──────────┐                │
-│  │  Agent   │     │ Secrets  │     │   Pod    │◄── runs here   │
-│  │          │     │(API keys)│     │          │                │
-│  └──────────┘     └──────────┘     └──────────┘                │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Example - Cross-Namespace Setup:**
-
-```yaml
-# In platform-agents namespace - managed by Infra team
-apiVersion: kubeopencode.io/v1alpha1
-kind: Agent
-metadata:
-  name: opencode-agent
-  namespace: platform-agents
-spec:
-  profile: "Platform agent with cross-namespace access for dev and staging"
-  # Restrict which namespaces can use this Agent
-  allowedNamespaces:
-    - "dev-*"
-    - "staging"
-  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
-  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
-  serviceAccountName: kubeopencode-agent
-  workspaceDir: /workspace
-  command:
-    - sh
-    - -c
-    - /tools/opencode run --format json "$(cat ${WORKSPACE_DIR}/task.md)"
-  credentials:
-    - name: anthropic-key
-      secretRef:
-        name: anthropic-credentials
-        key: api-key
-      env: ANTHROPIC_API_KEY
----
-# In dev-team-a namespace - created by Dev team
-apiVersion: kubeopencode.io/v1alpha1
-kind: Task
-metadata:
-  name: fix-bug-123
-  namespace: dev-team-a
-spec:
-  # Reference Agent in different namespace
-  agentRef:
-    name: opencode-agent
-    namespace: platform-agents
-  description: "Fix the bug in authentication module"
-```
-
-**Result:**
-- Task exists in `dev-team-a` namespace
-- Pod runs in `platform-agents` namespace (where Agent lives)
-- Credentials (anthropic-credentials Secret) stay in `platform-agents` - never exposed to dev team
-- Task status shows `podNamespace: platform-agents`
-
-**AllowedNamespaces:**
-
-The `allowedNamespaces` field supports glob patterns:
-- `"dev-*"` - matches `dev-team-a`, `dev-team-b`, etc.
-- `"staging"` - exact match
-- Empty list (default) - all namespaces are allowed
-
-When a Task in a non-allowed namespace references this Agent, it fails with an error condition.
 
 ---
 
@@ -1194,16 +1098,15 @@ kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746
 - `Runtime` - KubeOpenCode platform awareness (environment variables, kubectl commands, system concepts)
 - `URL` - Content fetched from remote HTTP/HTTPS URL at task execution time
 
-**Cross-Namespace Support**:
-- Tasks can reference Agents in different namespaces via `agentRef: {name, namespace}`
-- Pods run in Agent's namespace, keeping credentials isolated from Task creators
-- `allowedNamespaces` field on Agent restricts which namespaces can use it (supports glob patterns)
-- Finalizers ensure cross-namespace Pod cleanup on Task deletion
+**Namespace Model**:
+- Task and Agent must be in the same namespace
+- Pod runs in the same namespace as the Task and Agent
+- OwnerReference-based cleanup for Pod and ConfigMap
 
 **Task Lifecycle**:
 - No retry on failure (AI tasks are non-idempotent)
 - User-initiated stop via `kubeopencode.io/stop=true` annotation (graceful, Pod deleted)
-- Finalizer-based cleanup for Pod and ConfigMap (works for both same-namespace and cross-namespace)
+- OwnerReference-based cleanup for Pod and ConfigMap
 
 **Batch Operations**:
 - Use Helm, Kustomize, or other templating tools

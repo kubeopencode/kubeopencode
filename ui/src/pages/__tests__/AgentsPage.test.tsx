@@ -53,16 +53,6 @@ describe('AgentsPage', () => {
     });
   });
 
-  it('shows allowed namespaces on agent cards', async () => {
-    renderWithProviders(<AgentsPage />, { initialEntries: ['/agents'] });
-
-    await waitFor(() => {
-      // Multiple agents may have allowed namespaces
-      const labels = screen.getAllByText('Allowed namespaces:');
-      expect(labels.length).toBeGreaterThan(0);
-    });
-  });
-
   it('renders agent cards as links to detail pages', async () => {
     renderWithProviders(<AgentsPage />, { initialEntries: ['/agents'] });
 

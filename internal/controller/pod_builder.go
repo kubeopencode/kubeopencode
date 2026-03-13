@@ -481,12 +481,11 @@ func buildCredentials(credentials []kubeopenv1alpha1.Credential) ([]corev1.Volum
 }
 
 // buildPod creates a Pod object for the task with context mounts.
-// The agentNamespace parameter specifies where the Pod will be created (may differ from Task namespace
-// when using cross-namespace Agent reference).
+// The Pod is created in the same namespace as the Task.
 // The serverURL parameter is used for Server-mode Agents: when non-empty, the Pod will use
 // `opencode run --attach <serverURL>` to connect to an existing OpenCode server instead of
 // running a standalone instance.
-func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string, cfg agentConfig, contextConfigMap *corev1.ConfigMap, fileMounts []fileMount, dirMounts []dirMount, gitMounts []gitMount, sysCfg systemConfig, serverURL string) *corev1.Pod {
+func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, contextConfigMap *corev1.ConfigMap, fileMounts []fileMount, dirMounts []dirMount, gitMounts []gitMount, sysCfg systemConfig, serverURL string) *corev1.Pod {
 	var volumes []corev1.Volume
 	var volumeMounts []corev1.VolumeMount
 	var envVars []corev1.EnvVar
@@ -773,11 +772,6 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 		"kubeopencode.io/task": task.Name,
 	}
 
-	// Track Task namespace when Pod runs in a different namespace (cross-namespace Agent reference)
-	if agentNamespace != task.Namespace {
-		podLabels[TaskNamespaceLabelKey] = task.Namespace
-	}
-
 	// Add custom pod labels from Agent.PodSpec
 	if cfg.podSpec != nil {
 		for k, v := range cfg.podSpec.Labels {
@@ -865,15 +859,14 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, agentNamespace string
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
-			Namespace: agentNamespace, // Pod runs in Agent's namespace
+			Namespace: task.Namespace,
 			Labels:    podLabels,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(task, kubeopenv1alpha1.SchemeGroupVersion.WithKind("Task")),
+			},
 		},
 		Spec: podSpec,
 	}
-
-	// Pod cleanup is handled uniformly via finalizer on the Task.
-	// We don't use OwnerReference to keep cleanup behavior consistent
-	// across both same-namespace and cross-namespace scenarios.
 
 	return pod
 }

@@ -182,8 +182,7 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Set agent reference if provided
 	if req.AgentRef != nil {
 		task.Spec.AgentRef = &kubeopenv1alpha1.AgentReference{
-			Name:      req.AgentRef.Name,
-			Namespace: req.AgentRef.Namespace,
+			Name: req.AgentRef.Name,
 		}
 	}
 
@@ -289,11 +288,8 @@ func (h *TaskHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get pod namespace (might be different from task namespace for cross-namespace agents)
-	podNamespace := task.Status.PodNamespace
-	if podNamespace == "" {
-		podNamespace = namespace
-	}
+	// Pod is always in the same namespace as the Task
+	podNamespace := namespace
 
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -395,28 +391,25 @@ func taskToResponse(task *kubeopenv1alpha1.Task) types.TaskResponse {
 	}
 
 	resp := types.TaskResponse{
-		Name:         task.Name,
-		Namespace:    task.Namespace,
-		Phase:        string(task.Status.Phase),
-		Description:  description,
-		PodName:      task.Status.PodName,
-		PodNamespace: task.Status.PodNamespace,
-		CreatedAt:    task.CreationTimestamp.Time,
-		Labels:       task.Labels,
+		Name:        task.Name,
+		Namespace:   task.Namespace,
+		Phase:       string(task.Status.Phase),
+		Description: description,
+		PodName:     task.Status.PodName,
+		CreatedAt:   task.CreationTimestamp.Time,
+		Labels:      task.Labels,
 	}
 
 	if task.Spec.AgentRef != nil {
 		resp.AgentRef = &types.AgentReference{
-			Name:      task.Spec.AgentRef.Name,
-			Namespace: task.Spec.AgentRef.Namespace,
+			Name: task.Spec.AgentRef.Name,
 		}
 	}
 
 	// Use resolved agent ref from status if available
 	if task.Status.AgentRef != nil {
 		resp.AgentRef = &types.AgentReference{
-			Name:      task.Status.AgentRef.Name,
-			Namespace: task.Status.AgentRef.Namespace,
+			Name: task.Status.AgentRef.Name,
 		}
 	}
 

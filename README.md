@@ -135,7 +135,7 @@ See the [Getting Started Guide](docs/getting-started.md) for detailed examples i
 | Guide | Description |
 |-------|-------------|
 | [Getting Started](docs/getting-started.md) | Installation, examples, and tutorials |
-| [Features](docs/features.md) | Context system, concurrency, cross-namespace separation |
+| [Features](docs/features.md) | Context system, concurrency, pod configuration |
 | [Agent Images](docs/agent-images.md) | Building and customizing agent images |
 | [Security](docs/security.md) | RBAC, credentials, pod security |
 | [Architecture](docs/architecture.md) | System design and API reference |

@@ -313,7 +313,7 @@ kubeopencode/
 ├── hack/                # Build and codegen scripts
 ├── docs/                # Documentation
 │   ├── getting-started.md  # Installation, examples, tutorials
-│   ├── features.md         # Context system, concurrency, cross-namespace
+│   ├── features.md         # Context system, concurrency, pod configuration
 │   ├── agent-images.md     # Building and customizing agent images
 │   ├── security.md         # RBAC, credentials, pod security
 │   ├── architecture.md     # System design and API reference
@@ -447,7 +447,6 @@ Key Agent spec fields:
 - `config`: OpenCode configuration as inline JSON string (written to `/tools/opencode.json`)
 - `credentials`: Secrets as env vars or file mounts (supports single key or entire secret)
 - `serviceAccountName`: Kubernetes ServiceAccount for RBAC
-- `allowedNamespaces`: Restrict which namespaces can reference this Agent (supports glob patterns)
 - `maxConcurrentTasks`: Limit concurrent Tasks using this Agent (nil/0 = unlimited)
 - `serverConfig`: Enable Server mode (persistent OpenCode server instead of per-Task Pods)
 
@@ -627,7 +626,7 @@ spec:
    - Creates a Pod with command: `opencode run --attach <server-url> "$(cat task.md)"`
    - Standard Pod status tracking (same as Pod mode)
    - Logs available via `kubectl logs` (same as Pod mode)
-4. Pod is deleted via finalizer when Task is deleted
+4. Pod is cleaned up via OwnerReference when Task is deleted
 
 **Server Mode Status:**
 The Agent status includes server information when in Server mode:
@@ -677,30 +676,6 @@ This is useful for:
 
 **Note:** Logs are lost when a Task is stopped. For log persistence, use an external log aggregation system (Loki, ELK, CloudWatch, etc.).
 
-**Cross-Namespace Task/Agent:**
-
-Tasks can reference Agents in different namespaces, enabling credential isolation:
-
-```yaml
-# Task in dev-team-a namespace references Agent in platform-agents namespace
-apiVersion: kubeopencode.io/v1alpha1
-kind: Task
-metadata:
-  name: my-task
-  namespace: dev-team-a
-spec:
-  agentRef:
-    name: opencode-agent
-    namespace: platform-agents  # Pod runs here, credentials stay isolated
-  description: "Fix the bug"
-```
-
-Key points:
-- Pod always runs in Agent's namespace (not Task's namespace)
-- Credentials (Secrets) in Agent's namespace are never exposed to Task's namespace
-- `allowedNamespaces` on Agent restricts which namespaces can use it (glob patterns supported)
-- `status.podNamespace` shows where the Pod is running
-
 **Credentials Mounting:**
 
 Credentials can be mounted in two ways:
@@ -749,7 +724,7 @@ Image resolution:
 - If both are set: `agentImage` for init container, `executorImage` for worker container
 
 Agent lookup:
-- Task must specify `agentRef` to reference an Agent (required)
+- Task must specify `agentRef` to reference an Agent in the same namespace (required)
 - If `agentRef` is not specified, the Task will fail with an error
 
 The controller generates Pods with:
@@ -791,7 +766,7 @@ spec:
 - Cleanup configuration is cluster-wide, but `maxRetainedTasks` limit applies per namespace
 - No cleanup is performed if `KubeOpenCodeConfig` is not present (default behavior)
 
-**Note:** Deleting a Task cascades to its Pod and ConfigMap via Finalizer.
+**Note:** Deleting a Task cascades to its Pod and ConfigMap via OwnerReference.
 
 ## Kubernetes Integration
 
@@ -812,7 +787,7 @@ The controller requires permissions for:
 |------|-------------|----------------|
 | `README.md` | High-level overview, community, quick start | User-facing changes, new features |
 | `docs/getting-started.md` | Installation, Web UI, detailed examples (Agent, Task, batch operations) | Installation changes, new examples |
-| `docs/features.md` | Context system, Agent configuration, concurrency, quota, cross-namespace, pod configuration | Feature changes, new configuration options |
+| `docs/features.md` | Context system, Agent configuration, concurrency, quota, pod configuration | Feature changes, new configuration options |
 | `docs/agent-images.md` | Two-container pattern, available images, image resolution, building agent images | Agent image changes, new images |
 | `docs/security.md` | RBAC, credential management, controller/agent pod security, best practices | Security-related changes |
 | `docs/architecture.md` | System design, API reference, detailed technical documentation | Architecture changes, API changes |

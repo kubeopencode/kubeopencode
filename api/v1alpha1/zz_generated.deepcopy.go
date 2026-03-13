@@ -155,11 +155,6 @@ func (in *AgentSpec) DeepCopyInto(out *AgentSpec) {
 		*out = new(AgentPodSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.AllowedNamespaces != nil {
-		in, out := &in.AllowedNamespaces, &out.AllowedNamespaces
-		*out = make([]string, len(*in))
-		copy(*out, *in)
-	}
 	if in.MaxConcurrentTasks != nil {
 		in, out := &in.MaxConcurrentTasks, &out.MaxConcurrentTasks
 		*out = new(int32)

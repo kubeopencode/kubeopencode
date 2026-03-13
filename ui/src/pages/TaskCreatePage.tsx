@@ -4,7 +4,6 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import api, { CreateTaskRequest } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import Breadcrumbs from '../components/Breadcrumbs';
-import { isAgentAvailableForNamespace } from '../utils/agent';
 
 function TaskCreatePage() {
   const navigate = useNavigate();
@@ -53,18 +52,16 @@ function TaskCreatePage() {
         setDescription(rerunTask.description);
       }
       if (rerunTask.agentRef) {
-        const agentKey = `${rerunTask.agentRef.namespace || rerunTask.namespace}/${rerunTask.agentRef.name}`;
+        const agentKey = `${rerunTask.namespace}/${rerunTask.agentRef.name}`;
         setSelectedAgent(agentKey);
       }
     }
   }, [rerunTask]);
 
-  // Filter agents based on allowedNamespaces
+  // Filter agents to same namespace
   const availableAgents = useMemo(() => {
     if (!agentsData?.agents) return [];
-    return agentsData.agents.filter((agent) =>
-      isAgentAvailableForNamespace(agent, namespace)
-    );
+    return agentsData.agents.filter((agent) => agent.namespace === namespace);
   }, [agentsData?.agents, namespace]);
 
   // Reset selected agent if it's no longer available for the new namespace
@@ -74,7 +71,7 @@ function TaskCreatePage() {
       const agent = agentsData?.agents.find(
         (a) => `${a.namespace}/${a.name}` === selectedAgent
       );
-      if (agent && !isAgentAvailableForNamespace(agent, newNamespace)) {
+      if (agent && agent.namespace !== newNamespace) {
         setSelectedAgent('');
       }
     }
@@ -111,7 +108,6 @@ function TaskCreatePage() {
       if (agent) {
         task.agentRef = {
           name: agent.name,
-          namespace: agent.namespace,
         };
       }
     }

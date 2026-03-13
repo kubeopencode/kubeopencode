@@ -192,7 +192,6 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		WorkspaceDir:      agent.Spec.WorkspaceDir,
 		ContextsCount:     len(agent.Spec.Contexts),
 		CredentialsCount:  len(agent.Spec.Credentials),
-		AllowedNamespaces: agent.Spec.AllowedNamespaces,
 		CreatedAt:         agent.CreationTimestamp.Time,
 		Labels:            agent.Labels,
 		Mode:              mode,

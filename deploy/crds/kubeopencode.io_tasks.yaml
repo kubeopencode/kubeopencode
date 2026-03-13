@@ -20,17 +20,11 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.agentRef.namespace
-      name: Agent-NS
-      type: string
     - jsonPath: .status.agentRef.name
       name: Agent
       type: string
     - jsonPath: .status.podName
       name: Pod
-      type: string
-    - jsonPath: .status.podNamespace
-      name: Pod-NS
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -63,20 +57,11 @@ spec:
             description: Spec defines the desired state of Task
             properties:
               agentRef:
-                description: |-
-                  AgentRef references an Agent for this task.
-                  Supports cross-namespace references: when Agent is in a different namespace,
-                  the Pod runs in the Agent's namespace to keep credentials isolated.
+                description: AgentRef references an Agent in the same namespace for
+                  this task.
                 properties:
                   name:
                     description: Name of the Agent.
-                    type: string
-                  namespace:
-                    description: |-
-                      Namespace of the Agent.
-                      If empty, defaults to the Task's namespace.
-                      When specified, the Pod runs in the Agent's namespace (not the Task's namespace),
-                      allowing credentials to stay isolated from Task creators.
                     type: string
                 required:
                 - name
@@ -283,7 +268,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: text is required when type is Text
-                    rule: self.type != 'Text' || self.text != ''
+                    rule: self.type != 'Text' || has(self.text)
                   - message: configMap is required when type is ConfigMap
                     rule: self.type != 'ConfigMap' || has(self.configMap)
                   - message: git is required when type is Git
@@ -291,7 +276,7 @@ spec:
                   - message: url is required when type is URL
                     rule: self.type != 'URL' || has(self.url)
                   - message: mountPath is required for Git context type
-                    rule: self.type != 'Git' || self.mountPath != ''
+                    rule: self.type != 'Git' || has(self.mountPath)
                 type: array
               description:
                 description: |-
@@ -315,13 +300,6 @@ spec:
                 properties:
                   name:
                     description: Name of the Agent.
-                    type: string
-                  namespace:
-                    description: |-
-                      Namespace of the Agent.
-                      If empty, defaults to the Task's namespace.
-                      When specified, the Pod runs in the Agent's namespace (not the Task's namespace),
-                      allowing credentials to stay isolated from Task creators.
                     type: string
                 required:
                 - name
@@ -406,13 +384,6 @@ spec:
                 type: string
               podName:
                 description: Kubernetes Pod name
-                type: string
-              podNamespace:
-                description: |-
-                  PodNamespace indicates where the Pod is running.
-                  This may differ from Task's namespace when using cross-namespace Agent reference.
-                  When Agent is in a different namespace, the Pod runs in the Agent's namespace
-                  to keep credentials isolated from Task creators.
                 type: string
               startTime:
                 description: Start time

@@ -15,7 +15,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -34,9 +33,8 @@ var (
 	ctx        context.Context
 	cancel     context.CancelFunc
 	scheme     *runtime.Scheme
-	testNS     string
-	platformNS string
-	echoImage  string
+	testNS    string
+	echoImage string
 )
 
 const (
@@ -62,9 +60,6 @@ const (
 	LabelTask   = "task"
 	LabelAgent  = "agent"
 	LabelServer = "server"
-
-	// Default platform namespace for cross-namespace tests
-	defaultPlatformNS = "kubeopencode-platform-e2e"
 
 	// Extended timeout for server mode tests
 	serverTimeout = time.Minute * 10
@@ -94,12 +89,6 @@ var _ = BeforeSuite(func() {
 		echoImage = defaultEchoImage
 	}
 
-	// Get platform namespace from env or use default
-	platformNS = os.Getenv("E2E_PLATFORM_NAMESPACE")
-	if platformNS == "" {
-		platformNS = defaultPlatformNS
-	}
-
 	By("Connecting to Kubernetes cluster")
 
 	// Use kubeconfig from env or default location
@@ -126,8 +115,6 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	err = appsv1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
-	err = rbacv1.AddToScheme(scheme)
-	Expect(err).NotTo(HaveOccurred())
 
 	// Create controller-runtime client
 	k8sClient, err = client.New(config, client.Options{Scheme: scheme})
@@ -151,65 +138,6 @@ var _ = BeforeSuite(func() {
 	sa.Name = testServiceAccount
 	sa.Namespace = testNS
 	err = k8sClient.Create(ctx, sa)
-	if err != nil && !isAlreadyExistsGeneric(err) {
-		Expect(err).NotTo(HaveOccurred())
-	}
-
-	By("Creating platform namespace for cross-namespace tests")
-	platformNSObj := &corev1.Namespace{}
-	platformNSObj.Name = platformNS
-	err = k8sClient.Create(ctx, platformNSObj)
-	if err != nil && !isAlreadyExistsGeneric(err) {
-		Expect(err).NotTo(HaveOccurred())
-	}
-
-	By("Creating ServiceAccount in platform namespace")
-	platformSA := &corev1.ServiceAccount{}
-	platformSA.Name = testServiceAccount
-	platformSA.Namespace = platformNS
-	err = k8sClient.Create(ctx, platformSA)
-	if err != nil && !isAlreadyExistsGeneric(err) {
-		Expect(err).NotTo(HaveOccurred())
-	}
-
-	By("Creating RBAC for cross-namespace Pod creation")
-	// Create ClusterRole for cross-namespace Pod creation
-	clusterRole := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "kubeopencode-e2e-cross-ns",
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{""},
-				Resources: []string{"pods", "pods/log", "configmaps", "secrets"},
-				Verbs:     []string{"get", "list", "watch", "create", "update", "patch", "delete"},
-			},
-		},
-	}
-	err = k8sClient.Create(ctx, clusterRole)
-	if err != nil && !isAlreadyExistsGeneric(err) {
-		Expect(err).NotTo(HaveOccurred())
-	}
-
-	// Create ClusterRoleBinding
-	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "kubeopencode-e2e-cross-ns",
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      "ServiceAccount",
-				Name:      testServiceAccount,
-				Namespace: platformNS,
-			},
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     "kubeopencode-e2e-cross-ns",
-		},
-	}
-	err = k8sClient.Create(ctx, clusterRoleBinding)
 	if err != nil && !isAlreadyExistsGeneric(err) {
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -255,36 +183,6 @@ var _ = AfterSuite(func() {
 		}
 	}
 
-	By("Cleaning up platform namespace")
-	// Delete all Tasks in platform namespace
-	if err := k8sClient.List(ctx, tasks, client.InNamespace(platformNS)); err == nil {
-		for _, task := range tasks.Items {
-			_ = k8sClient.Delete(ctx, &task)
-		}
-	}
-
-	// Delete all Agents in platform namespace
-	if err := k8sClient.List(ctx, agents, client.InNamespace(platformNS)); err == nil {
-		for _, a := range agents.Items {
-			_ = k8sClient.Delete(ctx, &a)
-		}
-	}
-
-	// Delete Server Mode Deployments and Services in platform namespace
-	deployments := &appsv1.DeploymentList{}
-	if err := k8sClient.List(ctx, deployments, client.InNamespace(platformNS)); err == nil {
-		for _, d := range deployments.Items {
-			_ = k8sClient.Delete(ctx, &d)
-		}
-	}
-
-	services := &corev1.ServiceList{}
-	if err := k8sClient.List(ctx, services, client.InNamespace(platformNS)); err == nil {
-		for _, s := range services.Items {
-			_ = k8sClient.Delete(ctx, &s)
-		}
-	}
-
 	// Wait for resources to be cleaned up
 	time.Sleep(5 * time.Second)
 
@@ -294,17 +192,6 @@ var _ = AfterSuite(func() {
 		ns.Name = testNS
 		_ = k8sClient.Delete(ctx, ns)
 	}
-
-	// Delete platform namespace if it was created by the test
-	if platformNS == defaultPlatformNS {
-		ns := &corev1.Namespace{}
-		ns.Name = platformNS
-		_ = k8sClient.Delete(ctx, ns)
-	}
-
-	// Clean up RBAC resources
-	_ = k8sClient.Delete(ctx, &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "kubeopencode-e2e-cross-ns"}})
-	_ = k8sClient.Delete(ctx, &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: "kubeopencode-e2e-cross-ns"}})
 
 	cancel()
 	GinkgoWriter.Println("E2E test cleanup complete")

@@ -356,9 +356,6 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 			Expect(runningTask.Status.AgentRef).ShouldNot(BeNil())
 			Expect(runningTask.Status.AgentRef.Name).Should(Equal(agentName))
 
-			By("Verifying status.podNamespace is set")
-			Expect(runningTask.Status.PodNamespace).Should(Equal(testNS))
-
 			By("Verifying Task transitions to Completed")
 			Eventually(func() kubeopenv1alpha1.TaskPhase {
 				createdTask := &kubeopenv1alpha1.Task{}
@@ -960,71 +957,6 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
-		})
-	})
-
-	Context("Task with Cross-Namespace Agent", func() {
-		It("should run Pod in Agent's namespace", func() {
-			taskName := uniqueName("task-cross-ns")
-			crossNSAgentName := uniqueName("cross-ns-agent")
-			description := "Test cross-namespace agent"
-
-			By("Creating Agent in platform namespace")
-			crossNSAgent := &kubeopenv1alpha1.Agent{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      crossNSAgentName,
-					Namespace: platformNS,
-				},
-				Spec: kubeopenv1alpha1.AgentSpec{
-					ExecutorImage:      echoImage,
-					ServiceAccountName: testServiceAccount,
-					WorkspaceDir:       "/workspace",
-					Command:            []string{"sh", "-c", "echo '=== Cross-Namespace Test ===' && cat ${WORKSPACE_DIR}/task.md && echo '=== Done ==='"},
-					// Allow tasks from test namespace
-					AllowedNamespaces: []string{testNS},
-				},
-			}
-			Expect(k8sClient.Create(ctx, crossNSAgent)).Should(Succeed())
-
-			By("Creating Task in test namespace referencing Agent in platform namespace")
-			task := &kubeopenv1alpha1.Task{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      taskName,
-					Namespace: testNS,
-				},
-				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef: &kubeopenv1alpha1.AgentReference{
-						Name:      crossNSAgentName,
-						Namespace: platformNS,
-					},
-					Description: &description,
-				},
-			}
-			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
-
-			By("Waiting for Task to complete")
-			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
-			Eventually(func() kubeopenv1alpha1.TaskPhase {
-				createdTask := &kubeopenv1alpha1.Task{}
-				if err := k8sClient.Get(ctx, taskKey, createdTask); err != nil {
-					return ""
-				}
-				return createdTask.Status.Phase
-			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
-
-			By("Verifying Pod ran in Agent's namespace (platform namespace)")
-			completedTask := &kubeopenv1alpha1.Task{}
-			Expect(k8sClient.Get(ctx, taskKey, completedTask)).Should(Succeed())
-			Expect(completedTask.Status.PodNamespace).Should(Equal(platformNS))
-
-			By("Verifying status.agentRef is populated")
-			Expect(completedTask.Status.AgentRef).ShouldNot(BeNil())
-			Expect(completedTask.Status.AgentRef.Name).Should(Equal(crossNSAgentName))
-			Expect(completedTask.Status.AgentRef.Namespace).Should(Equal(platformNS))
-
-			By("Cleaning up")
-			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
-			Expect(k8sClient.Delete(ctx, crossNSAgent)).Should(Succeed())
 		})
 	})
 

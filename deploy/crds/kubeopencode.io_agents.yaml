@@ -70,25 +70,6 @@ spec:
                   The init container runs this image and copies the opencode binary to /tools/opencode.
                   If not specified, defaults to "quay.io/kubeopencode/kubeopencode-agent-opencode:latest".
                 type: string
-              allowedNamespaces:
-                description: |-
-                  AllowedNamespaces restricts which namespaces can reference this Agent.
-                  This enables platform teams to control access to shared Agents.
-
-                  Supports glob patterns (e.g., "team-*", "prod-*", "dev-frontend").
-                  Empty list means all namespaces are allowed (default: open to all).
-
-                  When a Task in namespace "foo" references this Agent and "foo" doesn't
-                  match any pattern, the controller rejects the Task with an error condition.
-
-                  Example:
-                    allowedNamespaces:
-                      - "prod-*"      # All production namespaces
-                      - "staging"     # Staging namespace
-                      - "team-alpha"  # Specific team namespace
-                items:
-                  type: string
-                type: array
               attachImage:
                 description: |-
                   AttachImage specifies the lightweight image used for Server-mode --attach Pods.
@@ -329,7 +310,7 @@ spec:
                   type: object
                   x-kubernetes-validations:
                   - message: text is required when type is Text
-                    rule: self.type != 'Text' || self.text != ''
+                    rule: self.type != 'Text' || has(self.text)
                   - message: configMap is required when type is ConfigMap
                     rule: self.type != 'ConfigMap' || has(self.configMap)
                   - message: git is required when type is Git
@@ -337,7 +318,7 @@ spec:
                   - message: url is required when type is URL
                     rule: self.type != 'URL' || has(self.url)
                   - message: mountPath is required for Git context type
-                    rule: self.type != 'Git' || self.mountPath != ''
+                    rule: self.type != 'Git' || has(self.mountPath)
                 type: array
               credentials:
                 description: |-

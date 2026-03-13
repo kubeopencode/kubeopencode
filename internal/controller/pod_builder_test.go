@@ -227,7 +227,7 @@ func TestBuildPod_BasicTask(t *testing.T) {
 		serviceAccountName: "test-sa",
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
 
 	// Verify pod metadata
 	if pod.Name != "test-task-pod" {
@@ -245,9 +245,15 @@ func TestBuildPod_BasicTask(t *testing.T) {
 		t.Errorf("Pod.Labels[kubeopencode.io/task] = %q, want %q", pod.Labels["kubeopencode.io/task"], "test-task")
 	}
 
-	// Verify no owner reference (cleanup is handled via finalizer)
-	if len(pod.OwnerReferences) != 0 {
-		t.Fatalf("len(Pod.OwnerReferences) = %d, want 0 (cleanup via finalizer)", len(pod.OwnerReferences))
+	// Verify owner reference points to the Task
+	if len(pod.OwnerReferences) != 1 {
+		t.Fatalf("len(Pod.OwnerReferences) = %d, want 1", len(pod.OwnerReferences))
+	}
+	if pod.OwnerReferences[0].Name != "test-task" {
+		t.Errorf("Pod.OwnerReferences[0].Name = %q, want %q", pod.OwnerReferences[0].Name, "test-task")
+	}
+	if pod.OwnerReferences[0].Kind != "Task" {
+		t.Errorf("Pod.OwnerReferences[0].Kind = %q, want %q", pod.OwnerReferences[0].Kind, "Task")
 	}
 
 	// Verify init containers (OpenCode init should be first)
@@ -368,7 +374,7 @@ func TestBuildPod_WithCredentials(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
 
 	container := pod.Spec.Containers[0]
 
@@ -444,7 +450,7 @@ func TestBuildPod_WithEntireSecretCredential(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
 
 	container := pod.Spec.Containers[0]
 
@@ -499,7 +505,7 @@ func TestBuildPod_WithMixedCredentials(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
 
 	container := pod.Spec.Containers[0]
 
@@ -566,7 +572,7 @@ func TestBuildPod_WithEntireSecretAsDirectory(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
 
 	container := pod.Spec.Containers[0]
 
@@ -657,7 +663,7 @@ func TestBuildPod_WithPodScheduling(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
 
 	// Verify node selector
 	if pod.Spec.NodeSelector["node-type"] != "gpu" {
@@ -719,7 +725,7 @@ func TestBuildPod_WithContextConfigMap(t *testing.T) {
 		{filePath: "/workspace/task.md"},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, contextConfigMap, fileMounts, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, contextConfigMap, fileMounts, nil, nil, defaultSystemConfig(), "")
 
 	// Verify context-files volume exists (for init container to read from)
 	var foundContextVolume bool
@@ -814,7 +820,7 @@ func TestBuildPod_WithDirMounts(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, dirMounts, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, dirMounts, nil, defaultSystemConfig(), "")
 
 	// Verify dir-mount volume exists (for init container to read from)
 	var foundDirVolume bool
@@ -911,7 +917,7 @@ func TestBuildPod_WithGitMounts(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, gitMounts, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, gitMounts, defaultSystemConfig(), "")
 
 	// Verify init containers exist (opencode-init first, then git-init-0)
 	if len(pod.Spec.InitContainers) != 2 {
@@ -1008,7 +1014,7 @@ func TestBuildPod_WithGitMountsAndAuth(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, gitMounts, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, gitMounts, defaultSystemConfig(), "")
 
 	// Verify we have 2 init containers (opencode-init + git-init)
 	if len(pod.Spec.InitContainers) != 2 {
@@ -1269,7 +1275,7 @@ func TestBuildPod_WithExternalFileMounts(t *testing.T) {
 		{filePath: "/etc/github-app/github-app-iat.sh"},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, contextConfigMap, fileMounts, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, contextConfigMap, fileMounts, nil, nil, defaultSystemConfig(), "")
 
 	// Verify workspace emptyDir volume exists
 	var foundWorkspaceVolume bool
@@ -1448,7 +1454,7 @@ func TestBuildPod_WithOpenCodeConfig(t *testing.T) {
 		{filePath: OpenCodeConfigPath},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, configMap, fileMounts, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, configMap, fileMounts, nil, nil, defaultSystemConfig(), "")
 
 	// Verify OPENCODE_CONFIG env var is set
 	container := pod.Spec.Containers[0]
@@ -1509,7 +1515,7 @@ func TestBuildPod_WithoutOpenCodeConfig(t *testing.T) {
 		config:             nil, // No config provided
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
 
 	// Verify OPENCODE_CONFIG env var is NOT set
 	container := pod.Spec.Containers[0]
@@ -1554,7 +1560,7 @@ func TestBuildPod_WithContextFile(t *testing.T) {
 		},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, contextConfigMap, fileMounts, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, contextConfigMap, fileMounts, nil, nil, defaultSystemConfig(), "")
 
 	// Verify OPENCODE_CONFIG_CONTENT env var is set
 	container := pod.Spec.Containers[0]
@@ -1597,7 +1603,7 @@ func TestBuildPod_WithoutContextFile(t *testing.T) {
 		{filePath: "/workspace/task.md"},
 	}
 
-	pod := buildPod(task, "test-task-pod", task.Namespace, cfg, nil, fileMounts, nil, nil, defaultSystemConfig(), "")
+	pod := buildPod(task, "test-task-pod", cfg, nil, fileMounts, nil, nil, defaultSystemConfig(), "")
 
 	// Verify OPENCODE_CONFIG_CONTENT env var is NOT set
 	container := pod.Spec.Containers[0]

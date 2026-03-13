@@ -134,7 +134,6 @@ describe('TaskCreatePage', () => {
       expect(capturedBody!.description).toBe('Fix the bug');
       expect(capturedBody!.agentRef).toEqual({
         name: 'opencode-agent',
-        namespace: 'default',
       });
     });
   });

@@ -12,9 +12,8 @@ export const mockTasks: Task[] = [
     namespace: 'default',
     phase: 'Running',
     description: 'Fix authentication bug in login flow',
-    agentRef: { name: 'opencode-agent', namespace: 'default' },
+    agentRef: { name: 'opencode-agent' },
     podName: 'fix-bug-123-pod',
-    podNamespace: 'default',
     startTime: '2026-02-13T10:00:00Z',
     createdAt: '2026-02-13T09:55:00Z',
     duration: '5m',
@@ -25,9 +24,8 @@ export const mockTasks: Task[] = [
     namespace: 'default',
     phase: 'Completed',
     description: 'Add user profile page',
-    agentRef: { name: 'opencode-agent', namespace: 'default' },
+    agentRef: { name: 'opencode-agent' },
     podName: 'add-feature-456-pod',
-    podNamespace: 'default',
     startTime: '2026-02-13T08:00:00Z',
     completionTime: '2026-02-13T08:30:00Z',
     createdAt: '2026-02-13T07:55:00Z',
@@ -69,7 +67,6 @@ export const mockAgents: Agent[] = [
     maxConcurrentTasks: 5,
     createdAt: '2026-02-01T00:00:00Z',
     mode: 'Pod',
-    allowedNamespaces: ['default', 'staging'],
     credentials: [
       { name: 'github-token', secretRef: 'github-creds', env: 'GITHUB_TOKEN' },
     ],
@@ -89,7 +86,6 @@ export const mockAgents: Agent[] = [
     credentialsCount: 0,
     createdAt: '2026-01-15T00:00:00Z',
     mode: 'Pod',
-    // No allowedNamespaces = available to all
   },
   {
     name: 'restricted-agent',
@@ -100,7 +96,6 @@ export const mockAgents: Agent[] = [
     credentialsCount: 0,
     createdAt: '2026-01-20T00:00:00Z',
     mode: 'Server',
-    allowedNamespaces: ['production'],
     serverStatus: {
       deploymentName: 'restricted-agent-server',
       serviceName: 'restricted-agent',

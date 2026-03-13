@@ -61,10 +61,8 @@ const (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope="Namespaced",shortName=tk
 // +kubebuilder:printcolumn:JSONPath=`.status.phase`,name="Phase",type=string
-// +kubebuilder:printcolumn:JSONPath=`.status.agentRef.namespace`,name="Agent-NS",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.agentRef.name`,name="Agent",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.podName`,name="Pod",type=string
-// +kubebuilder:printcolumn:JSONPath=`.status.podNamespace`,name="Pod-NS",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 
 // Task represents a single task execution.
@@ -82,20 +80,11 @@ type Task struct {
 }
 
 // AgentReference specifies which Agent to use for task execution.
-// Supports cross-namespace references to enable separation of concerns:
-// - Platform teams manage Agents with credentials in dedicated namespaces
-// - Dev teams create Tasks in their own namespaces, referencing shared Agents
+// The Agent must be in the same namespace as the Task.
 type AgentReference struct {
 	// Name of the Agent.
 	// +required
 	Name string `json:"name"`
-
-	// Namespace of the Agent.
-	// If empty, defaults to the Task's namespace.
-	// When specified, the Pod runs in the Agent's namespace (not the Task's namespace),
-	// allowing credentials to stay isolated from Task creators.
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
 }
 
 // TaskSpec defines the Task configuration
@@ -130,9 +119,7 @@ type TaskSpec struct {
 	// +optional
 	Contexts []ContextItem `json:"contexts,omitempty"`
 
-	// AgentRef references an Agent for this task.
-	// Supports cross-namespace references: when Agent is in a different namespace,
-	// the Pod runs in the Agent's namespace to keep credentials isolated.
+	// AgentRef references an Agent in the same namespace for this task.
 	//
 	// +required
 	AgentRef *AgentReference `json:"agentRef,omitempty"`
@@ -155,13 +142,6 @@ type TaskExecutionStatus struct {
 	// Kubernetes Pod name
 	// +optional
 	PodName string `json:"podName,omitempty"`
-
-	// PodNamespace indicates where the Pod is running.
-	// This may differ from Task's namespace when using cross-namespace Agent reference.
-	// When Agent is in a different namespace, the Pod runs in the Agent's namespace
-	// to keep credentials isolated from Task creators.
-	// +optional
-	PodNamespace string `json:"podNamespace,omitempty"`
 
 	// Start time
 	// +optional

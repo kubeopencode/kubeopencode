@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -21,8 +20,6 @@ import (
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
@@ -44,17 +41,9 @@ const (
 	// AnnotationStop is the annotation key for user-initiated task stop
 	AnnotationStop = "kubeopencode.io/stop"
 
-	// TaskFinalizer is added to Tasks when Pod runs in a different namespace
-	// to ensure Pod cleanup when Task is deleted
-	TaskFinalizer = "kubeopencode.io/task-cleanup"
-
 	// KubeOpenCodeConfigName is the singleton name for the cluster-scoped KubeOpenCodeConfig.
 	// Following OpenShift convention, cluster-wide config resources are named "cluster".
 	KubeOpenCodeConfigName = "cluster"
-
-	// TaskNamespaceLabelKey is the label key for tracking the source Task's namespace
-	// when Pod runs in a different namespace (cross-namespace Agent reference)
-	TaskNamespaceLabelKey = "kubeopencode.io/task-namespace"
 
 	// RuntimeSystemPrompt is the system prompt injected when Runtime context is enabled.
 	// It provides KubeOpenCode platform awareness to the agent.
@@ -119,11 +108,6 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 
-	// Handle Task deletion (finalizer for cross-namespace Pod cleanup)
-	if !task.DeletionTimestamp.IsZero() {
-		return r.handleTaskDeletion(ctx, task)
-	}
-
 	// If new, initialize status and create Pod
 	// Also handle incomplete Running state (Running but no Pod created yet)
 	// This can happen if context processing failed after Phase was set to Running
@@ -164,9 +148,8 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alpha1.Task) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Get agent configuration with name and namespace
-	// agentNamespace is where the Pod will run (may differ from Task namespace)
-	agentConfig, agentName, agentNamespace, err := r.getAgentConfigWithName(ctx, task)
+	// Get agent configuration with name (Agent must be in same namespace as Task)
+	agentConfig, agentName, err := r.getAgentConfigWithName(ctx, task)
 	if err != nil {
 		log.Error(err, "unable to get Agent")
 		return r.updateTaskFailed(ctx, task, kubeopenv1alpha1.ReasonAgentError, err)
@@ -191,22 +174,9 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// Add finalizer for Pod cleanup (handles both same-namespace and cross-namespace)
-	// We use finalizer uniformly instead of OwnerReference for consistent cleanup behavior
-	if !controllerutil.ContainsFinalizer(task, TaskFinalizer) {
-		controllerutil.AddFinalizer(task, TaskFinalizer)
-		if err := r.Update(ctx, task); err != nil {
-			log.Error(err, "unable to add finalizer")
-			return ctrl.Result{}, err
-		}
-		// Requeue to continue with updated task
-		return ctrl.Result{Requeue: true}, nil
-	}
-
 	// Check agent capacity if MaxConcurrentTasks is set
-	// Note: For cross-namespace, we check capacity in the Agent's namespace
 	if agentConfig.maxConcurrentTasks != nil && *agentConfig.maxConcurrentTasks > 0 {
-		hasCapacity, err := r.checkAgentCapacity(ctx, agentNamespace, agentName, *agentConfig.maxConcurrentTasks)
+		hasCapacity, err := r.checkAgentCapacity(ctx, task.Namespace, agentName, *agentConfig.maxConcurrentTasks)
 		if err != nil {
 			log.Error(err, "unable to check agent capacity")
 			return ctrl.Result{}, err
@@ -220,8 +190,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 			task.Status.ObservedGeneration = task.Generation
 			task.Status.Phase = kubeopenv1alpha1.TaskPhaseQueued
 			task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
-				Name:      agentName,
-				Namespace: agentNamespace,
+				Name: agentName,
 			}
 
 			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
@@ -242,9 +211,8 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	}
 
 	// Check agent quota if configured
-	// Note: This checks rate limiting for task starts within a sliding window
 	if agentConfig.quota != nil {
-		agent, err := r.getAgentForQuota(ctx, agentName, agentNamespace)
+		agent, err := r.getAgentForQuota(ctx, agentName, task.Namespace)
 		if err != nil {
 			log.Error(err, "unable to get Agent for quota check")
 			return ctrl.Result{}, err
@@ -267,8 +235,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 			task.Status.ObservedGeneration = task.Generation
 			task.Status.Phase = kubeopenv1alpha1.TaskPhaseQueued
 			task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
-				Name:      agentName,
-				Namespace: agentNamespace,
+				Name: agentName,
 			}
 
 			meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
@@ -295,8 +262,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		task.Status.ObservedGeneration = task.Generation
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseRunning
 		task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
-			Name:      agentName,
-			Namespace: agentNamespace,
+			Name: agentName,
 		}
 		now := metav1.Now()
 		task.Status.StartTime = &now
@@ -327,27 +293,19 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	serverURL := ""
 	if agentConfig.serverConfig != nil {
 		port := GetServerPort(&kubeopenv1alpha1.Agent{Spec: kubeopenv1alpha1.AgentSpec{ServerConfig: agentConfig.serverConfig}})
-		serverURL = ServerURL(agentName, agentNamespace, port)
+		serverURL = ServerURL(agentName, task.Namespace, port)
 		log.Info("Creating Pod for Server-mode Task", "serverURL", serverURL)
 	}
 
 	// Generate Pod name
-	// For cross-namespace, include Task namespace to avoid name conflicts
-	isCrossNamespace := agentNamespace != task.Namespace
-	var podName string
-	if isCrossNamespace {
-		podName = fmt.Sprintf("%s-%s-pod", task.Namespace, task.Name)
-	} else {
-		podName = fmt.Sprintf("%s-pod", task.Name)
-	}
+	podName := fmt.Sprintf("%s-pod", task.Name)
 
-	// Check if Pod already exists (in Agent's namespace)
+	// Check if Pod already exists
 	existingPod := &corev1.Pod{}
-	podKey := types.NamespacedName{Name: podName, Namespace: agentNamespace}
+	podKey := types.NamespacedName{Name: podName, Namespace: task.Namespace}
 	if err := r.Get(ctx, podKey, existingPod); err == nil {
 		// Pod already exists, update status with Pod info
 		task.Status.PodName = podName
-		task.Status.PodNamespace = agentNamespace
 		if updateErr := r.Status().Update(ctx, task); updateErr != nil {
 			if errors.IsConflict(updateErr) {
 				log.V(1).Info("conflict updating existing Pod status, requeuing")
@@ -363,9 +321,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	//   1. Agent.contexts (Agent-level defaults)
 	//   2. Task.contexts (Task-specific contexts)
 	//   3. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
-	// Note: For cross-namespace, Task ConfigMap contexts are read from Task namespace
-	// and embedded into the ConfigMap created in Agent namespace
-	contextConfigMap, fileMounts, dirMounts, gitMounts, err := r.processAllContexts(ctx, task, agentConfig, agentNamespace)
+	contextConfigMap, fileMounts, dirMounts, gitMounts, err := r.processAllContexts(ctx, task, agentConfig)
 	if err != nil {
 		log.Error(err, "unable to process contexts")
 
@@ -378,7 +334,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		return r.updateTaskFailed(ctx, task, kubeopenv1alpha1.ReasonContextError, err)
 	}
 
-	// Create ConfigMap in Agent's namespace (where Pod runs)
+	// Create ConfigMap in Task's namespace (where Pod runs)
 	if contextConfigMap != nil {
 		if err := r.Create(ctx, contextConfigMap); err != nil {
 			if !errors.IsAlreadyExists(err) {
@@ -399,9 +355,8 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	sysCfg := r.getSystemConfig(ctx)
 
 	// Create Pod with agent configuration and context mounts
-	// Pod is created in Agent's namespace
 	// For Server-mode, serverURL is passed to generate --attach command
-	pod := buildPod(task, podName, agentNamespace, agentConfig, contextConfigMap, fileMounts, dirMounts, gitMounts, sysCfg, serverURL)
+	pod := buildPod(task, podName, agentConfig, contextConfigMap, fileMounts, dirMounts, gitMounts, sysCfg, serverURL)
 
 	// Record task start for quota tracking BEFORE creating Pod.
 	// This ensures quota is accurate even if Pod creation fails.
@@ -409,7 +364,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	var quotaAgent *kubeopenv1alpha1.Agent
 	if agentConfig.quota != nil {
 		var err error
-		quotaAgent, err = r.getAgentForQuota(ctx, agentName, agentNamespace)
+		quotaAgent, err = r.getAgentForQuota(ctx, agentName, task.Namespace)
 		if err != nil {
 			log.Error(err, "unable to get Agent for quota recording")
 
@@ -437,7 +392,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	}
 
 	if err := r.Create(ctx, pod); err != nil {
-		log.Error(err, "unable to create Pod", "pod", podName, "namespace", agentNamespace)
+		log.Error(err, "unable to create Pod", "pod", podName, "namespace", task.Namespace)
 		r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "PodCreationFailed", "CreatePod", "Failed to create pod: %v", err)
 
 		// Rollback quota record if it was recorded
@@ -466,7 +421,6 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 
 	// Update status with Pod info (Task is already Running from pre-occupation)
 	task.Status.PodName = podName
-	task.Status.PodNamespace = agentNamespace
 
 	if err := r.Status().Update(ctx, task); err != nil {
 		if errors.IsConflict(err) {
@@ -478,7 +432,7 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 	}
 
 	log.Info("initialized Task", "pod", podName, "image", agentConfig.agentImage)
-	r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "PodCreated", "CreatePod", "Created pod %s in namespace %s", podName, agentNamespace)
+	r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "PodCreated", "CreatePod", "Created pod %s", podName)
 	return ctrl.Result{}, nil
 }
 
@@ -518,15 +472,9 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 		return nil
 	}
 
-	// Get Pod status from the correct namespace
-	// PodNamespace may differ from Task namespace when using cross-namespace Agent
-	podNamespace := task.Status.PodNamespace
-	if podNamespace == "" {
-		podNamespace = task.Namespace // Backwards compatibility
-	}
-
+	// Get Pod status (Pod is always in same namespace as Task)
 	pod := &corev1.Pod{}
-	podKey := types.NamespacedName{Name: task.Status.PodName, Namespace: podNamespace}
+	podKey := types.NamespacedName{Name: task.Status.PodName, Namespace: task.Namespace}
 	if err := r.Get(ctx, podKey, pod); err != nil {
 		if errors.IsNotFound(err) {
 			log.Error(err, "Pod not found", "pod", task.Status.PodName)
@@ -561,63 +509,45 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 }
 
 // SetupWithManager sets up the controller with the Manager.
-// We use Watches instead of Owns for Pods because Pods don't have owner references
-// to Tasks (to support cross-namespace Agent scenarios). The custom handler maps
-// Pod events to Task reconciliation requests using labels.
+// Pods have OwnerReferences to Tasks (same namespace), so we use Owns for automatic mapping.
 func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubeopenv1alpha1.Task{}).
-		Watches(
-			&corev1.Pod{},
-			handler.EnqueueRequestsFromMapFunc(podToTaskMapper),
-		).
+		Owns(&corev1.Pod{}).
 		Complete(r)
 }
 
-// getAgentConfigWithName retrieves the agent configuration and returns the agent name and namespace.
-// Supports cross-namespace Agent references: when Agent is in a different namespace,
-// the Pod will run in the Agent's namespace to keep credentials isolated.
-// Returns: agentConfig, agentName, agentNamespace (where Pod will run), error
-func (r *TaskReconciler) getAgentConfigWithName(ctx context.Context, task *kubeopenv1alpha1.Task) (agentConfig, string, string, error) {
+// getAgentConfigWithName retrieves the agent configuration and returns the agent name.
+// Agent must be in the same namespace as the Task.
+// Returns: agentConfig, agentName, error
+func (r *TaskReconciler) getAgentConfigWithName(ctx context.Context, task *kubeopenv1alpha1.Task) (agentConfig, string, error) {
 	log := log.FromContext(ctx)
 
 	// AgentRef is required - Task must specify which Agent to use
 	if task.Spec.AgentRef == nil {
-		return agentConfig{}, "", "", fmt.Errorf("agentRef is required: Task %q does not specify agentRef", task.Name)
+		return agentConfig{}, "", fmt.Errorf("agentRef is required: Task %q does not specify agentRef", task.Name)
 	}
 
 	agentName := task.Spec.AgentRef.Name
-	agentNamespace := task.Namespace
-	if task.Spec.AgentRef.Namespace != "" {
-		agentNamespace = task.Spec.AgentRef.Namespace
-	}
 
-	// Get Agent from agentNamespace
+	// Get Agent from Task's namespace
 	agent := &kubeopenv1alpha1.Agent{}
 	agentKey := types.NamespacedName{
 		Name:      agentName,
-		Namespace: agentNamespace,
+		Namespace: task.Namespace,
 	}
 
 	if err := r.Get(ctx, agentKey, agent); err != nil {
-		log.Error(err, "unable to get Agent", "agent", agentName, "namespace", agentNamespace)
-		return agentConfig{}, "", "", fmt.Errorf("agent %q not found in namespace %q: %w", agentName, agentNamespace, err)
-	}
-
-	// Validate AllowedNamespaces when cross-namespace reference
-	if agentNamespace != task.Namespace {
-		if err := r.validateNamespaceAccess(agent, task.Namespace); err != nil {
-			log.Error(err, "namespace access denied", "agent", agentName, "agentNamespace", agentNamespace, "taskNamespace", task.Namespace)
-			return agentConfig{}, "", "", err
-		}
+		log.Error(err, "unable to get Agent", "agent", agentName, "namespace", task.Namespace)
+		return agentConfig{}, "", fmt.Errorf("agent %q not found in namespace %q: %w", agentName, task.Namespace, err)
 	}
 
 	// ServiceAccountName is required
 	if agent.Spec.ServiceAccountName == "" {
-		return agentConfig{}, "", "", fmt.Errorf("agent %q is missing required field serviceAccountName", agentName)
+		return agentConfig{}, "", fmt.Errorf("agent %q is missing required field serviceAccountName", agentName)
 	}
 
-	return ResolveAgentConfig(agent), agentName, agentNamespace, nil
+	return ResolveAgentConfig(agent), agentName, nil
 }
 
 // getAgentForQuota fetches the Agent object for quota operations.
@@ -637,94 +567,6 @@ func (r *TaskReconciler) getAgentForQuota(ctx context.Context, agentName, agentN
 	return agent, nil
 }
 
-// validateNamespaceAccess checks if a Task's namespace is allowed to use the Agent.
-// Returns nil if allowed, error if denied.
-func (r *TaskReconciler) validateNamespaceAccess(agent *kubeopenv1alpha1.Agent, taskNamespace string) error {
-	// Empty AllowedNamespaces means all namespaces are allowed
-	if len(agent.Spec.AllowedNamespaces) == 0 {
-		return nil
-	}
-
-	// Check if taskNamespace matches any pattern in AllowedNamespaces
-	for _, pattern := range agent.Spec.AllowedNamespaces {
-		matched, err := filepath.Match(pattern, taskNamespace)
-		if err != nil {
-			// Invalid pattern, treat as no match
-			continue
-		}
-		if matched {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("namespace %q is not allowed to use Agent %q (allowed: %v)", taskNamespace, agent.Name, agent.Spec.AllowedNamespaces)
-}
-
-// handleTaskDeletion handles Task deletion, cleaning up cross-namespace Pods or Server-mode sessions.
-// When Pod runs in a different namespace (cross-namespace Agent), we can't use
-// OwnerReference for automatic cleanup, so we use a finalizer instead.
-// For Server-mode tasks, we also need to delete the OpenCode session.
-func (r *TaskReconciler) handleTaskDeletion(ctx context.Context, task *kubeopenv1alpha1.Task) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-
-	if !controllerutil.ContainsFinalizer(task, TaskFinalizer) {
-		return ctrl.Result{}, nil
-	}
-
-	log.Info("cleaning up resources for deleted Task", "task", task.Name)
-
-	// Delete Pod in the execution namespace (both Pod mode and Server mode use Pods)
-	if task.Status.PodName != "" && task.Status.PodNamespace != "" {
-		pod := &corev1.Pod{}
-		podKey := types.NamespacedName{Name: task.Status.PodName, Namespace: task.Status.PodNamespace}
-		if err := r.Get(ctx, podKey, pod); err == nil {
-			if err := r.Delete(ctx, pod); err != nil && !errors.IsNotFound(err) {
-				log.Error(err, "failed to delete cross-namespace Pod")
-				return ctrl.Result{}, err
-			}
-			log.Info("deleted cross-namespace Pod", "pod", task.Status.PodName, "namespace", task.Status.PodNamespace)
-		}
-
-		// Also delete the context ConfigMap in the execution namespace
-		configMapName := task.Name + ContextConfigMapSuffix
-		cm := &corev1.ConfigMap{}
-		cmKey := types.NamespacedName{Name: configMapName, Namespace: task.Status.PodNamespace}
-		if err := r.Get(ctx, cmKey, cm); err == nil {
-			if err := r.Delete(ctx, cm); err != nil && !errors.IsNotFound(err) {
-				log.Error(err, "failed to delete cross-namespace ConfigMap")
-				// Don't fail on ConfigMap deletion error, Pod is the critical resource
-			}
-		}
-	}
-
-	// Re-fetch the task to get the latest version before updating
-	// This is necessary because the task may have been modified during cleanup
-	latestTask := &kubeopenv1alpha1.Task{}
-	taskKey := types.NamespacedName{Name: task.Name, Namespace: task.Namespace}
-	if err := r.Get(ctx, taskKey, latestTask); err != nil {
-		if errors.IsNotFound(err) {
-			// Task already deleted, nothing to do
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
-	}
-
-	// Remove finalizer from the latest version
-	if controllerutil.ContainsFinalizer(latestTask, TaskFinalizer) {
-		controllerutil.RemoveFinalizer(latestTask, TaskFinalizer)
-		if err := r.Update(ctx, latestTask); err != nil {
-			if errors.IsNotFound(err) {
-				// Task deleted while we were updating, that's fine
-				return ctrl.Result{}, nil
-			}
-			log.Error(err, "failed to remove finalizer")
-			return ctrl.Result{}, err
-		}
-	}
-
-	return ctrl.Result{}, nil
-}
-
 // processAllContexts processes all contexts from Agent and Task
 // and returns the ConfigMap, file mounts, directory mounts, and git mounts for the Pod.
 //
@@ -732,18 +574,14 @@ func (r *TaskReconciler) handleTaskDeletion(ctx context.Context, task *kubeopenv
 //  1. Task.description (appears first in task.md)
 //  2. Agent.contexts (Agent-level contexts)
 //  3. Task.contexts (Task-specific contexts, appears last)
-//
-// The agentNamespace parameter specifies where the Pod runs (and where ConfigMap is created).
-// For cross-namespace Agent references, this differs from task.Namespace.
-func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv1alpha1.Task, cfg agentConfig, agentNamespace string) (*corev1.ConfigMap, []fileMount, []dirMount, []gitMount, error) {
+func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv1alpha1.Task, cfg agentConfig) (*corev1.ConfigMap, []fileMount, []dirMount, []gitMount, error) {
 	var resolved []resolvedContext
 	var dirMounts []dirMount
 	var gitMounts []gitMount
 
 	// 1. Resolve Agent.contexts (appears after description in task.md)
-	// Agent contexts are resolved from Agent's namespace
 	for i, item := range cfg.contexts {
-		rc, dm, gm, err := r.resolveContextItem(ctx, &item, agentNamespace, cfg.workspaceDir)
+		rc, dm, gm, err := r.resolveContextItem(ctx, &item, task.Namespace, cfg.workspaceDir)
 		if err != nil {
 			return nil, nil, nil, nil, fmt.Errorf("failed to resolve Agent context[%d]: %w", i, err)
 		}
@@ -758,7 +596,6 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 	}
 
 	// 2. Resolve Task.contexts (appears last in task.md)
-	// Task contexts are resolved from Task's namespace (may differ from Agent namespace)
 	for i, item := range task.Spec.Contexts {
 		rc, dm, gm, err := r.resolveContextItem(ctx, &item, task.Namespace, cfg.workspaceDir)
 		if err != nil {
@@ -853,17 +690,17 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 		configMap = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      configMapName,
-				Namespace: agentNamespace, // Create in Agent's namespace
+				Namespace: task.Namespace,
 				Labels: map[string]string{
 					"app":                  "kubeopencode",
 					"kubeopencode.io/task": task.Name,
-					TaskNamespaceLabelKey:  task.Namespace, // Track source Task namespace
+				},
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(task, kubeopenv1alpha1.SchemeGroupVersion.WithKind("Task")),
 				},
 			},
 			Data: configMapData,
 		}
-		// ConfigMap cleanup is handled via finalizer on the Task (same as Pod cleanup).
-		// We don't use OwnerReference to keep cleanup behavior consistent.
 	}
 
 	// Validate mount path conflicts
@@ -1158,8 +995,8 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 		return ctrl.Result{}, nil
 	}
 
-	// Get agent configuration with name and namespace
-	agentConfig, agentName, agentNamespace, err := r.getAgentConfigWithName(ctx, task)
+	// Get agent configuration with name
+	agentConfig, agentName, err := r.getAgentConfigWithName(ctx, task)
 	if err != nil {
 		log.Error(err, "unable to get Agent for queued task")
 		// Agent might be deleted, fail the task
@@ -1202,7 +1039,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 
 	// Check capacity if limit is set
 	if hasCapacityLimit {
-		hasCapacity, err := r.checkAgentCapacity(ctx, agentNamespace, agentName, *agentConfig.maxConcurrentTasks)
+		hasCapacity, err := r.checkAgentCapacity(ctx, task.Namespace, agentName, *agentConfig.maxConcurrentTasks)
 		if err != nil {
 			log.Error(err, "unable to check agent capacity")
 			return ctrl.Result{}, err
@@ -1217,7 +1054,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 
 	// Check agent quota if configured
 	if agentConfig.quota != nil {
-		agent, err := r.getAgentForQuota(ctx, agentName, agentNamespace)
+		agent, err := r.getAgentForQuota(ctx, agentName, task.Namespace)
 		if err != nil {
 			log.Error(err, "unable to get Agent for quota check")
 			return ctrl.Result{}, err
@@ -1239,8 +1076,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 			// Ensure AgentRef is set (may be missing from older tasks)
 			if task.Status.AgentRef == nil {
 				task.Status.AgentRef = &kubeopenv1alpha1.AgentReference{
-					Name:      agentName,
-					Namespace: agentNamespace,
+					Name: agentName,
 				}
 			}
 
@@ -1712,53 +1548,9 @@ func (r *TaskReconciler) recordTaskDuration(task *kubeopenv1alpha1.Task) {
 	}
 	duration := task.Status.CompletionTime.Time.Sub(task.Status.StartTime.Time).Seconds()
 	agentName := ""
-	agentNS := task.Namespace
 	if task.Status.AgentRef != nil {
 		agentName = task.Status.AgentRef.Name
-		if task.Status.AgentRef.Namespace != "" {
-			agentNS = task.Status.AgentRef.Namespace
-		}
 	}
-	TaskDurationSeconds.WithLabelValues(agentNS, agentName).Observe(duration)
+	TaskDurationSeconds.WithLabelValues(task.Namespace, agentName).Observe(duration)
 }
 
-// podToTaskMapper maps Pod events to Task reconciliation requests.
-// Since Pods don't have owner references to Tasks (to support cross-namespace scenarios),
-// we use labels to find the owning Task.
-// It uses the kubeopencode.io/task label to find the Task name and
-// kubeopencode.io/task-namespace label for cross-namespace scenarios.
-func podToTaskMapper(ctx context.Context, obj client.Object) []ctrl.Request {
-	logger := log.FromContext(ctx).WithName("podToTaskMapper")
-
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		return nil
-	}
-
-	// Check if this is a KubeOpenCode Pod
-	taskName, hasLabel := pod.Labels["kubeopencode.io/task"]
-	if !hasLabel {
-		return nil
-	}
-
-	// Determine Task namespace: use task-namespace label for cross-namespace,
-	// otherwise use Pod's namespace
-	taskNamespace := pod.Namespace
-	if ns, ok := pod.Labels[TaskNamespaceLabelKey]; ok && ns != "" {
-		taskNamespace = ns
-	}
-
-	logger.V(1).Info("mapping Pod event to Task",
-		"pod", pod.Name,
-		"podNamespace", pod.Namespace,
-		"podPhase", pod.Status.Phase,
-		"taskName", taskName,
-		"taskNamespace", taskNamespace)
-
-	return []ctrl.Request{{
-		NamespacedName: types.NamespacedName{
-			Name:      taskName,
-			Namespace: taskNamespace,
-		},
-	}}
-}

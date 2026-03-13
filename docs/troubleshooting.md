@@ -69,8 +69,7 @@ kubectl describe task <task-name> -n <namespace>
 
 Common causes:
 - Agent not found (check `agentRef`)
-- Agent in different namespace without cross-namespace reference
-- `allowedNamespaces` on Agent doesn't include Task's namespace
+- Agent does not exist in the same namespace as the Task
 
 ### Task Stuck in Queued
 
@@ -156,7 +155,7 @@ Verify the ConfigMap exists in the correct namespace:
 kubectl get configmap <configmap-name> -n <namespace>
 ```
 
-Note: ConfigMaps are resolved from the **Agent's namespace**, not the Task's namespace.
+Note: ConfigMaps are resolved from the same namespace as the Task and Agent.
 
 ### URL Context Failures
 
@@ -170,26 +169,6 @@ Common causes:
 - URL is unreachable
 - SSL/TLS certificate issues
 - Network policies blocking egress
-
-## Cross-Namespace Issues
-
-### Permission Denied for Cross-Namespace Agent
-
-Check Agent's `allowedNamespaces`:
-
-```bash
-kubectl get agent <agent-name> -n <agent-namespace> -o yaml | grep -A10 allowedNamespaces
-```
-
-Ensure the Task's namespace matches one of the patterns (supports glob like `dev-*`).
-
-### Pod Running in Wrong Namespace
-
-When using cross-namespace Agent references, Pods always run in the **Agent's namespace**. This is by design for credential isolation. Check:
-
-```bash
-kubectl get task <task-name> -o jsonpath='{.status.podNamespace}'
-```
 
 ## Output Issues
 
@@ -292,12 +271,7 @@ kubectl logs -n <namespace> -l sensor-name=<sensor-name>
 
 The referenced Agent doesn't exist. Check:
 - Agent name is correct
-- Agent is in the expected namespace
-- For cross-namespace, `namespace` field is specified in `agentRef`
-
-### "namespace not allowed by agent"
-
-The Task's namespace isn't in the Agent's `allowedNamespaces` list. Update the Agent or move the Task.
+- Agent exists in the same namespace as the Task
 
 ### "context resolution failed"
 

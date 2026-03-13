@@ -19,8 +19,7 @@ type NamespaceList struct {
 
 // AgentReference represents a reference to an Agent
 type AgentReference struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace,omitempty"`
+	Name string `json:"name"`
 }
 
 // ContextItem represents a context item in the API
@@ -48,7 +47,6 @@ type TaskResponse struct {
 	Description    string            `json:"description,omitempty"`
 	AgentRef       *AgentReference   `json:"agentRef,omitempty"`
 	PodName        string            `json:"podName,omitempty"`
-	PodNamespace   string            `json:"podNamespace,omitempty"`
 	StartTime      *time.Time        `json:"startTime,omitempty"`
 	CompletionTime *time.Time        `json:"completionTime,omitempty"`
 	Duration       string            `json:"duration,omitempty"`
@@ -106,7 +104,6 @@ type AgentResponse struct {
 	CredentialsCount   int               `json:"credentialsCount"`
 	MaxConcurrentTasks *int32            `json:"maxConcurrentTasks,omitempty"`
 	Quota              *QuotaInfo        `json:"quota,omitempty"`
-	AllowedNamespaces  []string          `json:"allowedNamespaces,omitempty"`
 	Credentials        []CredentialInfo  `json:"credentials,omitempty"`
 	Contexts           []ContextItem     `json:"contexts,omitempty"`
 	CreatedAt          time.Time         `json:"createdAt"`

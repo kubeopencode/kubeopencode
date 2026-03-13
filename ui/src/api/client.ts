@@ -4,7 +4,6 @@ const API_BASE = '/api/v1';
 
 export interface AgentReference {
   name: string;
-  namespace?: string;
 }
 
 export interface Condition {
@@ -21,7 +20,6 @@ export interface Task {
   description?: string;
   agentRef?: AgentReference;
   podName?: string;
-  podNamespace?: string;
   startTime?: string;
   completionTime?: string;
   duration?: string;
@@ -98,7 +96,6 @@ export interface Agent {
   credentialsCount: number;
   maxConcurrentTasks?: number;
   quota?: QuotaInfo;
-  allowedNamespaces?: string[];
   credentials?: CredentialInfo[];
   contexts?: ContextItem[];
   createdAt: string;

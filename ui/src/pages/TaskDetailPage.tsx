@@ -136,7 +136,7 @@ function TaskDetailPage() {
               <dd className="mt-1 text-sm text-gray-900">
                 {task.agentRef ? (
                   <Link
-                    to={`/agents/${task.agentRef.namespace || task.namespace}/${task.agentRef.name}`}
+                    to={`/agents/${task.namespace}/${task.agentRef.name}`}
                     className="text-primary-600 hover:text-primary-800"
                   >
                     {task.agentRef.name}
@@ -166,7 +166,7 @@ function TaskDetailPage() {
               <div>
                 <dt className="text-sm font-medium text-gray-500">Pod</dt>
                 <dd className="mt-1 text-sm text-gray-900">
-                  {task.podNamespace}/{task.podName}
+                  {task.namespace}/{task.podName}
                 </dd>
               </div>
             )}

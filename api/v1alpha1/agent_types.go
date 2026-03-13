@@ -225,23 +225,6 @@ type AgentSpec struct {
 	// +required
 	ServiceAccountName string `json:"serviceAccountName"`
 
-	// AllowedNamespaces restricts which namespaces can reference this Agent.
-	// This enables platform teams to control access to shared Agents.
-	//
-	// Supports glob patterns (e.g., "team-*", "prod-*", "dev-frontend").
-	// Empty list means all namespaces are allowed (default: open to all).
-	//
-	// When a Task in namespace "foo" references this Agent and "foo" doesn't
-	// match any pattern, the controller rejects the Task with an error condition.
-	//
-	// Example:
-	//   allowedNamespaces:
-	//     - "prod-*"      # All production namespaces
-	//     - "staging"     # Staging namespace
-	//     - "team-alpha"  # Specific team namespace
-	// +optional
-	AllowedNamespaces []string `json:"allowedNamespaces,omitempty"`
-
 	// MaxConcurrentTasks limits the number of Tasks that can run concurrently
 	// using this Agent. When the limit is reached, new Tasks will enter Queued
 	// phase until capacity becomes available.

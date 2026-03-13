@@ -90,14 +90,6 @@ describe('AgentDetailPage', () => {
     });
   });
 
-  it('shows allowed namespaces', async () => {
-    renderAgentDetailPage('default', 'opencode-agent');
-
-    await waitFor(() => {
-      expect(screen.getByText('Allowed Namespaces')).toBeInTheDocument();
-    });
-  });
-
   it('shows credentials section', async () => {
     renderAgentDetailPage('default', 'opencode-agent');
 

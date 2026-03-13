@@ -184,25 +184,6 @@ function AgentDetailPage() {
             </div>
           )}
 
-          {/* Allowed Namespaces */}
-          {agent.allowedNamespaces && agent.allowedNamespaces.length > 0 && (
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Allowed Namespaces
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {agent.allowedNamespaces.map((ns) => (
-                  <span
-                    key={ns}
-                    className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-800"
-                  >
-                    {ns}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Credentials */}
           {agent.credentials && agent.credentials.length > 0 && (
             <div>

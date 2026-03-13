@@ -199,10 +199,7 @@ The Agent list page includes a namespace selector that allows you to filter Agen
 
 #### Agent Availability
 
-When creating a Task, only Agents that are available for the selected Task namespace are shown. Availability is determined by the Agent's `allowedNamespaces` field:
-
-- If an Agent has no `allowedNamespaces` defined, it is available to all namespaces
-- If an Agent has `allowedNamespaces` defined, it is only available to namespaces that match the patterns (glob patterns supported)
+When creating a Task, only Agents in the same namespace as the Task are shown. Task and Agent must always be in the same namespace.
 
 ### Authentication
 

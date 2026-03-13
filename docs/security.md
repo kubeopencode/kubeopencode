@@ -8,14 +8,12 @@ KubeOpenCode follows the principle of least privilege:
 
 - **Controller**: ClusterRole with minimal permissions for Tasks, Agents, Pods, ConfigMaps, Secrets, and Events
 - **Agent ServiceAccount**: Namespace-scoped Role with read/update access to Tasks and read-only access to related resources
-- **Cross-Namespace Isolation**: When Tasks reference Agents in different namespaces, Pods run in the Agent's namespace, keeping credentials isolated
 
 ## Credential Management
 
 - Secrets mounted with restrictive file permissions (default `0600`)
 - Supports both environment variable and file-based credential mounting
 - Git authentication via SecretRef (HTTPS or SSH)
-- Cross-namespace Agent references keep credentials in the Agent's namespace
 
 ### Credential Mounting Options
 
@@ -78,32 +76,8 @@ spec:
 ## Best Practices
 
 - **Never commit secrets to Git** - use Kubernetes Secrets, External Secrets Operator, or HashiCorp Vault
-- **Use AllowedNamespaces** on Agents to restrict which namespaces can create Tasks against them
 - **Apply NetworkPolicies** to limit Agent Pod egress to required endpoints only
 - **Enable Kubernetes audit logging** to track Task creation and execution
-
-### Cross-Namespace Security
-
-When using cross-namespace Task/Agent separation:
-
-1. Platform team manages Agents and credentials in a dedicated namespace
-2. Development teams create Tasks in their own namespaces
-3. Pods run in the Agent's namespace, keeping credentials isolated
-4. Use `allowedNamespaces` to control which namespaces can use each Agent
-
-```yaml
-apiVersion: kubeopencode.io/v1alpha1
-kind: Agent
-metadata:
-  name: production-agent
-  namespace: platform-agents
-spec:
-  # Only allow production namespaces
-  allowedNamespaces:
-    - "prod-*"
-    - "staging"
-  # ... rest of config
-```
 
 ## Next Steps
 

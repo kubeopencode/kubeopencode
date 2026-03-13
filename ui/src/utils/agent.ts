@@ -14,14 +14,3 @@ export function matchGlob(pattern: string, namespace: string): boolean {
   const regex = new RegExp(`^${regexPattern}$`);
   return regex.test(namespace);
 }
-
-/**
- * Check if an agent is available for a given namespace
- * based on its allowedNamespaces configuration.
- */
-export function isAgentAvailableForNamespace(agent: Agent, namespace: string): boolean {
-  if (!agent.allowedNamespaces || agent.allowedNamespaces.length === 0) {
-    return true;
-  }
-  return agent.allowedNamespaces.some((pattern) => matchGlob(pattern, namespace));
-}

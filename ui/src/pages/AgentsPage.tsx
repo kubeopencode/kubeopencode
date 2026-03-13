@@ -166,26 +166,6 @@ function AgentsPage() {
                     </div>
                   )}
 
-                  {agent.allowedNamespaces && agent.allowedNamespaces.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                      <p className="text-xs text-gray-500 mb-1">Allowed namespaces:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {agent.allowedNamespaces.slice(0, 3).map((ns) => (
-                          <span
-                            key={ns}
-                            className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700"
-                          >
-                            {ns}
-                          </span>
-                        ))}
-                        {agent.allowedNamespaces.length > 3 && (
-                          <span className="text-xs text-gray-500">
-                            +{agent.allowedNamespaces.length - 3} more
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </Link>
             ))
