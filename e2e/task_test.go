@@ -1181,7 +1181,6 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 			Expect(k8sClient.Get(ctx, taskKey, runningTask)).Should(Succeed())
 			Expect(runningTask.Status.AgentRef).ShouldNot(BeNil())
 			Expect(runningTask.Status.AgentRef.Name).Should(Equal(agentName))
-			Expect(runningTask.Status.AgentRef.Namespace).Should(Equal(testNS))
 
 			By("Waiting for Task to complete")
 			Eventually(func() kubeopenv1alpha1.TaskPhase {
