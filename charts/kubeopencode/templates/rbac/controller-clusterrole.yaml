@@ -41,6 +41,13 @@ rules:
   - get
   - update
   - patch
+# Task finalizers (required for creating Pods/ConfigMaps with blockOwnerDeletion ownerReferences)
+- apiGroups:
+  - kubeopencode.io
+  resources:
+  - tasks/finalizers
+  verbs:
+  - update
 # ConfigMaps and Secrets (full access for task context)
 - apiGroups:
   - ""
