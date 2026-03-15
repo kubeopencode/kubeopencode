@@ -92,6 +92,12 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 			Expect(job.Spec.Containers).Should(HaveLen(1))
 			Expect(job.Spec.Containers[0].Image).Should(Equal(echoImage))
 
+			By("Verifying Pod ownerReference sets blockOwnerDeletion (requires tasks/finalizers RBAC)")
+			Expect(job.OwnerReferences).Should(HaveLen(1))
+			Expect(job.OwnerReferences[0].Kind).Should(Equal("Task"))
+			Expect(job.OwnerReferences[0].BlockOwnerDeletion).ShouldNot(BeNil())
+			Expect(*job.OwnerReferences[0].BlockOwnerDeletion).Should(BeTrue())
+
 			By("Waiting for Pod to complete successfully")
 			Eventually(func() corev1.PodPhase {
 				if err := k8sClient.Get(ctx, jobKey, job); err != nil {
@@ -1189,6 +1195,55 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 		})
+	})
+})
+
+var _ = Describe("Controller RBAC", Label(LabelTask), func() {
+	// The ClusterRole name follows Helm naming: {release-name}-controller
+	// In E2E, release name is "kubeopencode", so the ClusterRole is "kubeopencode-controller"
+	const clusterRoleName = "kubeopencode-controller"
+
+	It("should grant tasks/finalizers update permission for blockOwnerDeletion ownerReferences", func() {
+		By("Reading the controller ClusterRole")
+		clusterRole, err := clientset.RbacV1().ClusterRoles().Get(ctx, clusterRoleName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred(), "ClusterRole %s should exist", clusterRoleName)
+
+		By("Verifying tasks/finalizers permission exists")
+		found := false
+		for _, rule := range clusterRole.Rules {
+			hasAPIGroup := false
+			for _, group := range rule.APIGroups {
+				if group == "kubeopencode.io" {
+					hasAPIGroup = true
+					break
+				}
+			}
+			if !hasAPIGroup {
+				continue
+			}
+			hasResource := false
+			for _, res := range rule.Resources {
+				if res == "tasks/finalizers" {
+					hasResource = true
+					break
+				}
+			}
+			if !hasResource {
+				continue
+			}
+			for _, verb := range rule.Verbs {
+				if verb == "update" {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		Expect(found).Should(BeTrue(),
+			"ClusterRole %s must have update permission on kubeopencode.io tasks/finalizers "+
+				"(required by metav1.NewControllerRef setting blockOwnerDeletion: true)", clusterRoleName)
 	})
 })
 

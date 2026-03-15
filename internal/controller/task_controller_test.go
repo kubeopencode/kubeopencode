@@ -74,6 +74,9 @@ var _ = Describe("TaskController", func() {
 			Expect(createdPod.OwnerReferences[0].Kind).Should(Equal("Task"))
 			Expect(createdPod.OwnerReferences[0].Name).Should(Equal(taskName))
 
+			By("Verifying OwnerReference sets blockOwnerDeletion (requires tasks/finalizers RBAC)")
+			Expect(createdPod.OwnerReferences[0].BlockOwnerDeletion).Should(PointTo(BeTrue()))
+
 			By("Verifying Pod uses default executor image")
 			Expect(createdPod.Spec.Containers).Should(HaveLen(1))
 			Expect(createdPod.Spec.Containers[0].Image).Should(Equal(DefaultExecutorImage))
