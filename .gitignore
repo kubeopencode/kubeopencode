@@ -14,8 +14,10 @@ cover.out
 # Helm
 dist/
 
+# Node
+node_modules/
+
 # UI
-ui/node_modules/
 ui/dist/
 ui/coverage/
 
