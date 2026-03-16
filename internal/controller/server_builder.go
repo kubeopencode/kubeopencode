@@ -45,6 +45,17 @@ func ServerURL(agentName, namespace string, port int32) string {
 	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", agentName, namespace, port)
 }
 
+// getServerLabels returns the common labels used by Server-mode resources.
+func getServerLabels(agentName string) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":       "kubeopencode-server",
+		"app.kubernetes.io/instance":   agentName,
+		"app.kubernetes.io/component":  "server",
+		"app.kubernetes.io/managed-by": "kubeopencode",
+		AgentLabelKey:                  agentName,
+	}
+}
+
 // BuildServerDeployment creates a Deployment for a Server-mode Agent.
 // The Deployment runs OpenCode in serve mode with a single replica.
 func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, sysCfg systemConfig) *appsv1.Deployment {
@@ -56,13 +67,7 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 	port := GetServerPort(agent)
 
 	// Build labels for selector and pod template
-	labels := map[string]string{
-		"app.kubernetes.io/name":       "kubeopencode-server",
-		"app.kubernetes.io/instance":   agent.Name,
-		"app.kubernetes.io/component":  "server",
-		"app.kubernetes.io/managed-by": "kubeopencode",
-		"kubeopencode.io/agent":        agent.Name,
-	}
+	labels := getServerLabels(agent.Name)
 
 	// Merge custom labels from PodSpec if provided
 	if agentCfg.podSpec != nil && agentCfg.podSpec.Labels != nil {
@@ -204,7 +209,7 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"kubeopencode.io/agent": agent.Name,
+					AgentLabelKey: agent.Name,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
@@ -226,12 +231,7 @@ func BuildServerService(agent *kubeopenv1alpha1.Agent) *corev1.Service {
 
 	port := GetServerPort(agent)
 
-	labels := map[string]string{
-		"app.kubernetes.io/name":       "kubeopencode-server",
-		"app.kubernetes.io/instance":   agent.Name,
-		"app.kubernetes.io/component":  "server",
-		"app.kubernetes.io/managed-by": "kubeopencode",
-	}
+	labels := getServerLabels(agent.Name)
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -242,7 +242,7 @@ func BuildServerService(agent *kubeopenv1alpha1.Agent) *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Type: corev1.ServiceTypeClusterIP,
 			Selector: map[string]string{
-				"kubeopencode.io/agent": agent.Name,
+				AgentLabelKey: agent.Name,
 			},
 			Ports: []corev1.ServicePort{
 				{
