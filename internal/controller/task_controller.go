@@ -870,13 +870,14 @@ func (r *TaskReconciler) resolveContextContent(ctx context.Context, namespace, n
 		}
 
 		return "", nil, &gitMount{
-			contextName: name,
-			repository:  git.Repository,
-			ref:         ref,
-			repoPath:    git.Path,
-			mountPath:   resolvedMountPath,
-			depth:       depth,
-			secretName:  secretName,
+			contextName:       name,
+			repository:        git.Repository,
+			ref:               ref,
+			repoPath:          git.Path,
+			mountPath:         resolvedMountPath,
+			depth:             depth,
+			secretName:        secretName,
+			recurseSubmodules: git.RecurseSubmodules,
 		}, nil
 
 	case kubeopenv1alpha1.ContextTypeRuntime:

@@ -78,6 +78,12 @@ type GitContext struct {
 	// +kubebuilder:default=1
 	Depth *int `json:"depth,omitempty"`
 
+	// RecurseSubmodules enables recursive cloning of Git submodules.
+	// If true, submodules are initialized and cloned along with the repository.
+	// Defaults to false (submodules are not cloned).
+	// +optional
+	RecurseSubmodules bool `json:"recurseSubmodules,omitempty"`
+
 	// SecretRef references a Secret containing Git credentials.
 	// The Secret should contain one of:
 	//   - "username" + "password": For HTTPS token-based auth (password can be a PAT)

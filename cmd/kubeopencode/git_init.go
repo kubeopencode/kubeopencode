@@ -24,8 +24,9 @@ const (
 	envPassword        = "GIT_PASSWORD"
 	envSSHKey          = "GIT_SSH_KEY"
 	envSSHHostKeys     = "GIT_SSH_KNOWN_HOSTS"
-	envGitWorkspaceDir = "GIT_WORKSPACE_DIR"
-	envGitRepoSubpath  = "GIT_REPO_SUBPATH"
+	envGitWorkspaceDir       = "GIT_WORKSPACE_DIR"
+	envGitRepoSubpath        = "GIT_REPO_SUBPATH"
+	envGitRecurseSubmodules  = "GIT_RECURSE_SUBMODULES"
 )
 
 // Default values for git-init
@@ -59,8 +60,9 @@ Environment variables:
   GIT_LINK            Subdirectory name, default: repo
   GIT_USERNAME        HTTPS username
   GIT_PASSWORD        HTTPS password/token
-  GIT_SSH_KEY         SSH private key (content or file path)
-  GIT_SSH_KNOWN_HOSTS Known hosts content for SSH verification`,
+  GIT_SSH_KEY             SSH private key (content or file path)
+  GIT_SSH_KNOWN_HOSTS     Known hosts content for SSH verification
+  GIT_RECURSE_SUBMODULES  If "true", recursively clone submodules`,
 	RunE: runGitInit,
 }
 
@@ -104,8 +106,16 @@ func runGitInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create root directory: %w", err)
 	}
 
+	// Check if submodule cloning is enabled
+	recurseSubmodules := os.Getenv(envGitRecurseSubmodules) == "true"
+
 	// Build git clone command
 	cloneArgs := []string{"clone", "--depth", strconv.Itoa(depth), "--single-branch"}
+
+	if recurseSubmodules {
+		cloneArgs = append(cloneArgs, "--recurse-submodules")
+		fmt.Println("  Submodules: recursive")
+	}
 
 	// Add branch flag if not HEAD
 	if ref != "HEAD" {
