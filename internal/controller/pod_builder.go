@@ -77,13 +77,14 @@ type dirMount struct {
 
 // gitMount represents a Git repository to be cloned and mounted
 type gitMount struct {
-	contextName string // Context name (for volume naming)
-	repository  string // Git repository URL
-	ref         string // Git reference (branch, tag, or commit SHA)
-	repoPath    string // Path within the repository to mount
-	mountPath   string // Where to mount in the container
-	depth       int    // Clone depth (1 = shallow, 0 = full)
-	secretName  string // Optional secret name for authentication
+	contextName       string // Context name (for volume naming)
+	repository        string // Git repository URL
+	ref               string // Git reference (branch, tag, or commit SHA)
+	repoPath          string // Path within the repository to mount
+	mountPath         string // Where to mount in the container
+	depth             int    // Clone depth (1 = shallow, 0 = full)
+	secretName        string // Optional secret name for authentication
+	recurseSubmodules bool   // Whether to recursively clone submodules
 }
 
 // resolvedContext holds a resolved context with its content and metadata
@@ -269,6 +270,12 @@ func buildGitInitContainer(gm gitMount, volumeName string, index int, sysCfg sys
 		{Name: "GIT_DEPTH", Value: strconv.Itoa(depth)},
 		{Name: "GIT_ROOT", Value: DefaultGitRoot},
 		{Name: "GIT_LINK", Value: DefaultGitLink},
+	}
+
+	if gm.recurseSubmodules {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "GIT_RECURSE_SUBMODULES", Value: "true",
+		})
 	}
 
 	volumeMounts := []corev1.VolumeMount{
