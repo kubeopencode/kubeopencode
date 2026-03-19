@@ -1328,10 +1328,10 @@ func (r *TaskReconciler) checkRetentionCleanup(ctx context.Context, namespace st
 
 	// Filter completed/failed Tasks with CompletionTime set
 	var completedTasks []kubeopenv1alpha1.Task
-	for _, t := range taskList.Items {
-		if isTaskFinished(t.Status.Phase) &&
-			t.Status.CompletionTime != nil {
-			completedTasks = append(completedTasks, t)
+	for _, task := range taskList.Items {
+		if isTaskFinished(task.Status.Phase) &&
+			task.Status.CompletionTime != nil {
+			completedTasks = append(completedTasks, task)
 		}
 	}
 
