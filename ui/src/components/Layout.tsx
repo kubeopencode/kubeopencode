@@ -5,6 +5,7 @@ import api from '../api/client';
 import StatusBadge from './StatusBadge';
 import TimeAgo from './TimeAgo';
 import ToastContainer from './ToastContainer';
+import logoImg from '../assets/logo.png';
 
 function useServerVersion() {
   const { data } = useQuery({
@@ -41,16 +42,12 @@ function Layout() {
   const isActiveRoute = (path: string) => location.pathname === path;
 
   const sidebarContent = (
-    <div className="flex flex-col h-full sidebar-noise">
+    <div className="flex flex-col h-full">
       {/* Logo / Brand */}
-      <div className="flex items-center justify-between px-4 h-14 border-b border-sidebar-border/50 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 h-14 border-b border-sidebar-border flex-shrink-0">
         <NavLink to="/" className="flex items-center gap-2.5 group">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-lg shadow-primary-500/20">
-            <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <span className="font-display font-semibold text-sm text-white tracking-tight">
+          <img src={logoImg} alt="KubeOpenCode" className="w-7 h-7 rounded-lg" />
+          <span className="font-display font-semibold text-sm text-sidebar-text tracking-tight">
             KubeOpenCode
           </span>
         </NavLink>
@@ -68,9 +65,9 @@ function Layout() {
       <div className="px-3 pt-3 pb-1 flex-shrink-0">
         <Link
           to="/tasks/create"
-          className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg bg-sidebar-hover border border-sidebar-border/60 text-sidebar-text hover:bg-primary-600/20 hover:border-primary-500/40 transition-all text-sm font-medium group"
+          className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-all text-sm font-medium group shadow-sm"
         >
-          <svg className="w-4 h-4 text-sidebar-muted group-hover:text-primary-400 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
           </svg>
           New Task
@@ -85,8 +82,8 @@ function Layout() {
           className={({ isActive }) =>
             `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all ${
               isActive
-                ? 'bg-sidebar-hover text-white sidebar-glow'
-                : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover/50'
+                ? 'bg-primary-50 text-primary-700 font-medium'
+                : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
             }`
           }
         >
@@ -108,10 +105,10 @@ function Layout() {
             <div className="flex items-center gap-2">
               <span>Tasks</span>
               {runningCount > 0 && (
-                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-primary-500/20 text-primary-300 text-[10px] font-semibold normal-case tracking-normal">
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-primary-100 text-primary-600 text-[10px] font-semibold normal-case tracking-normal">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary-400" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary-500" />
                   </span>
                   {runningCount}
                 </span>
@@ -141,19 +138,19 @@ function Layout() {
                     className={({ isActive }) =>
                       `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all group ${
                         isActive
-                          ? 'bg-sidebar-hover text-white sidebar-glow'
-                          : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover/50'
+                          ? 'bg-primary-50 text-primary-700 font-medium'
+                          : 'text-slate-600 hover:text-sidebar-text hover:bg-sidebar-hover'
                       }`
                     }
                   >
                     <TaskStatusDot phase={task.phase} />
                     <div className="flex-1 min-w-0">
-                      <p className="truncate text-[13px] font-medium">{task.name}</p>
-                      <p className="text-[10px] text-sidebar-muted/80 truncate">
+                      <p className="truncate text-[13px]">{task.name}</p>
+                      <p className="text-[10px] text-sidebar-muted truncate">
                         {task.namespace}
                       </p>
                     </div>
-                    <span className="text-[10px] text-sidebar-muted/50 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] text-sidebar-muted/60 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
                       <TimeAgo date={task.createdAt} />
                     </span>
                   </NavLink>
@@ -162,7 +159,7 @@ function Layout() {
               <NavLink
                 to="/tasks"
                 onClick={() => setMobileSidebarOpen(false)}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs text-sidebar-muted/60 hover:text-primary-400 transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 text-xs text-sidebar-muted hover:text-primary-600 transition-colors"
               >
                 View all tasks
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -181,7 +178,7 @@ function Layout() {
           >
             <div className="flex items-center gap-2">
               <span>Agents</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-sidebar-hover text-[10px] text-sidebar-muted font-semibold normal-case tracking-normal">
+              <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-[10px] text-sidebar-muted font-semibold normal-case tracking-normal">
                 {agents.length}
               </span>
             </div>
@@ -209,22 +206,22 @@ function Layout() {
                     className={({ isActive }) =>
                       `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all group ${
                         isActive
-                          ? 'bg-sidebar-hover text-white sidebar-glow'
-                          : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover/50'
+                          ? 'bg-primary-50 text-primary-700 font-medium'
+                          : 'text-slate-600 hover:text-sidebar-text hover:bg-sidebar-hover'
                       }`
                     }
                   >
                     <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                      agent.mode === 'Server' ? 'bg-violet-400' : 'bg-primary-400/60'
+                      agent.mode === 'Server' ? 'bg-violet-500' : 'bg-primary-400'
                     }`} />
                     <div className="flex-1 min-w-0">
-                      <p className="truncate text-[13px] font-medium">{agent.name}</p>
-                      <p className="text-[10px] text-sidebar-muted/80 truncate">
+                      <p className="truncate text-[13px]">{agent.name}</p>
+                      <p className="text-[10px] text-sidebar-muted truncate">
                         {agent.namespace}
                       </p>
                     </div>
                     {agent.mode === 'Server' && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                         server
                       </span>
                     )}
@@ -234,7 +231,7 @@ function Layout() {
               <NavLink
                 to="/agents"
                 onClick={() => setMobileSidebarOpen(false)}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs text-sidebar-muted/60 hover:text-primary-400 transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 text-xs text-sidebar-muted hover:text-primary-600 transition-colors"
               >
                 View all agents
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -247,8 +244,8 @@ function Layout() {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-sidebar-border/30 flex-shrink-0">
-        <div className="flex items-center gap-2 text-[11px] text-sidebar-muted/50">
+      <div className="px-4 py-3 border-t border-sidebar-border flex-shrink-0">
+        <div className="flex items-center gap-2 text-[11px] text-sidebar-muted">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
           <span className="font-display">{serverVersion}</span>
         </div>
@@ -261,7 +258,7 @@ function Layout() {
       {/* Mobile sidebar backdrop */}
       {mobileSidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm lg:hidden"
           onClick={() => setMobileSidebarOpen(false)}
         />
       )}
@@ -269,7 +266,7 @@ function Layout() {
       {/* Sidebar */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar
+          fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-sidebar-border
           transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
           lg:static lg:z-auto
           ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -277,12 +274,10 @@ function Layout() {
         `}
       >
         {sidebarOpen ? sidebarContent : (
-          <div className="hidden lg:flex flex-col items-center py-3 gap-2 h-full">
+          <div className="hidden lg:flex flex-col items-center py-3 gap-2 h-full border-r border-sidebar-border">
             {/* Collapsed sidebar */}
-            <NavLink to="/" className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-lg shadow-primary-500/20 mb-2">
-              <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+            <NavLink to="/" className="w-9 h-9 rounded-lg flex items-center justify-center mb-2">
+              <img src={logoImg} alt="KubeOpenCode" className="w-7 h-7 rounded-lg" />
             </NavLink>
             <button
               onClick={() => setSidebarOpen(true)}
@@ -295,7 +290,7 @@ function Layout() {
             </button>
             <Link
               to="/tasks/create"
-              className="w-9 h-9 rounded-lg flex items-center justify-center text-sidebar-muted hover:text-primary-400 hover:bg-sidebar-hover transition-colors"
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-sidebar-muted hover:text-primary-600 hover:bg-sidebar-hover transition-colors"
               title="New Task"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -307,7 +302,7 @@ function Layout() {
               end
               className={({ isActive }) =>
                 `w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                  isActive ? 'text-white bg-sidebar-hover' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
+                  isActive ? 'text-primary-700 bg-primary-50' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
                 }`
               }
               title="Dashboard"
@@ -320,7 +315,7 @@ function Layout() {
               to="/tasks"
               className={({ isActive }) =>
                 `w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                  isActive ? 'text-white bg-sidebar-hover' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
+                  isActive ? 'text-primary-700 bg-primary-50' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
                 }`
               }
               title="Tasks"
@@ -333,7 +328,7 @@ function Layout() {
               to="/agents"
               className={({ isActive }) =>
                 `w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                  isActive ? 'text-white bg-sidebar-hover' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
+                  isActive ? 'text-primary-700 bg-primary-50' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
                 }`
               }
               title="Agents"
@@ -391,13 +386,13 @@ function Layout() {
 function TaskStatusDot({ phase }: { phase: string }) {
   const lower = phase?.toLowerCase() || 'pending';
   const colorMap: Record<string, string> = {
-    running: 'bg-primary-400',
-    completed: 'bg-emerald-400',
-    failed: 'bg-red-400',
-    queued: 'bg-amber-400',
-    pending: 'bg-slate-500',
+    running: 'bg-primary-500',
+    completed: 'bg-emerald-500',
+    failed: 'bg-red-500',
+    queued: 'bg-amber-500',
+    pending: 'bg-slate-400',
   };
-  const color = colorMap[lower] || 'bg-stone-500';
+  const color = colorMap[lower] || 'bg-slate-400';
   const isAnimated = lower === 'running' || lower === 'queued';
 
   return (

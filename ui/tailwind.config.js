@@ -26,12 +26,12 @@ module.exports = {
           300: '#cbd5e1',
         },
         sidebar: {
-          DEFAULT: '#0B1120',
-          light: '#131D33',
-          hover: '#1A2744',
-          border: '#2A3B5C',
-          muted: '#7B8BA8',
-          text: '#CBD5E8',
+          DEFAULT: '#FFFFFF',
+          light: '#F8FAFC',
+          hover: '#EFF3FF',
+          border: '#E2E8F0',
+          muted: '#64748B',
+          text: '#1E293B',
         },
       },
       fontFamily: {

@@ -25,12 +25,12 @@
 }
 
 .sidebar-scroll::-webkit-scrollbar-thumb {
-  background: rgba(42, 59, 92, 0.6);
+  background: rgba(148, 163, 184, 0.3);
   border-radius: 2px;
 }
 
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(42, 59, 92, 0.9);
+  background: rgba(148, 163, 184, 0.5);
 }
 
 /* Main content scrollbar */
@@ -70,23 +70,4 @@
 
 .status-failed {
   @apply bg-red-50 text-red-700;
-}
-
-/* Noise texture overlay for sidebar depth */
-.sidebar-noise {
-  position: relative;
-}
-
-.sidebar-noise::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: 0.03;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  pointer-events: none;
-}
-
-/* Ambient glow for active items */
-.sidebar-glow {
-  box-shadow: inset 2px 0 0 0 theme('colors.primary.500');
 }

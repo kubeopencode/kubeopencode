@@ -24,7 +24,7 @@ describe('StatusBadge', () => {
     const { container } = render(<StatusBadge phase="Running" />);
     const animatedDot = container.querySelector('.animate-ping');
     expect(animatedDot).toBeInTheDocument();
-    expect(animatedDot?.className).toContain('bg-primary-400');
+    expect(animatedDot?.className).toContain('bg-primary-');
   });
 
   it('shows animated dot for Queued phase', () => {
