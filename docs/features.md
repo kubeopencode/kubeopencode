@@ -32,6 +32,14 @@ contexts:
       repository: https://github.com/org/repo.git
       ref: main
     mountPath: source-code
+  - name: private-repo
+    type: Git
+    git:
+      repository: https://github.com/org/private-repo.git
+      ref: main
+      secretRef:
+        name: github-git-credentials  # Secret with username + password (PAT)
+    mountPath: private-source
   - type: URL
     url:
       source: https://api.example.com/openapi.yaml

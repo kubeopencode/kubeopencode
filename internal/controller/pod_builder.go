@@ -282,9 +282,12 @@ func buildGitInitContainer(gm gitMount, volumeName string, index int, sysCfg sys
 		{Name: volumeName, MountPath: DefaultGitRoot},
 	}
 
-	// Add secret environment variables for authentication if specified
+	// Add secret environment variables for authentication if specified.
+	// The Secret can contain HTTPS credentials (username + password/PAT),
+	// SSH credentials (ssh-privatekey + optional ssh-known-hosts), or both.
+	// All keys are optional so the same Secret can be used for either method.
 	if gm.secretName != "" {
-		// git-init supports GIT_USERNAME/GIT_PASSWORD for HTTPS
+		// HTTPS token-based auth
 		envVars = append(envVars,
 			corev1.EnvVar{
 				Name: "GIT_USERNAME",
@@ -302,6 +305,29 @@ func buildGitInitContainer(gm gitMount, volumeName string, index int, sysCfg sys
 					SecretKeyRef: &corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{Name: gm.secretName},
 						Key:                  "password",
+						Optional:             boolPtr(true),
+					},
+				},
+			},
+		)
+		// SSH key-based auth
+		envVars = append(envVars,
+			corev1.EnvVar{
+				Name: "GIT_SSH_KEY",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: gm.secretName},
+						Key:                  "ssh-privatekey",
+						Optional:             boolPtr(true),
+					},
+				},
+			},
+			corev1.EnvVar{
+				Name: "GIT_SSH_KNOWN_HOSTS",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: gm.secretName},
+						Key:                  "ssh-known-hosts",
 						Optional:             boolPtr(true),
 					},
 				},

@@ -15,6 +15,99 @@ KubeOpenCode follows the principle of least privilege:
 - Supports both environment variable and file-based credential mounting
 - Git authentication via SecretRef (HTTPS or SSH)
 
+### Git Authentication for Private Repositories
+
+When a Git context references a private repository, use `secretRef` to provide credentials.
+The Secret is referenced by the `git.secretRef.name` field in the context spec.
+
+#### HTTPS Token Authentication (Recommended)
+
+For most Git providers, create a Secret with `username` and `password` keys.
+The `password` field should contain a Personal Access Token (PAT), not your actual password.
+
+**GitHub:**
+
+```bash
+kubectl create secret generic github-git-credentials \
+  --from-literal=username=x-access-token \
+  --from-literal=password=ghp_YourGitHubPAT
+```
+
+**GitLab:**
+
+```bash
+kubectl create secret generic gitlab-git-credentials \
+  --from-literal=username=oauth2 \
+  --from-literal=password=glpat-YourGitLabPAT
+```
+
+**Bitbucket:**
+
+```bash
+kubectl create secret generic bitbucket-git-credentials \
+  --from-literal=username=x-token-auth \
+  --from-literal=password=YourBitbucketAppPassword
+```
+
+**Azure DevOps:**
+
+```bash
+kubectl create secret generic azdo-git-credentials \
+  --from-literal=username=pat \
+  --from-literal=password=YourAzureDevOpsPAT
+```
+
+Then reference the Secret in your Git context:
+
+```yaml
+contexts:
+  - name: private-source
+    type: Git
+    git:
+      repository: https://github.com/org/private-repo.git
+      ref: main
+      secretRef:
+        name: github-git-credentials
+    mountPath: source
+```
+
+#### SSH Key Authentication
+
+For SSH-based authentication, create a Secret with an `ssh-privatekey` key
+and optionally an `ssh-known-hosts` key:
+
+```bash
+kubectl create secret generic git-ssh-credentials \
+  --from-file=ssh-privatekey=$HOME/.ssh/id_rsa \
+  --from-file=ssh-known-hosts=$HOME/.ssh/known_hosts
+```
+
+Then use an SSH repository URL:
+
+```yaml
+contexts:
+  - name: private-source
+    type: Git
+    git:
+      repository: git@github.com:org/private-repo.git
+      ref: main
+      secretRef:
+        name: git-ssh-credentials
+    mountPath: source
+```
+
+> **Security note:** If `ssh-known-hosts` is not provided, SSH host key verification is disabled.
+> Always provide `ssh-known-hosts` in production environments to prevent MITM attacks.
+
+#### Provider Username Reference
+
+| Git Provider | Username | Token Type |
+|-------------|----------|------------|
+| GitHub | `x-access-token` | Personal Access Token (PAT) |
+| GitLab | `oauth2` | Personal/Project/Group Access Token |
+| Bitbucket | `x-token-auth` | App Password |
+| Azure DevOps | (any non-empty string) | Personal Access Token (PAT) |
+
 ### Credential Mounting Options
 
 ```yaml

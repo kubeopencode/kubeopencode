@@ -1027,7 +1027,7 @@ func TestBuildPod_WithGitMountsAndAuth(t *testing.T) {
 		t.Errorf("Second init container name = %q, want %q", gitInitContainer.Name, "git-init-0")
 	}
 
-	var foundUsername, foundPassword bool
+	var foundUsername, foundPassword, foundSSHKey, foundSSHKnownHosts bool
 	for _, env := range gitInitContainer.Env {
 		if env.Name == "GIT_USERNAME" && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
 			if env.ValueFrom.SecretKeyRef.Name == "git-credentials" && env.ValueFrom.SecretKeyRef.Key == "username" {
@@ -1039,12 +1039,28 @@ func TestBuildPod_WithGitMountsAndAuth(t *testing.T) {
 				foundPassword = true
 			}
 		}
+		if env.Name == "GIT_SSH_KEY" && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+			if env.ValueFrom.SecretKeyRef.Name == "git-credentials" && env.ValueFrom.SecretKeyRef.Key == "ssh-privatekey" {
+				foundSSHKey = true
+			}
+		}
+		if env.Name == "GIT_SSH_KNOWN_HOSTS" && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+			if env.ValueFrom.SecretKeyRef.Name == "git-credentials" && env.ValueFrom.SecretKeyRef.Key == "ssh-known-hosts" {
+				foundSSHKnownHosts = true
+			}
+		}
 	}
 	if !foundUsername {
 		t.Errorf("GIT_USERNAME env var with secret reference not found")
 	}
 	if !foundPassword {
 		t.Errorf("GIT_PASSWORD env var with secret reference not found")
+	}
+	if !foundSSHKey {
+		t.Errorf("GIT_SSH_KEY env var with secret reference not found")
+	}
+	if !foundSSHKnownHosts {
+		t.Errorf("GIT_SSH_KNOWN_HOSTS env var with secret reference not found")
 	}
 
 	// Verify volume mount without subPath (entire repo)
@@ -1111,6 +1127,74 @@ func TestBuildGitInitContainer(t *testing.T) {
 	}
 	if container.VolumeMounts[0].MountPath != "/git" {
 		t.Errorf("Volume mount path = %q, want %q", container.VolumeMounts[0].MountPath, "/git")
+	}
+}
+
+func TestBuildGitInitContainerWithSecret(t *testing.T) {
+	gm := gitMount{
+		contextName: "private-repo",
+		repository:  "git@github.com:org/private-repo.git",
+		ref:         "main",
+		repoPath:    "",
+		mountPath:   "/workspace/private",
+		depth:       1,
+		secretName:  "my-git-secret",
+	}
+
+	container := buildGitInitContainer(gm, "git-vol-0", 0, defaultSystemConfig())
+
+	// Verify all 4 auth env vars are injected (HTTPS + SSH)
+	wantEnvVars := map[string]struct {
+		secretName string
+		secretKey  string
+	}{
+		"GIT_USERNAME":        {secretName: "my-git-secret", secretKey: "username"},
+		"GIT_PASSWORD":        {secretName: "my-git-secret", secretKey: "password"},
+		"GIT_SSH_KEY":         {secretName: "my-git-secret", secretKey: "ssh-privatekey"},
+		"GIT_SSH_KNOWN_HOSTS": {secretName: "my-git-secret", secretKey: "ssh-known-hosts"},
+	}
+
+	for wantName, want := range wantEnvVars {
+		found := false
+		for _, env := range container.Env {
+			if env.Name == wantName && env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+				if env.ValueFrom.SecretKeyRef.Name != want.secretName {
+					t.Errorf("%s secret name = %q, want %q", wantName, env.ValueFrom.SecretKeyRef.Name, want.secretName)
+				}
+				if env.ValueFrom.SecretKeyRef.Key != want.secretKey {
+					t.Errorf("%s secret key = %q, want %q", wantName, env.ValueFrom.SecretKeyRef.Key, want.secretKey)
+				}
+				if env.ValueFrom.SecretKeyRef.Optional == nil || !*env.ValueFrom.SecretKeyRef.Optional {
+					t.Errorf("%s should be optional", wantName)
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("env var %s with SecretKeyRef not found", wantName)
+		}
+	}
+}
+
+func TestBuildGitInitContainerWithoutSecret(t *testing.T) {
+	gm := gitMount{
+		contextName: "public-repo",
+		repository:  "https://github.com/org/public-repo.git",
+		ref:         "main",
+		mountPath:   "/workspace/public",
+		depth:       1,
+		secretName:  "",
+	}
+
+	container := buildGitInitContainer(gm, "git-vol-0", 0, defaultSystemConfig())
+
+	// Verify no auth env vars are injected for public repos
+	for _, env := range container.Env {
+		switch env.Name {
+		case "GIT_USERNAME", "GIT_PASSWORD", "GIT_SSH_KEY", "GIT_SSH_KNOWN_HOSTS":
+			t.Errorf("unexpected auth env var %s for public repo", env.Name)
+		}
 	}
 }
 
