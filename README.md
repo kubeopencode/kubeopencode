@@ -6,7 +6,7 @@
   <em>A Kubernetes-native system for executing AI-powered tasks</em>
 </p>
 
-> **Note**: This project uses [OpenCode](https://opencode.ai) as its AI coding agent. KubeOpenCode is not built by or affiliated with the OpenCode team.
+> **Note**: This project builds on the excellent [OpenCode](https://opencode.ai) AI coding agent. KubeOpenCode is an independent project — not built by or affiliated with the OpenCode team. We're grateful to the OpenCode community for creating such a powerful tool.
 
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
