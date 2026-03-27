@@ -39,7 +39,6 @@ Kubeconfig resolution (in priority order):
   3. Default ~/.kube/config
 
 Examples:
-  export KUBEOPENCODE_KUBECONFIG=/path/to/agent-cluster.kubeconfig
   koc get agents
   koc agent attach my-agent -n test`,
 }

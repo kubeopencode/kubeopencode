@@ -9,17 +9,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
+	"k8s.io/client-go/rest"
 )
 
 func init() {
@@ -37,74 +34,133 @@ func newSessionCmd() *cobra.Command {
 }
 
 func newSessionWatchCmd() *cobra.Command {
-	var namespace string
+	var (
+		namespace       string
+		serverNamespace string
+		serverService   string
+		serverPort      int
+	)
+
 	cmd := &cobra.Command{
 		Use:   "watch <task-name>",
 		Short: "Watch agent events for a task",
-		Args:  cobra.ExactArgs(1),
+		Long: `Watch SSE events from an agent session in real-time.
+
+Connects through the kube-apiserver's service proxy to the kubeopencode server,
+which proxies to the OpenCode agent server. No port-forward needed.
+
+Examples:
+  koc session watch my-task -n test
+  koc session watch my-task -n production`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSession(cmd.Context(), namespace, args[0], false)
+			return runSessionProxy(cmd.Context(), namespace, args[0], false, serverNamespace, serverService, serverPort)
 		},
 	}
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "kubeopencode-system", "Task namespace")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Task namespace")
+	cmd.Flags().StringVar(&serverNamespace, "server-namespace", defaultServerNamespace, "Namespace where kubeopencode server is deployed")
+	cmd.Flags().StringVar(&serverService, "server-service", defaultServerService, "Name of kubeopencode server Service")
+	cmd.Flags().IntVar(&serverPort, "server-port", defaultServerPort, "Port of kubeopencode server Service")
 	return cmd
 }
 
 func newSessionAttachCmd() *cobra.Command {
-	var namespace string
+	var (
+		namespace       string
+		serverNamespace string
+		serverService   string
+		serverPort      int
+	)
+
 	cmd := &cobra.Command{
 		Use:   "attach <task-name>",
 		Short: "Interactively attach to an agent session",
-		Args:  cobra.ExactArgs(1),
+		Long: `Attach to an agent session with interactive HITL (Human-in-the-Loop) support.
+
+Watches SSE events and allows you to respond to permission requests and
+questions from the agent. Connects through the kube-apiserver's service proxy.
+No port-forward needed.
+
+Examples:
+  koc session attach my-task -n test
+  koc session attach my-task -n production`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSession(cmd.Context(), namespace, args[0], true)
+			return runSessionProxy(cmd.Context(), namespace, args[0], true, serverNamespace, serverService, serverPort)
 		},
 	}
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "kubeopencode-system", "Task namespace")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Task namespace")
+	cmd.Flags().StringVar(&serverNamespace, "server-namespace", defaultServerNamespace, "Namespace where kubeopencode server is deployed")
+	cmd.Flags().StringVar(&serverService, "server-service", defaultServerService, "Name of kubeopencode server Service")
+	cmd.Flags().IntVar(&serverPort, "server-port", defaultServerPort, "Port of kubeopencode server Service")
 	return cmd
 }
 
-func runSession(ctx context.Context, namespace, taskName string, interactive bool) error {
+// runSessionProxy connects to a task's agent session via kube-apiserver service proxy.
+// Flow: koc → kube-apiserver (auth) → kubeopencode server → OpenCode agent server
+func runSessionProxy(ctx context.Context, namespace, taskName string, interactive bool, svcNamespace, svcName string, svcPort int) error {
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	cfg, err := ctrl.GetConfig()
+	fmt.Println("Connecting to cluster...")
+
+	cfg, err := getKubeConfig()
 	if err != nil {
-		return fmt.Errorf("failed to get kubeconfig: %w", err)
+		return fmt.Errorf("cannot connect to cluster: %w", err)
 	}
 
-	k8sClient, err := client.New(cfg, client.Options{Scheme: scheme})
+	// Build the service proxy base URL for HITL API
+	// /api/v1/namespaces/{server-ns}/services/{server-svc}:{server-port}/proxy
+	//   /api/v1/namespaces/{task-ns}/tasks/{task-name}
+	serviceProxyPrefix := fmt.Sprintf(
+		"/api/v1/namespaces/%s/services/%s:%d/proxy/api/v1/namespaces/%s/tasks/%s",
+		svcNamespace, svcName, svcPort, namespace, taskName,
+	)
+
+	transport, err := rest.TransportFor(cfg)
 	if err != nil {
-		return fmt.Errorf("failed to create k8s client: %w", err)
+		return fmt.Errorf("failed to create transport: %w", err)
 	}
 
-	serverURL, err := resolveServerURL(ctx, k8sClient, namespace, taskName)
+	apiServerURL, err := parseAPIServerURL(cfg.Host)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("\033[90m[info]\033[0m Connected to: %s\n", serverURL)
+	// Create a helper to build full URLs for API calls
+	baseURL := fmt.Sprintf("%s://%s%s", apiServerURL.Scheme, apiServerURL.Host, serviceProxyPrefix)
+
 	if interactive {
-		fmt.Printf("\033[90m[info]\033[0m Interactive mode. Ctrl+C to disconnect.\n\n")
+		fmt.Printf("[info] Interactive mode — task: %s/%s. Ctrl+C to disconnect.\n\n", namespace, taskName)
 	} else {
-		fmt.Printf("\033[90m[info]\033[0m Watch mode. Ctrl+C to stop.\n\n")
+		fmt.Printf("[info] Watch mode — task: %s/%s. Ctrl+C to stop.\n\n", namespace, taskName)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL+"/event", nil)
+	// Connect to SSE events endpoint
+	eventsURL := baseURL + "/events"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, eventsURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Accept", "text/event-stream")
 
-	resp, err := (&http.Client{Timeout: 0}).Do(req)
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   0, // No timeout for SSE
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to connect: %w\nHint: port-forward first:\n  kubectl port-forward svc/<agent> -n %s 4096:4096", err, namespace)
+		return fmt.Errorf("failed to connect to event stream: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned status %d: %s", resp.StatusCode, string(body))
 	}
+
+	fmt.Println("[connected] Event stream established")
 
 	reader := bufio.NewReader(resp.Body)
 	scanner := bufio.NewScanner(os.Stdin)
@@ -112,13 +168,13 @@ func runSession(ctx context.Context, namespace, taskName string, interactive boo
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("\n\033[90m[info]\033[0m Disconnected.\n")
+			fmt.Printf("\n[info] Disconnected.\n")
 			return nil
 		default:
 			line, err := reader.ReadString('\n')
 			if err != nil {
 				if err == io.EOF {
-					fmt.Printf("\033[90m[info]\033[0m Stream ended.\n")
+					fmt.Println("[info] Stream ended.")
 					return nil
 				}
 				return fmt.Errorf("read error: %w", err)
@@ -143,25 +199,30 @@ func runSession(ctx context.Context, namespace, taskName string, interactive boo
 
 			switch eventType {
 			case "server.connected":
-				fmt.Printf("\033[32m[connected]\033[0m Session established\n")
+				fmt.Println("[connected] Session established")
 
-			case "server.heartbeat":
-				// silent
+			case "server.heartbeat", "stream.closed":
+				if eventType == "stream.closed" {
+					fmt.Println("[info] Stream closed by server.")
+					return nil
+				}
 
 			case "permission.asked":
 				permission, _ := props["permission"].(string)
 				id, _ := props["id"].(string)
 				patterns := toStringSlice(props["patterns"])
-				fmt.Printf("\033[33m[permission]\033[0m %s on %s\n", permission, strings.Join(patterns, ", "))
+				fmt.Printf("[permission] %s on %s\n", permission, strings.Join(patterns, ", "))
 
 				if interactive && id != "" {
-					fmt.Printf("  \033[33m[a]llow once / [A]lways / [r]eject: \033[0m")
+					fmt.Printf("  [a]llow once / [A]lways / [r]eject: ")
 					if scanner.Scan() {
 						reply := parseReply(scanner.Text())
-						if err := postJSON(ctx, serverURL+"/permission/"+id+"/reply", map[string]string{"reply": reply}); err != nil {
-							fmt.Printf("  \033[31m[error]\033[0m %s\n", err)
+						payload, _ := json.Marshal(map[string]string{"reply": reply})
+						permURL := baseURL + "/permission/" + id
+						if err := postWithTransport(ctx, transport, permURL, payload); err != nil {
+							fmt.Printf("  [error] %s\n", err)
 						} else {
-							fmt.Printf("  \033[32m[replied]\033[0m %s\n", reply)
+							fmt.Printf("  [replied] %s\n", reply)
 						}
 					}
 				}
@@ -169,7 +230,7 @@ func runSession(ctx context.Context, namespace, taskName string, interactive boo
 			case "question.asked":
 				id, _ := props["id"].(string)
 				questions, _ := props["questions"].([]interface{})
-				fmt.Printf("\033[34m[question]\033[0m Agent asks:\n")
+				fmt.Println("[question] Agent asks:")
 				for qi, q := range questions {
 					qMap, _ := q.(map[string]interface{})
 					question, _ := qMap["question"].(string)
@@ -188,15 +249,18 @@ func runSession(ctx context.Context, namespace, taskName string, interactive boo
 				}
 
 				if interactive && id != "" {
-					fmt.Printf("  \033[34mEnter choice (number/text, 's' to skip): \033[0m")
+					fmt.Printf("  Enter choice (number/text, 's' to skip): ")
 					if scanner.Scan() {
 						input := strings.TrimSpace(scanner.Text())
 						if strings.ToLower(input) == "s" {
-							_ = postEmpty(ctx, serverURL+"/question/"+id+"/reject")
-							fmt.Printf("  \033[32m[skipped]\033[0m\n")
+							rejectURL := baseURL + "/question/" + id + "/reject"
+							_ = postWithTransport(ctx, transport, rejectURL, nil)
+							fmt.Println("  [skipped]")
 						} else {
-							_ = postJSON(ctx, serverURL+"/question/"+id+"/reply", map[string]interface{}{"answers": [][]string{{input}}})
-							fmt.Printf("  \033[32m[answered]\033[0m %s\n", input)
+							payload, _ := json.Marshal(map[string]interface{}{"answers": [][]string{{input}}})
+							questionURL := baseURL + "/question/" + id
+							_ = postWithTransport(ctx, transport, questionURL, payload)
+							fmt.Printf("  [answered] %s\n", input)
 						}
 					}
 				}
@@ -204,7 +268,7 @@ func runSession(ctx context.Context, namespace, taskName string, interactive boo
 			case "session.status":
 				if status, ok := props["status"].(map[string]interface{}); ok {
 					if t, _ := status["type"].(string); t != "" {
-						fmt.Printf("\033[90m[status]\033[0m %s\n", t)
+						fmt.Printf("[status] %s\n", t)
 					}
 				}
 
@@ -218,45 +282,54 @@ func runSession(ctx context.Context, namespace, taskName string, interactive boo
 
 			case "session.error":
 				if errMsg, _ := props["error"].(string); errMsg != "" {
-					fmt.Printf("\033[31m[error]\033[0m %s\n", errMsg)
+					fmt.Printf("[error] %s\n", errMsg)
 				}
 			}
 		}
 	}
 }
 
-func resolveServerURL(ctx context.Context, k8sClient client.Client, namespace, taskName string) (string, error) {
-	var task kubeopenv1alpha1.Task
-	if err := k8sClient.Get(ctx, types.NamespacedName{Name: taskName, Namespace: namespace}, &task); err != nil {
-		return "", fmt.Errorf("task %q not found in namespace %q: %w", taskName, namespace, err)
+// parseAPIServerURL parses the kube-apiserver URL from kubeconfig,
+// handling the case where cfg.Host may be "host:port" without a scheme.
+func parseAPIServerURL(host string) (*url.URL, error) {
+	u, err := url.Parse(host)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		u, err = url.Parse("https://" + host)
+		if err != nil {
+			return nil, fmt.Errorf("invalid kube-apiserver URL %q: %w", host, err)
+		}
 	}
-
-	agentName := ""
-	if task.Status.AgentRef != nil {
-		agentName = task.Status.AgentRef.Name
-	} else if task.Spec.AgentRef != nil {
-		agentName = task.Spec.AgentRef.Name
-	}
-	if agentName == "" {
-		return "", fmt.Errorf("task %q has no agent reference", taskName)
-	}
-
-	var agent kubeopenv1alpha1.Agent
-	if err := k8sClient.Get(ctx, types.NamespacedName{Name: agentName, Namespace: namespace}, &agent); err != nil {
-		return "", fmt.Errorf("agent %q not found: %w", agentName, err)
-	}
-
-	if agent.Spec.ServerConfig == nil {
-		return "", fmt.Errorf("agent %q is not in Server mode (requires serverConfig)", agentName)
-	}
-
-	if agent.Status.ServerStatus == nil || agent.Status.ServerStatus.URL == "" {
-		return "", fmt.Errorf("agent %q server is not ready", agentName)
-	}
-
-	return agent.Status.ServerStatus.URL, nil
+	return u, nil
 }
 
+// postWithTransport sends an authenticated POST request through the kube-apiserver.
+func postWithTransport(ctx context.Context, transport http.RoundTripper, targetURL string, body []byte) error {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = strings.NewReader(string(body))
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bodyReader)
+	if err != nil {
+		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := (&http.Client{Transport: transport}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
+// toStringSlice converts an interface{} to []string (used for SSE event parsing).
 func toStringSlice(v interface{}) []string {
 	arr, _ := v.([]interface{})
 	out := make([]string, 0, len(arr))
@@ -268,6 +341,7 @@ func toStringSlice(v interface{}) []string {
 	return out
 }
 
+// parseReply converts user input to a permission reply value.
 func parseReply(input string) string {
 	switch strings.ToLower(strings.TrimSpace(input)) {
 	case "aa", "always":
@@ -279,33 +353,3 @@ func parseReply(input string) string {
 	}
 }
 
-func postJSON(ctx context.Context, url string, payload interface{}) error {
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func postEmpty(ctx context.Context, url string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	_ = resp.Body.Close()
-	return nil
-}
