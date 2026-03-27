@@ -894,7 +894,7 @@ kubectl logs <pod-name> -n kubeopencode-system
 
 ## Project Status
 
-- **Version**: v0.0.11
+- **Version**: v0.0.12
 - **API Stability**: v1alpha1 (subject to change)
 - **License**: Apache License 2.0
 - **Maintainer**: kubeopencode/kubeopencode team
