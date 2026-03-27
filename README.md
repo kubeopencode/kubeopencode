@@ -143,7 +143,7 @@ The KubeOpenCode CLI lets you list agents and interactively attach to server-mod
 **Install:**
 
 ```bash
-go install github.com/kubeopencode/kubeopencode/cmd/koc@latest
+go install github.com/kubeopencode/kubeopencode/cmd/kubeoc@latest
 ```
 
 **Configure** (optional — defaults to `KUBECONFIG` / `~/.kube/config`):
@@ -157,14 +157,14 @@ export KUBEOPENCODE_KUBECONFIG=/path/to/agent-cluster.kubeconfig
 
 ```bash
 # List available agents
-koc get agents
+kubeoc get agents
 
 # NAMESPACE    NAME           PROFILE                          MODE     STATUS
 # test         my-agent       General-purpose dev agent         Server   Ready
 # prod         review-bot     Automated code review agent       Server   Ready
 
 # Attach to an agent (connects via kube-apiserver service proxy)
-koc agent attach my-agent -n test
+kubeoc agent attach my-agent -n test
 ```
 
 The CLI authenticates using your kubeconfig credentials and connects through the kube-apiserver's built-in service proxy — no Ingress or port-forward required.

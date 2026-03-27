@@ -25,9 +25,9 @@ func init() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "koc",
+	Use:   "kubeoc",
 	Short: "KubeOpenCode CLI",
-	Long: `koc is the KubeOpenCode CLI for managing agents and tasks.
+	Long: `kubeoc is the KubeOpenCode CLI for managing agents and tasks.
 
 Commands:
   get agents       List available agents across namespaces
@@ -39,8 +39,8 @@ Kubeconfig resolution (in priority order):
   3. Default ~/.kube/config
 
 Examples:
-  koc get agents
-  koc agent attach my-agent -n test`,
+  kubeoc get agents
+  kubeoc agent attach my-agent -n test`,
 }
 
 // getKubeConfig returns a rest.Config with the following priority:

@@ -36,8 +36,8 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function ServerConnectCommands({ namespace, agentName }: { namespace: string; agentName: string }) {
-  const kocCmd = `koc agent attach ${agentName} -n ${namespace}`;
-  const goInstallCmd = 'go install github.com/kubeopencode/kubeopencode/cmd/koc@latest';
+  const kocCmd = `kubeoc agent attach ${agentName} -n ${namespace}`;
+  const goInstallCmd = 'go install github.com/kubeopencode/kubeopencode/cmd/kubeoc@latest';
 
   return (
     <div>

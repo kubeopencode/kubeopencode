@@ -70,9 +70,9 @@ Kubeconfig resolution (in priority order):
   3. Default ~/.kube/config
 
 Examples:
-  koc agent attach server-agent -n test
-  koc agent attach my-agent -n production --local-port 5000
-  koc agent attach my-agent -n test --use-port-forward`,
+  kubeoc agent attach server-agent -n test
+  kubeoc agent attach my-agent -n production --local-port 5000
+  kubeoc agent attach my-agent -n test --use-port-forward`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if usePortForward {
