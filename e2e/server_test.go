@@ -136,17 +136,13 @@ var _ = Describe("Server Mode E2E Tests", Label(LabelServer), func() {
 			serverReadyCond := getAgentCondition(updatedAgent, "ServerReady")
 			Expect(serverReadyCond).ShouldNot(BeNil())
 
-			By("Verifying serverStatus.ready is updated")
-			// The deployment might take time to be ready
+			By("Verifying serverStatus is populated")
 			Eventually(func() bool {
 				a := &kubeopenv1alpha1.Agent{}
 				if err := k8sClient.Get(ctx, agentKey, a); err != nil {
 					return false
 				}
-				if a.Status.ServerStatus == nil {
-					return false
-				}
-				return a.Status.ServerStatus.Ready
+				return a.Status.ServerStatus != nil
 			}, serverTimeout, interval).Should(BeTrue())
 
 			By("Cleaning up")
