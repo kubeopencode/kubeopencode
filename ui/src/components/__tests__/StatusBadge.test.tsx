@@ -9,12 +9,12 @@ describe('StatusBadge', () => {
   });
 
   it.each([
-    ['Pending', 'bg-slate-50'],
-    ['Queued', 'bg-amber-50'],
-    ['Running', 'bg-primary-50'],
-    ['Completed', 'bg-emerald-50'],
-    ['Failed', 'bg-red-50'],
-  ])('applies correct background class for %s phase', (phase, expectedClass) => {
+    ['Pending', 'text-slate-600'],
+    ['Queued', 'text-amber-700'],
+    ['Running', 'text-primary-700'],
+    ['Completed', 'text-emerald-700'],
+    ['Failed', 'text-red-700'],
+  ])('applies correct text class for %s phase', (phase, expectedClass) => {
     render(<StatusBadge phase={phase} />);
     const badge = screen.getByText(phase);
     expect(badge.className).toContain(expectedClass);
@@ -46,12 +46,12 @@ describe('StatusBadge', () => {
   it('handles case-insensitive phases', () => {
     render(<StatusBadge phase="running" />);
     const badge = screen.getByText('running');
-    expect(badge.className).toContain('bg-primary-50');
+    expect(badge.className).toContain('text-primary-700');
   });
 
   it('uses default style for unknown phases', () => {
     render(<StatusBadge phase="Unknown" />);
     const badge = screen.getByText('Unknown');
-    expect(badge.className).toContain('bg-slate-50');
+    expect(badge.className).toContain('text-slate-600');
   });
 });
