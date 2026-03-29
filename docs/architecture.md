@@ -130,6 +130,7 @@ Agent (execution configuration)
     ├── command: []string
     ├── contexts: []ContextItem      (inline context definitions)
     ├── credentials: []Credential
+    ├── caBundle: *CABundleConfig    (custom CA certificates for TLS)
     ├── podSpec: *AgentPodSpec
     ├── serviceAccountName: string
     ├── maxConcurrentTasks: *int32   (limit concurrent Tasks, nil/0 = unlimited)
@@ -230,9 +231,22 @@ type AgentSpec struct {
     Command            []string         // Custom entrypoint command
     Contexts           []ContextItem    // Inline context definitions
     Credentials        []Credential
+    CABundle           *CABundleConfig  // Custom CA certificates for private HTTPS/Git servers
     PodSpec            *AgentPodSpec    // Pod configuration (labels, scheduling, runtime)
     ServiceAccountName string
     MaxConcurrentTasks *int32           // Limit concurrent Tasks (nil/0 = unlimited)
+}
+
+// CABundleConfig configures custom CA certificates for TLS
+type CABundleConfig struct {
+    ConfigMapRef *CABundleReference // CA bundle from ConfigMap (default key: "ca-bundle.crt")
+    SecretRef    *CABundleReference // CA bundle from Secret (default key: "ca.crt")
+}
+
+// CABundleReference references a ConfigMap or Secret containing CA certificates
+type CABundleReference struct {
+    Name string // Name of the ConfigMap or Secret
+    Key  string // Key within the resource (optional, has type-specific default)
 }
 
 // KubeOpenCodeConfig defines system-level configuration
@@ -556,6 +570,11 @@ spec:
 | `spec.command` | []String | No | Custom entrypoint command |
 | `spec.contexts` | []ContextItem | No | Inline contexts (applied to all tasks) |
 | `spec.credentials` | []Credential | No | Secrets as env vars or file mounts |
+| `spec.caBundle` | *CABundleConfig | No | Custom CA certificates for private HTTPS/Git servers |
+| `spec.caBundle.configMapRef.name` | string | Yes (if configMapRef) | ConfigMap name containing the CA bundle |
+| `spec.caBundle.configMapRef.key` | string | No | Key in ConfigMap (default: "ca-bundle.crt") |
+| `spec.caBundle.secretRef.name` | string | Yes (if secretRef) | Secret name containing the CA bundle |
+| `spec.caBundle.secretRef.key` | string | No | Key in Secret (default: "ca.crt") |
 | `spec.podSpec` | *AgentPodSpec | No | Advanced Pod configuration (labels, scheduling, runtimeClass) |
 | `spec.maxConcurrentTasks` | *int32 | No | Limit concurrent Tasks (nil/0 = unlimited) |
 | `spec.quota` | *QuotaConfig | No | Rate limiting for Task starts |

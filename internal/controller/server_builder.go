@@ -376,7 +376,6 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		RestartPolicy:      corev1.RestartPolicyAlways,
 	}
 
-
 	// Apply scheduling configuration if provided
 	if agentCfg.podSpec != nil && agentCfg.podSpec.Scheduling != nil {
 		scheduling := agentCfg.podSpec.Scheduling

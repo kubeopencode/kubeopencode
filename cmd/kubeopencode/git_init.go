@@ -67,6 +67,11 @@ Environment variables:
 }
 
 func runGitInit(cmd *cobra.Command, args []string) error {
+	// Setup custom CA certificate before any git operations
+	if err := setupCustomCA(); err != nil {
+		return fmt.Errorf("failed to setup custom CA: %w", err)
+	}
+
 	// Get required environment variable
 	repo := os.Getenv(envRepo)
 	if repo == "" {
@@ -291,6 +296,66 @@ func setupAuth() error {
 		}
 	}
 
+	return nil
+}
+
+// setupCustomCA configures a custom CA certificate for git HTTPS operations.
+// It reads a custom CA cert from the path specified by CUSTOM_CA_CERT_PATH,
+// concatenates it with the system CA bundle, and sets GIT_SSL_CAINFO to use
+// the combined bundle. This enables git clone over HTTPS with self-signed or
+// internal CA certificates.
+func setupCustomCA() error {
+	caPath := os.Getenv("CUSTOM_CA_CERT_PATH")
+	if caPath == "" {
+		return nil
+	}
+
+	fmt.Printf("git-init: Setting up custom CA certificate from %s\n", caPath)
+
+	customCA, err := os.ReadFile(caPath) //nolint:gosec // path is from trusted env var
+	if err != nil {
+		return fmt.Errorf("failed to read custom CA certificate from %s: %w", caPath, err)
+	}
+
+	// Try to find the system CA bundle from well-known paths
+	systemCAPaths := []string{
+		"/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu
+		"/etc/pki/tls/certs/ca-bundle.crt",   // RHEL/CentOS
+		"/etc/ssl/cert.pem",                  // Alpine
+		"/etc/ssl/ca-bundle.pem",             // OpenSUSE
+	}
+
+	var bundleContent []byte
+	systemCAFound := false
+	for _, sysPath := range systemCAPaths {
+		data, err := os.ReadFile(sysPath) //nolint:gosec // paths are hardcoded system CA locations
+		if err == nil {
+			fmt.Printf("git-init: Found system CA bundle at %s\n", sysPath)
+			bundleContent = make([]byte, len(data), len(data)+1+len(customCA))
+			copy(bundleContent, data)
+			bundleContent = append(bundleContent, '\n')
+			systemCAFound = true
+			break
+		}
+	}
+
+	if !systemCAFound {
+		fmt.Println("git-init: No system CA bundle found, using custom CA certificate only")
+	}
+
+	// Append custom CA to the bundle
+	bundleContent = append(bundleContent, customCA...)
+
+	bundlePath := "/tmp/ca-bundle.crt"
+	if err := os.WriteFile(bundlePath, bundleContent, 0644); err != nil { //nolint:gosec // CA bundle needs to be readable
+		return fmt.Errorf("failed to write combined CA bundle to %s: %w", bundlePath, err)
+	}
+
+	if err := os.Setenv("GIT_SSL_CAINFO", bundlePath); err != nil {
+		return fmt.Errorf("failed to set GIT_SSL_CAINFO: %w", err)
+	}
+
+	fmt.Printf("git-init: GIT_SSL_CAINFO set to %s\n", bundlePath)
 	return nil
 }
 

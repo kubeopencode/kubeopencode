@@ -2879,4 +2879,435 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})
+
+	Context("When Agent has CABundle configured", func() {
+		It("Should mount CA bundle ConfigMap into all containers", func() {
+			taskName := "test-task-cabundle-configmap"
+			agentName := "test-agent-cabundle-cm"
+			caConfigMapName := "test-ca-bundle-cm"
+			caKey := "custom-ca.crt"
+			description := "Test CA bundle from ConfigMap"
+
+			By("Creating ConfigMap with test CA cert")
+			caConfigMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      caConfigMapName,
+					Namespace: taskNamespace,
+				},
+				Data: map[string]string{
+					caKey: "-----BEGIN CERTIFICATE-----\nTEST_CA_CERT\n-----END CERTIFICATE-----",
+				},
+			}
+			Expect(k8sClient.Create(ctx, caConfigMap)).Should(Succeed())
+
+			By("Creating Agent with caBundle.configMapRef")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "default",
+					WorkspaceDir:       "/workspace",
+					CABundle: &kubeopenv1alpha1.CABundleConfig{
+						ConfigMapRef: &kubeopenv1alpha1.CABundleReference{
+							Name: caConfigMapName,
+							Key:  caKey,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task referencing Agent with CABundle")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying Pod has ca-bundle volume from ConfigMap")
+			var foundCAVolume bool
+			for _, vol := range createdPod.Spec.Volumes {
+				if vol.Name == CABundleVolumeName {
+					foundCAVolume = true
+					Expect(vol.VolumeSource.ConfigMap).ShouldNot(BeNil(), "Expected ConfigMap volume source")
+					Expect(vol.VolumeSource.ConfigMap.Name).Should(Equal(caConfigMapName))
+					// Verify key projection to CABundleFileName
+					Expect(vol.VolumeSource.ConfigMap.Items).Should(HaveLen(1))
+					Expect(vol.VolumeSource.ConfigMap.Items[0].Key).Should(Equal(caKey))
+					Expect(vol.VolumeSource.ConfigMap.Items[0].Path).Should(Equal(CABundleFileName))
+					break
+				}
+			}
+			Expect(foundCAVolume).Should(BeTrue(), "Expected ca-bundle volume")
+
+			By("Verifying ALL init containers have CA bundle mount and env var")
+			for _, initC := range createdPod.Spec.InitContainers {
+				var hasCAMount bool
+				for _, vm := range initC.VolumeMounts {
+					if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+						hasCAMount = true
+						break
+					}
+				}
+				Expect(hasCAMount).Should(BeTrue(), fmt.Sprintf("Expected init container %q to have CA bundle mount", initC.Name))
+
+				var hasCAEnv bool
+				for _, env := range initC.Env {
+					if env.Name == CustomCACertEnvVar && env.Value == CABundleMountPath+"/"+CABundleFileName {
+						hasCAEnv = true
+						break
+					}
+				}
+				Expect(hasCAEnv).Should(BeTrue(), fmt.Sprintf("Expected init container %q to have %s env var", initC.Name, CustomCACertEnvVar))
+			}
+
+			By("Verifying worker container has CA bundle mount and env var")
+			workerContainer := createdPod.Spec.Containers[0]
+			var hasWorkerCAMount bool
+			for _, vm := range workerContainer.VolumeMounts {
+				if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+					hasWorkerCAMount = true
+					break
+				}
+			}
+			Expect(hasWorkerCAMount).Should(BeTrue(), "Expected worker container to have CA bundle mount")
+
+			var hasWorkerCAEnv bool
+			for _, env := range workerContainer.Env {
+				if env.Name == CustomCACertEnvVar && env.Value == CABundleMountPath+"/"+CABundleFileName {
+					hasWorkerCAEnv = true
+					break
+				}
+			}
+			Expect(hasWorkerCAEnv).Should(BeTrue(), fmt.Sprintf("Expected worker container to have %s env var", CustomCACertEnvVar))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, caConfigMap)).Should(Succeed())
+		})
+
+		It("Should mount CA bundle Secret into all containers", func() {
+			taskName := "test-task-cabundle-secret"
+			agentName := "test-agent-cabundle-secret"
+			caSecretName := "test-ca-bundle-secret"
+			caKey := "custom-ca.pem"
+			description := "Test CA bundle from Secret"
+
+			By("Creating Secret with test CA cert")
+			caSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      caSecretName,
+					Namespace: taskNamespace,
+				},
+				Data: map[string][]byte{
+					caKey: []byte("-----BEGIN CERTIFICATE-----\nTEST_CA_CERT_SECRET\n-----END CERTIFICATE-----"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, caSecret)).Should(Succeed())
+
+			By("Creating Agent with caBundle.secretRef")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "default",
+					WorkspaceDir:       "/workspace",
+					CABundle: &kubeopenv1alpha1.CABundleConfig{
+						SecretRef: &kubeopenv1alpha1.CABundleReference{
+							Name: caSecretName,
+							Key:  caKey,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task referencing Agent with CABundle Secret")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying Pod has ca-bundle volume from Secret")
+			var foundCAVolume bool
+			for _, vol := range createdPod.Spec.Volumes {
+				if vol.Name == CABundleVolumeName {
+					foundCAVolume = true
+					Expect(vol.VolumeSource.Secret).ShouldNot(BeNil(), "Expected Secret volume source")
+					Expect(vol.VolumeSource.Secret.SecretName).Should(Equal(caSecretName))
+					// Verify key projection to CABundleFileName
+					Expect(vol.VolumeSource.Secret.Items).Should(HaveLen(1))
+					Expect(vol.VolumeSource.Secret.Items[0].Key).Should(Equal(caKey))
+					Expect(vol.VolumeSource.Secret.Items[0].Path).Should(Equal(CABundleFileName))
+					break
+				}
+			}
+			Expect(foundCAVolume).Should(BeTrue(), "Expected ca-bundle volume from Secret")
+
+			By("Verifying ALL init containers have CA bundle mount and env var")
+			for _, initC := range createdPod.Spec.InitContainers {
+				var hasCAMount bool
+				for _, vm := range initC.VolumeMounts {
+					if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+						hasCAMount = true
+						break
+					}
+				}
+				Expect(hasCAMount).Should(BeTrue(), fmt.Sprintf("Expected init container %q to have CA bundle mount", initC.Name))
+
+				var hasCAEnv bool
+				for _, env := range initC.Env {
+					if env.Name == CustomCACertEnvVar {
+						hasCAEnv = true
+						break
+					}
+				}
+				Expect(hasCAEnv).Should(BeTrue(), fmt.Sprintf("Expected init container %q to have %s env var", initC.Name, CustomCACertEnvVar))
+			}
+
+			By("Verifying worker container has CA bundle mount and env var")
+			workerContainer := createdPod.Spec.Containers[0]
+			var hasWorkerCAMount bool
+			for _, vm := range workerContainer.VolumeMounts {
+				if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+					hasWorkerCAMount = true
+					break
+				}
+			}
+			Expect(hasWorkerCAMount).Should(BeTrue(), "Expected worker container to have CA bundle mount")
+
+			var hasWorkerCAEnv bool
+			for _, env := range workerContainer.Env {
+				if env.Name == CustomCACertEnvVar {
+					hasWorkerCAEnv = true
+					break
+				}
+			}
+			Expect(hasWorkerCAEnv).Should(BeTrue(), fmt.Sprintf("Expected worker container to have %s env var", CustomCACertEnvVar))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, caSecret)).Should(Succeed())
+		})
+
+		It("Should mount CA bundle in git-init containers when Git context is used", func() {
+			taskName := "test-task-cabundle-git"
+			agentName := "test-agent-cabundle-git"
+			caConfigMapName := "test-ca-bundle-git-cm"
+			description := "Test CA bundle with Git context"
+			mountPath := "/workspace/source"
+
+			By("Creating ConfigMap with test CA cert")
+			caConfigMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      caConfigMapName,
+					Namespace: taskNamespace,
+				},
+				Data: map[string]string{
+					"ca-bundle.crt": "-----BEGIN CERTIFICATE-----\nTEST_CA_FOR_GIT\n-----END CERTIFICATE-----",
+				},
+			}
+			Expect(k8sClient.Create(ctx, caConfigMap)).Should(Succeed())
+
+			By("Creating Agent with caBundle and Git context")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "default",
+					WorkspaceDir:       "/workspace",
+					CABundle: &kubeopenv1alpha1.CABundleConfig{
+						ConfigMapRef: &kubeopenv1alpha1.CABundleReference{
+							Name: caConfigMapName,
+							// No key specified - should use default
+						},
+					},
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Name: "source-repo",
+							Type: kubeopenv1alpha1.ContextTypeGit,
+							Git: &kubeopenv1alpha1.GitContext{
+								Repository: "https://github.com/example/repo.git",
+								Ref:        "main",
+							},
+							MountPath: mountPath,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task referencing Agent with CABundle + Git context")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying git-init-0 init container has CA bundle mount and env var")
+			var foundGitInit bool
+			for _, initC := range createdPod.Spec.InitContainers {
+				if initC.Name == "git-init-0" {
+					foundGitInit = true
+
+					// Check CA bundle volume mount
+					var hasCAMount bool
+					for _, vm := range initC.VolumeMounts {
+						if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+							hasCAMount = true
+							break
+						}
+					}
+					Expect(hasCAMount).Should(BeTrue(), "Expected git-init-0 to have CA bundle mount")
+
+					// Check CUSTOM_CA_CERT_PATH env var
+					var hasCAEnv bool
+					for _, env := range initC.Env {
+						if env.Name == CustomCACertEnvVar && env.Value == CABundleMountPath+"/"+CABundleFileName {
+							hasCAEnv = true
+							break
+						}
+					}
+					Expect(hasCAEnv).Should(BeTrue(), fmt.Sprintf("Expected git-init-0 to have %s env var", CustomCACertEnvVar))
+					break
+				}
+			}
+			Expect(foundGitInit).Should(BeTrue(), "Expected git-init-0 container")
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, caConfigMap)).Should(Succeed())
+		})
+
+		It("Should use default key for ConfigMap when not specified", func() {
+			taskName := "test-task-cabundle-default-key"
+			agentName := "test-agent-cabundle-defkey"
+			caConfigMapName := "test-ca-bundle-defkey-cm"
+			description := "Test CA bundle default key"
+
+			By("Creating ConfigMap with default key")
+			caConfigMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      caConfigMapName,
+					Namespace: taskNamespace,
+				},
+				Data: map[string]string{
+					DefaultCABundleConfigMapKey: "-----BEGIN CERTIFICATE-----\nTEST_CA_DEFAULT_KEY\n-----END CERTIFICATE-----",
+				},
+			}
+			Expect(k8sClient.Create(ctx, caConfigMap)).Should(Succeed())
+
+			By("Creating Agent with caBundle.configMapRef without key")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "default",
+					WorkspaceDir:       "/workspace",
+					CABundle: &kubeopenv1alpha1.CABundleConfig{
+						ConfigMapRef: &kubeopenv1alpha1.CABundleReference{
+							Name: caConfigMapName,
+							// Key intentionally omitted - should default to DefaultCABundleConfigMapKey
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying volume uses default key ca-bundle.crt")
+			var foundCAVolume bool
+			for _, vol := range createdPod.Spec.Volumes {
+				if vol.Name == CABundleVolumeName {
+					foundCAVolume = true
+					Expect(vol.VolumeSource.ConfigMap).ShouldNot(BeNil())
+					Expect(vol.VolumeSource.ConfigMap.Items).Should(HaveLen(1))
+					Expect(vol.VolumeSource.ConfigMap.Items[0].Key).Should(Equal(DefaultCABundleConfigMapKey),
+						"Expected default key %q when no key is specified", DefaultCABundleConfigMapKey)
+					Expect(vol.VolumeSource.ConfigMap.Items[0].Path).Should(Equal(CABundleFileName))
+					break
+				}
+			}
+			Expect(foundCAVolume).Should(BeTrue(), "Expected ca-bundle volume")
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, caConfigMap)).Should(Succeed())
+		})
+	})
 })

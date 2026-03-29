@@ -1937,6 +1937,511 @@ func TestBuildPod_SessionTitleNotSetForCustomCommand(t *testing.T) {
 	}
 }
 
+func TestBuildCABundleVolumeMountEnv_ConfigMap(t *testing.T) {
+	caBundle := &kubeopenv1alpha1.CABundleConfig{
+		ConfigMapRef: &kubeopenv1alpha1.CABundleReference{
+			Name: "my-ca-bundle",
+			Key:  "custom-ca.pem",
+		},
+	}
+
+	volume, mount, env := buildCABundleVolumeMountEnv(caBundle)
+
+	// Verify volume
+	if volume.Name != CABundleVolumeName {
+		t.Errorf("Volume.Name = %q, want %q", volume.Name, CABundleVolumeName)
+	}
+	if volume.ConfigMap == nil {
+		t.Fatalf("Volume.ConfigMap should not be nil")
+	}
+	if volume.ConfigMap.Name != "my-ca-bundle" {
+		t.Errorf("Volume.ConfigMap.Name = %q, want %q", volume.ConfigMap.Name, "my-ca-bundle")
+	}
+	if len(volume.ConfigMap.Items) != 1 {
+		t.Fatalf("len(Volume.ConfigMap.Items) = %d, want 1", len(volume.ConfigMap.Items))
+	}
+	if volume.ConfigMap.Items[0].Key != "custom-ca.pem" {
+		t.Errorf("Volume.ConfigMap.Items[0].Key = %q, want %q", volume.ConfigMap.Items[0].Key, "custom-ca.pem")
+	}
+	if volume.ConfigMap.Items[0].Path != CABundleFileName {
+		t.Errorf("Volume.ConfigMap.Items[0].Path = %q, want %q", volume.ConfigMap.Items[0].Path, CABundleFileName)
+	}
+
+	// Verify mount
+	if mount.Name != CABundleVolumeName {
+		t.Errorf("Mount.Name = %q, want %q", mount.Name, CABundleVolumeName)
+	}
+	if mount.MountPath != CABundleMountPath {
+		t.Errorf("Mount.MountPath = %q, want %q", mount.MountPath, CABundleMountPath)
+	}
+	if !mount.ReadOnly {
+		t.Errorf("Mount.ReadOnly = false, want true")
+	}
+
+	// Verify env
+	if env.Name != CustomCACertEnvVar {
+		t.Errorf("Env.Name = %q, want %q", env.Name, CustomCACertEnvVar)
+	}
+	expectedEnvValue := CABundleMountPath + "/" + CABundleFileName
+	if env.Value != expectedEnvValue {
+		t.Errorf("Env.Value = %q, want %q", env.Value, expectedEnvValue)
+	}
+}
+
+func TestBuildCABundleVolumeMountEnv_ConfigMapDefaultKey(t *testing.T) {
+	caBundle := &kubeopenv1alpha1.CABundleConfig{
+		ConfigMapRef: &kubeopenv1alpha1.CABundleReference{
+			Name: "my-ca-bundle",
+			// Key is empty - should default to DefaultCABundleConfigMapKey
+		},
+	}
+
+	volume, _, _ := buildCABundleVolumeMountEnv(caBundle)
+
+	if volume.ConfigMap == nil {
+		t.Fatalf("Volume.ConfigMap should not be nil")
+	}
+	if len(volume.ConfigMap.Items) != 1 {
+		t.Fatalf("len(Volume.ConfigMap.Items) = %d, want 1", len(volume.ConfigMap.Items))
+	}
+	if volume.ConfigMap.Items[0].Key != DefaultCABundleConfigMapKey {
+		t.Errorf("Volume.ConfigMap.Items[0].Key = %q, want %q (default)", volume.ConfigMap.Items[0].Key, DefaultCABundleConfigMapKey)
+	}
+	if volume.ConfigMap.Items[0].Path != CABundleFileName {
+		t.Errorf("Volume.ConfigMap.Items[0].Path = %q, want %q", volume.ConfigMap.Items[0].Path, CABundleFileName)
+	}
+}
+
+func TestBuildCABundleVolumeMountEnv_Secret(t *testing.T) {
+	caBundle := &kubeopenv1alpha1.CABundleConfig{
+		SecretRef: &kubeopenv1alpha1.CABundleReference{
+			Name: "my-ca-secret",
+			Key:  "custom-ca.pem",
+		},
+	}
+
+	volume, mount, env := buildCABundleVolumeMountEnv(caBundle)
+
+	// Verify volume
+	if volume.Name != CABundleVolumeName {
+		t.Errorf("Volume.Name = %q, want %q", volume.Name, CABundleVolumeName)
+	}
+	if volume.Secret == nil {
+		t.Fatalf("Volume.Secret should not be nil")
+	}
+	if volume.Secret.SecretName != "my-ca-secret" {
+		t.Errorf("Volume.Secret.SecretName = %q, want %q", volume.Secret.SecretName, "my-ca-secret")
+	}
+	if len(volume.Secret.Items) != 1 {
+		t.Fatalf("len(Volume.Secret.Items) = %d, want 1", len(volume.Secret.Items))
+	}
+	if volume.Secret.Items[0].Key != "custom-ca.pem" {
+		t.Errorf("Volume.Secret.Items[0].Key = %q, want %q", volume.Secret.Items[0].Key, "custom-ca.pem")
+	}
+	if volume.Secret.Items[0].Path != CABundleFileName {
+		t.Errorf("Volume.Secret.Items[0].Path = %q, want %q", volume.Secret.Items[0].Path, CABundleFileName)
+	}
+
+	// Verify mount
+	if mount.Name != CABundleVolumeName {
+		t.Errorf("Mount.Name = %q, want %q", mount.Name, CABundleVolumeName)
+	}
+	if mount.MountPath != CABundleMountPath {
+		t.Errorf("Mount.MountPath = %q, want %q", mount.MountPath, CABundleMountPath)
+	}
+	if !mount.ReadOnly {
+		t.Errorf("Mount.ReadOnly = false, want true")
+	}
+
+	// Verify env
+	if env.Name != CustomCACertEnvVar {
+		t.Errorf("Env.Name = %q, want %q", env.Name, CustomCACertEnvVar)
+	}
+	expectedEnvValue := CABundleMountPath + "/" + CABundleFileName
+	if env.Value != expectedEnvValue {
+		t.Errorf("Env.Value = %q, want %q", env.Value, expectedEnvValue)
+	}
+}
+
+func TestBuildCABundleVolumeMountEnv_SecretDefaultKey(t *testing.T) {
+	caBundle := &kubeopenv1alpha1.CABundleConfig{
+		SecretRef: &kubeopenv1alpha1.CABundleReference{
+			Name: "my-ca-secret",
+			// Key is empty - should default to DefaultCABundleSecretKey
+		},
+	}
+
+	volume, _, _ := buildCABundleVolumeMountEnv(caBundle)
+
+	if volume.Secret == nil {
+		t.Fatalf("Volume.Secret should not be nil")
+	}
+	if len(volume.Secret.Items) != 1 {
+		t.Fatalf("len(Volume.Secret.Items) = %d, want 1", len(volume.Secret.Items))
+	}
+	if volume.Secret.Items[0].Key != DefaultCABundleSecretKey {
+		t.Errorf("Volume.Secret.Items[0].Key = %q, want %q (default)", volume.Secret.Items[0].Key, DefaultCABundleSecretKey)
+	}
+	if volume.Secret.Items[0].Path != CABundleFileName {
+		t.Errorf("Volume.Secret.Items[0].Path = %q, want %q", volume.Secret.Items[0].Path, CABundleFileName)
+	}
+}
+
+func TestBuildPod_WithCABundleConfigMap(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		caBundle: &kubeopenv1alpha1.CABundleConfig{
+			ConfigMapRef: &kubeopenv1alpha1.CABundleReference{
+				Name: "corp-ca-bundle",
+				Key:  "ca-bundle.crt",
+			},
+		},
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+	// Verify CA bundle volume exists with correct ConfigMap source
+	var foundCAVolume bool
+	for _, vol := range pod.Spec.Volumes {
+		if vol.Name == CABundleVolumeName {
+			foundCAVolume = true
+			if vol.ConfigMap == nil {
+				t.Fatalf("CA bundle volume should have ConfigMap source")
+			}
+			if vol.ConfigMap.Name != "corp-ca-bundle" {
+				t.Errorf("CA volume ConfigMap.Name = %q, want %q", vol.ConfigMap.Name, "corp-ca-bundle")
+			}
+		}
+	}
+	if !foundCAVolume {
+		t.Fatalf("CA bundle volume %q not found", CABundleVolumeName)
+	}
+
+	// Verify ALL init containers have the CA mount and env
+	for _, ic := range pod.Spec.InitContainers {
+		var hasCAMount bool
+		for _, vm := range ic.VolumeMounts {
+			if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath && vm.ReadOnly {
+				hasCAMount = true
+			}
+		}
+		if !hasCAMount {
+			t.Errorf("Init container %q missing CA bundle volume mount", ic.Name)
+		}
+
+		var hasCAEnv bool
+		for _, env := range ic.Env {
+			if env.Name == CustomCACertEnvVar && env.Value == CABundleMountPath+"/"+CABundleFileName {
+				hasCAEnv = true
+			}
+		}
+		if !hasCAEnv {
+			t.Errorf("Init container %q missing %s env var", ic.Name, CustomCACertEnvVar)
+		}
+	}
+
+	// Verify worker container has the CA mount and env
+	container := pod.Spec.Containers[0]
+	var hasCAMount bool
+	for _, vm := range container.VolumeMounts {
+		if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath && vm.ReadOnly {
+			hasCAMount = true
+		}
+	}
+	if !hasCAMount {
+		t.Errorf("Worker container missing CA bundle volume mount")
+	}
+
+	var hasCAEnv bool
+	for _, env := range container.Env {
+		if env.Name == CustomCACertEnvVar && env.Value == CABundleMountPath+"/"+CABundleFileName {
+			hasCAEnv = true
+		}
+	}
+	if !hasCAEnv {
+		t.Errorf("Worker container missing %s env var", CustomCACertEnvVar)
+	}
+}
+
+func TestBuildPod_WithCABundleSecret(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		caBundle: &kubeopenv1alpha1.CABundleConfig{
+			SecretRef: &kubeopenv1alpha1.CABundleReference{
+				Name: "corp-ca-secret",
+				Key:  "custom-ca.pem",
+			},
+		},
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+	// Verify CA bundle volume exists with correct Secret source
+	var foundCAVolume bool
+	for _, vol := range pod.Spec.Volumes {
+		if vol.Name == CABundleVolumeName {
+			foundCAVolume = true
+			if vol.Secret == nil {
+				t.Fatalf("CA bundle volume should have Secret source")
+			}
+			if vol.Secret.SecretName != "corp-ca-secret" {
+				t.Errorf("CA volume Secret.SecretName = %q, want %q", vol.Secret.SecretName, "corp-ca-secret")
+			}
+			if len(vol.Secret.Items) != 1 || vol.Secret.Items[0].Key != "custom-ca.pem" {
+				t.Errorf("CA volume Secret should project key %q", "custom-ca.pem")
+			}
+		}
+	}
+	if !foundCAVolume {
+		t.Fatalf("CA bundle volume %q not found", CABundleVolumeName)
+	}
+
+	// Verify ALL init containers have the CA mount and env
+	for _, ic := range pod.Spec.InitContainers {
+		var hasCAMount bool
+		for _, vm := range ic.VolumeMounts {
+			if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+				hasCAMount = true
+			}
+		}
+		if !hasCAMount {
+			t.Errorf("Init container %q missing CA bundle volume mount", ic.Name)
+		}
+
+		var hasCAEnv bool
+		for _, env := range ic.Env {
+			if env.Name == CustomCACertEnvVar {
+				hasCAEnv = true
+			}
+		}
+		if !hasCAEnv {
+			t.Errorf("Init container %q missing %s env var", ic.Name, CustomCACertEnvVar)
+		}
+	}
+
+	// Verify worker container has the CA mount and env
+	container := pod.Spec.Containers[0]
+	var hasCAMount bool
+	for _, vm := range container.VolumeMounts {
+		if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+			hasCAMount = true
+		}
+	}
+	if !hasCAMount {
+		t.Errorf("Worker container missing CA bundle volume mount")
+	}
+
+	var hasCAEnv bool
+	for _, env := range container.Env {
+		if env.Name == CustomCACertEnvVar {
+			hasCAEnv = true
+		}
+	}
+	if !hasCAEnv {
+		t.Errorf("Worker container missing %s env var", CustomCACertEnvVar)
+	}
+}
+
+func TestBuildPod_WithCABundleAndGitMounts(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		caBundle: &kubeopenv1alpha1.CABundleConfig{
+			ConfigMapRef: &kubeopenv1alpha1.CABundleReference{
+				Name: "corp-ca-bundle",
+			},
+		},
+	}
+
+	gitMounts := []gitMount{
+		{
+			contextName: "source-code",
+			repository:  "https://github.com/org/repo.git",
+			ref:         "main",
+			mountPath:   "/workspace/source",
+			depth:       1,
+			secretName:  "git-creds",
+		},
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, gitMounts, defaultSystemConfig(), "")
+
+	// Verify we have at least 2 init containers: opencode-init + git-init-0
+	if len(pod.Spec.InitContainers) < 2 {
+		t.Fatalf("Expected at least 2 init containers, got %d", len(pod.Spec.InitContainers))
+	}
+
+	// Verify git-init container has the CA mount and env
+	var foundGitInit bool
+	for _, ic := range pod.Spec.InitContainers {
+		if ic.Name == "git-init-0" {
+			foundGitInit = true
+
+			var hasCAMount bool
+			for _, vm := range ic.VolumeMounts {
+				if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+					hasCAMount = true
+				}
+			}
+			if !hasCAMount {
+				t.Errorf("git-init-0 container missing CA bundle volume mount")
+			}
+
+			var hasCAEnv bool
+			for _, env := range ic.Env {
+				if env.Name == CustomCACertEnvVar {
+					hasCAEnv = true
+				}
+			}
+			if !hasCAEnv {
+				t.Errorf("git-init-0 container missing %s env var", CustomCACertEnvVar)
+			}
+		}
+	}
+	if !foundGitInit {
+		t.Errorf("git-init-0 container not found")
+	}
+
+	// Verify ALL init containers have CA mount and env (opencode-init + git-init)
+	for _, ic := range pod.Spec.InitContainers {
+		var hasCAMount bool
+		for _, vm := range ic.VolumeMounts {
+			if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+				hasCAMount = true
+			}
+		}
+		if !hasCAMount {
+			t.Errorf("Init container %q missing CA bundle volume mount", ic.Name)
+		}
+
+		var hasCAEnv bool
+		for _, env := range ic.Env {
+			if env.Name == CustomCACertEnvVar {
+				hasCAEnv = true
+			}
+		}
+		if !hasCAEnv {
+			t.Errorf("Init container %q missing %s env var", ic.Name, CustomCACertEnvVar)
+		}
+	}
+
+	// Verify worker container also has CA mount and env
+	container := pod.Spec.Containers[0]
+	var hasCAMount bool
+	for _, vm := range container.VolumeMounts {
+		if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath {
+			hasCAMount = true
+		}
+	}
+	if !hasCAMount {
+		t.Errorf("Worker container missing CA bundle volume mount")
+	}
+
+	var hasCAEnv bool
+	for _, env := range container.Env {
+		if env.Name == CustomCACertEnvVar {
+			hasCAEnv = true
+		}
+	}
+	if !hasCAEnv {
+		t.Errorf("Worker container missing %s env var", CustomCACertEnvVar)
+	}
+}
+
+func TestBuildPod_WithoutCABundle(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		caBundle:           nil, // No CA bundle
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+	// Verify no CA bundle volume exists
+	for _, vol := range pod.Spec.Volumes {
+		if vol.Name == CABundleVolumeName {
+			t.Errorf("CA bundle volume should not exist when caBundle is nil")
+		}
+	}
+
+	// Verify no init containers have CA mount or env
+	for _, ic := range pod.Spec.InitContainers {
+		for _, vm := range ic.VolumeMounts {
+			if vm.Name == CABundleVolumeName {
+				t.Errorf("Init container %q should not have CA bundle volume mount when caBundle is nil", ic.Name)
+			}
+		}
+		for _, env := range ic.Env {
+			if env.Name == CustomCACertEnvVar {
+				t.Errorf("Init container %q should not have %s env var when caBundle is nil", ic.Name, CustomCACertEnvVar)
+			}
+		}
+	}
+
+	// Verify worker container has no CA mount or env
+	container := pod.Spec.Containers[0]
+	for _, vm := range container.VolumeMounts {
+		if vm.Name == CABundleVolumeName {
+			t.Errorf("Worker container should not have CA bundle volume mount when caBundle is nil")
+		}
+	}
+	for _, env := range container.Env {
+		if env.Name == CustomCACertEnvVar {
+			t.Errorf("Worker container should not have %s env var when caBundle is nil", CustomCACertEnvVar)
+		}
+	}
+}
+
 func TestShellEscape(t *testing.T) {
 	tests := []struct {
 		input string

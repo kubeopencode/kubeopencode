@@ -182,6 +182,38 @@ credentials:
     fileMode: 0400
 ```
 
+## TLS and CA Certificate Management
+
+When Tasks need to access private Git servers or internal HTTPS services that use self-signed or private CA certificates, use the Agent's `caBundle` field to provide custom CA certificates.
+
+### Recommended: Custom CA Bundle
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: internal-agent
+spec:
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  caBundle:
+    configMapRef:
+      name: corporate-ca-bundle
+      key: ca-bundle.crt
+```
+
+The CA certificate is mounted into all containers (init containers and worker container) at `/etc/ssl/certs/custom-ca/tls.crt`. The `git-init` container sets `GIT_SSL_CAINFO` to trust the custom CA, and the `url-fetch` container appends it to the system certificate pool.
+
+This approach is compatible with [cert-manager trust-manager](https://cert-manager.io/docs/trust/trust-manager/), which can automatically distribute CA bundles as ConfigMaps across namespaces.
+
+### Avoid: Disabling TLS Verification
+
+Do not use `InsecureSkipTLSVerify` or `GIT_SSL_NO_VERIFY=true` to work around certificate issues. Disabling TLS verification exposes the agent to man-in-the-middle attacks. Always configure the correct CA bundle instead.
+
+See [Features - Custom CA Certificates](features.md#custom-ca-certificates) for detailed configuration examples.
+
 ## Controller Pod Security
 
 The controller runs with hardened security settings:

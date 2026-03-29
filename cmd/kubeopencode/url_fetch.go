@@ -4,6 +4,7 @@ package main
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -120,10 +121,25 @@ func runURLFetch(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Custom headers: %d\n", len(headers))
 	}
 
-	// Create HTTP client
+	// Create HTTP client with TLS configuration
 	transport := &http.Transport{}
 	if insecure {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // User explicitly requested insecure mode
+	} else if caPath := os.Getenv("CUSTOM_CA_CERT_PATH"); caPath != "" {
+		// Load custom CA certificate for TLS verification
+		rootCAs, err := x509.SystemCertPool()
+		if err != nil {
+			rootCAs = x509.NewCertPool()
+		}
+		caCert, err := os.ReadFile(caPath)
+		if err != nil {
+			return fmt.Errorf("reading custom CA certificate: %w", err)
+		}
+		if !rootCAs.AppendCertsFromPEM(caCert) {
+			return fmt.Errorf("failed to parse custom CA certificate from %s", caPath)
+		}
+		fmt.Printf("url-fetch: Using custom CA certificate from %s\n", caPath)
+		transport.TLSClientConfig = &tls.Config{RootCAs: rootCAs} //nolint:gosec // Only RootCAs is set, no insecure options
 	}
 	client := &http.Client{
 		Timeout:   time.Duration(timeout) * time.Second,

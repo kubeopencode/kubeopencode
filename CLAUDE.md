@@ -446,6 +446,7 @@ Key Agent spec fields:
 - `contexts`: Inline ContextItems applied to all tasks using this Agent
 - `config`: OpenCode configuration as inline JSON string (written to `/tools/opencode.json`)
 - `credentials`: Secrets as env vars or file mounts (supports single key or entire secret)
+- `caBundle`: Custom CA certificates for private HTTPS/Git servers (from ConfigMap or Secret)
 - `serviceAccountName`: Kubernetes ServiceAccount for RBAC
 - `maxConcurrentTasks`: Limit concurrent Tasks using this Agent (nil/0 = unlimited)
 - `serverConfig`: Enable Server mode (persistent OpenCode server instead of per-Task Pods)
@@ -704,6 +705,22 @@ credentials:
   mountPath: /home/agent/.ssh/id_rsa  # Mount as file
   fileMode: 0400
 ```
+
+**Custom CA Certificates:**
+
+For private Git servers or internal HTTPS services using self-signed or private CAs,
+use `caBundle` instead of disabling TLS verification. The CA certificate is mounted at
+`/etc/ssl/certs/custom-ca/tls.crt` in all containers and `CUSTOM_CA_CERT_PATH` is set.
+
+```yaml
+caBundle:
+  configMapRef:                    # OR secretRef
+    name: custom-ca-bundle
+    key: ca-bundle.crt             # Default: "ca-bundle.crt" for configMapRef, "ca.crt" for secretRef
+```
+
+Compatible with cert-manager trust-manager. The `git-init` container sets `GIT_SSL_CAINFO`
+and the `url-fetch` container appends the CA to the system certificate pool.
 
 ### Agent Image Discovery
 

@@ -39,9 +39,9 @@ var _ = Describe("OpenCode E2E Tests", Label(LabelOpenCode), func() {
 
 	Context("Server Mode - Real OpenCode Agent", func() {
 		var (
-			agentName      string
-			agentKey       types.NamespacedName
-			deploymentKey  types.NamespacedName
+			agentName     string
+			agentKey      types.NamespacedName
+			deploymentKey types.NamespacedName
 		)
 
 		BeforeEach(func() {

@@ -252,6 +252,20 @@ type AgentSpec struct {
 	// +optional
 	Quota *QuotaConfig `json:"quota,omitempty"`
 
+	// CABundle configures custom CA certificates for TLS verification.
+	// The CA bundle is mounted into all init containers (git-init, url-fetch, context-init)
+	// and the worker container, enabling HTTPS access to servers using private/self-signed CAs.
+	//
+	// Compatible with cert-manager trust-manager Bundle resources (ConfigMap with "ca-bundle.crt" key).
+	//
+	// Example:
+	//   caBundle:
+	//     configMapRef:
+	//       name: custom-ca-bundle
+	//       key: ca-bundle.crt
+	// +optional
+	CABundle *CABundleConfig `json:"caBundle,omitempty"`
+
 	// ServerConfig enables Server mode for this Agent.
 	// When set, the Agent runs as a persistent OpenCode server (Deployment + Service)
 	// instead of creating ephemeral Pods per Task.
@@ -454,6 +468,36 @@ type SecretReference struct {
 	// When Key is omitted, the Env field on the Credential is ignored.
 	// +optional
 	Key *string `json:"key,omitempty"`
+}
+
+// CABundleConfig configures custom CA certificates for TLS verification.
+// The CA bundle is mounted into all init containers and the worker container,
+// enabling access to HTTPS services that use private or self-signed certificates.
+//
+// Exactly one of ConfigMapRef or SecretRef must be specified.
+// +kubebuilder:validation:XValidation:rule="has(self.configMapRef) || has(self.secretRef)",message="either configMapRef or secretRef must be specified"
+// +kubebuilder:validation:XValidation:rule="!(has(self.configMapRef) && has(self.secretRef))",message="only one of configMapRef or secretRef can be specified"
+type CABundleConfig struct {
+	// ConfigMapRef references a ConfigMap containing PEM-encoded CA certificates.
+	// Compatible with cert-manager trust-manager Bundle resources.
+	// +optional
+	ConfigMapRef *CABundleReference `json:"configMapRef,omitempty"`
+
+	// SecretRef references a Secret containing PEM-encoded CA certificates.
+	// +optional
+	SecretRef *CABundleReference `json:"secretRef,omitempty"`
+}
+
+// CABundleReference references a ConfigMap or Secret containing a CA bundle.
+type CABundleReference struct {
+	// Name of the ConfigMap or Secret.
+	// +required
+	Name string `json:"name"`
+
+	// Key containing the PEM-encoded CA bundle.
+	// Defaults to "ca-bundle.crt" for ConfigMapRef, "ca.crt" for SecretRef.
+	// +optional
+	Key string `json:"key,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

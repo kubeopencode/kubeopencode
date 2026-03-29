@@ -81,6 +81,57 @@ spec:
                   If not specified, defaults to "quay.io/kubeopencode/kubeopencode-agent-attach:latest".
                   This field is ignored when ServerConfig is nil (Pod mode).
                 type: string
+              caBundle:
+                description: |-
+                  CABundle configures custom CA certificates for TLS verification.
+                  The CA bundle is mounted into all init containers (git-init, url-fetch, context-init)
+                  and the worker container, enabling HTTPS access to servers using private/self-signed CAs.
+
+                  Compatible with cert-manager trust-manager Bundle resources (ConfigMap with "ca-bundle.crt" key).
+
+                  Example:
+                    caBundle:
+                      configMapRef:
+                        name: custom-ca-bundle
+                        key: ca-bundle.crt
+                properties:
+                  configMapRef:
+                    description: |-
+                      ConfigMapRef references a ConfigMap containing PEM-encoded CA certificates.
+                      Compatible with cert-manager trust-manager Bundle resources.
+                    properties:
+                      key:
+                        description: |-
+                          Key containing the PEM-encoded CA bundle.
+                          Defaults to "ca-bundle.crt" for ConfigMapRef, "ca.crt" for SecretRef.
+                        type: string
+                      name:
+                        description: Name of the ConfigMap or Secret.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  secretRef:
+                    description: SecretRef references a Secret containing PEM-encoded
+                      CA certificates.
+                    properties:
+                      key:
+                        description: |-
+                          Key containing the PEM-encoded CA bundle.
+                          Defaults to "ca-bundle.crt" for ConfigMapRef, "ca.crt" for SecretRef.
+                        type: string
+                      name:
+                        description: Name of the ConfigMap or Secret.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: either configMapRef or secretRef must be specified
+                  rule: has(self.configMapRef) || has(self.secretRef)
+                - message: only one of configMapRef or secretRef can be specified
+                  rule: '!(has(self.configMapRef) && has(self.secretRef))'
               command:
                 description: |-
                   Command specifies the entrypoint command for the agent container.

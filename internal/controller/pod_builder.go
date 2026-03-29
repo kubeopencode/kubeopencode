@@ -31,7 +31,8 @@ type agentConfig struct {
 	serviceAccountName string
 	maxConcurrentTasks *int32
 	quota              *kubeopenv1alpha1.QuotaConfig
-	serverConfig       *kubeopenv1alpha1.ServerConfig // Server mode configuration (nil = Pod mode)
+	caBundle           *kubeopenv1alpha1.CABundleConfig // Custom CA bundle configuration (nil = no custom CA)
+	serverConfig       *kubeopenv1alpha1.ServerConfig   // Server mode configuration (nil = Pod mode)
 }
 
 // ResolveAgentConfig extracts configuration from the Agent spec.
@@ -49,6 +50,7 @@ func ResolveAgentConfig(agent *kubeopenv1alpha1.Agent) agentConfig {
 		serviceAccountName: agent.Spec.ServiceAccountName,
 		maxConcurrentTasks: agent.Spec.MaxConcurrentTasks,
 		quota:              agent.Spec.Quota,
+		caBundle:           agent.Spec.CABundle,
 		serverConfig:       agent.Spec.ServerConfig,
 	}
 }
@@ -233,6 +235,25 @@ const (
 
 	// DefaultShell is the default SHELL for SCC compatibility
 	DefaultShell = "/bin/bash"
+
+	// CABundleVolumeName is the volume name for custom CA certificate bundle
+	CABundleVolumeName = "ca-bundle"
+
+	// CABundleMountPath is the mount path for the custom CA bundle volume
+	CABundleMountPath = "/etc/ssl/certs/custom-ca"
+
+	// CABundleFileName is the projected filename for the CA certificate inside the volume
+	CABundleFileName = "tls.crt"
+
+	// CustomCACertEnvVar is the environment variable pointing to the CA certificate file path
+	CustomCACertEnvVar = "CUSTOM_CA_CERT_PATH"
+
+	// DefaultCABundleConfigMapKey is the default key for CA bundles stored in ConfigMaps.
+	// Compatible with cert-manager trust-manager Bundle resources.
+	DefaultCABundleConfigMapKey = "ca-bundle.crt"
+
+	// DefaultCABundleSecretKey is the default key for CA bundles stored in Secrets
+	DefaultCABundleSecretKey = "ca.crt"
 )
 
 // buildOpenCodeInitContainer creates an init container that copies OpenCode binary to /tools.
@@ -513,6 +534,62 @@ func buildCredentials(credentials []kubeopenv1alpha1.Credential) ([]corev1.Volum
 	}
 
 	return volumes, volumeMounts, envVars, envFromSources
+}
+
+// buildCABundleVolumeMountEnv creates the Volume, VolumeMount, and EnvVar for custom CA bundle.
+// It supports both ConfigMap and Secret sources, using the specified key or a default
+// based on the source type. The CA certificate is projected to CABundleFileName inside the volume.
+func buildCABundleVolumeMountEnv(caBundle *kubeopenv1alpha1.CABundleConfig) (corev1.Volume, corev1.VolumeMount, corev1.EnvVar) {
+	var volume corev1.Volume
+
+	if caBundle.ConfigMapRef != nil {
+		key := caBundle.ConfigMapRef.Key
+		if key == "" {
+			key = DefaultCABundleConfigMapKey
+		}
+		volume = corev1.Volume{
+			Name: CABundleVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: caBundle.ConfigMapRef.Name,
+					},
+					Items: []corev1.KeyToPath{
+						{Key: key, Path: CABundleFileName},
+					},
+				},
+			},
+		}
+	} else if caBundle.SecretRef != nil {
+		key := caBundle.SecretRef.Key
+		if key == "" {
+			key = DefaultCABundleSecretKey
+		}
+		volume = corev1.Volume{
+			Name: CABundleVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: caBundle.SecretRef.Name,
+					Items: []corev1.KeyToPath{
+						{Key: key, Path: CABundleFileName},
+					},
+				},
+			},
+		}
+	}
+
+	mount := corev1.VolumeMount{
+		Name:      CABundleVolumeName,
+		MountPath: CABundleMountPath,
+		ReadOnly:  true,
+	}
+
+	env := corev1.EnvVar{
+		Name:  CustomCACertEnvVar,
+		Value: CABundleMountPath + "/" + CABundleFileName,
+	}
+
+	return volume, mount, env
 }
 
 // buildPod creates a Pod object for the task with context mounts.
@@ -801,6 +878,24 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 			MountPath: DefaultGitRoot + "/.gitconfig",
 			SubPath:   ".gitconfig",
 		})
+	}
+
+	// Add custom CA bundle to all containers if configured.
+	// The CA certificate volume, mount, and env var are added to every init container
+	// and the worker container so that all HTTPS connections can verify custom CAs.
+	if cfg.caBundle != nil {
+		caVolume, caMount, caEnv := buildCABundleVolumeMountEnv(cfg.caBundle)
+		volumes = append(volumes, caVolume)
+
+		// Add CA bundle mount and env to all init containers
+		for i := range initContainers {
+			initContainers[i].VolumeMounts = append(initContainers[i].VolumeMounts, caMount)
+			initContainers[i].Env = append(initContainers[i].Env, caEnv)
+		}
+
+		// Add CA bundle mount and env to the worker container
+		volumeMounts = append(volumeMounts, caMount)
+		envVars = append(envVars, caEnv)
 	}
 
 	// Build pod labels - start with base labels
