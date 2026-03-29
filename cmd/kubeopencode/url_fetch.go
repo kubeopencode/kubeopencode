@@ -131,7 +131,7 @@ func runURLFetch(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			rootCAs = x509.NewCertPool()
 		}
-		caCert, err := os.ReadFile(caPath)
+		caCert, err := os.ReadFile(caPath) //nolint:gosec // path is from trusted env var set by controller
 		if err != nil {
 			return fmt.Errorf("reading custom CA certificate: %w", err)
 		}

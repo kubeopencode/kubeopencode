@@ -883,7 +883,7 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 	// Add custom CA bundle to all containers if configured.
 	// The CA certificate volume, mount, and env var are added to every init container
 	// and the worker container so that all HTTPS connections can verify custom CAs.
-	if cfg.caBundle != nil {
+	if cfg.caBundle != nil && (cfg.caBundle.ConfigMapRef != nil || cfg.caBundle.SecretRef != nil) {
 		caVolume, caMount, caEnv := buildCABundleVolumeMountEnv(cfg.caBundle)
 		volumes = append(volumes, caVolume)
 
