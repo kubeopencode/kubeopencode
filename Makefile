@@ -5,7 +5,7 @@ all: build
 .PHONY: all
 
 # Version information
-VERSION ?= 0.0.13
+VERSION ?= 0.0.14
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 
