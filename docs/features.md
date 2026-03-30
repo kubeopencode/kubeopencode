@@ -176,6 +176,161 @@ spec:
 
 > **Note**: `git-init` automatically concatenates the custom CA bundle with the container's system CAs, so public HTTPS (e.g., github.com) continues working even when `caBundle` is configured. You do not need to include public CAs in your bundle unless you want to explicitly control the full trust chain.
 
+## HTTP/HTTPS Proxy Configuration
+
+Enterprise networks often require all outbound traffic to pass through a corporate proxy server. KubeOpenCode supports proxy configuration at both the Agent level and the cluster level via `KubeOpenCodeConfig`.
+
+### Agent-Level Proxy
+
+Configure proxy settings directly on an Agent. These settings are injected as environment variables into all init containers and the worker container.
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: enterprise-agent
+spec:
+  profile: "Agent with corporate proxy configuration"
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  proxy:
+    httpProxy: "http://proxy.corp.example.com:8080"
+    httpsProxy: "http://proxy.corp.example.com:8080"
+    noProxy: "localhost,127.0.0.1,10.0.0.0/8,.corp.example.com"
+```
+
+### Cluster-Level Proxy
+
+For organizations where all agents should use the same proxy, configure it once in `KubeOpenCodeConfig`:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: KubeOpenCodeConfig
+metadata:
+  name: cluster
+spec:
+  proxy:
+    httpProxy: "http://proxy.corp.example.com:8080"
+    httpsProxy: "http://proxy.corp.example.com:8080"
+    noProxy: "localhost,127.0.0.1,10.0.0.0/8,.corp.example.com"
+```
+
+### How It Works
+
+- Both uppercase and lowercase environment variables are set: `HTTP_PROXY`/`http_proxy`, `HTTPS_PROXY`/`https_proxy`, `NO_PROXY`/`no_proxy`
+- The `.svc` and `.cluster.local` suffixes are always appended automatically to `noProxy` to prevent proxying in-cluster traffic
+- **Agent-level proxy overrides cluster-level proxy**: If an Agent has `proxy` configured, it takes precedence over the `KubeOpenCodeConfig` proxy settings
+- Proxy environment variables are injected into all containers (init containers and the worker container)
+
+## Private Registry Authentication
+
+When using container images from private registries (e.g., Harbor, AWS ECR, GCR), configure `imagePullSecrets` on the Agent to provide registry authentication credentials.
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: private-registry-agent
+spec:
+  profile: "Agent using images from private registries"
+  agentImage: registry.corp.example.com/kubeopencode/agent-opencode:latest
+  executorImage: registry.corp.example.com/kubeopencode/agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  imagePullSecrets:
+    - name: harbor-registry-secret
+    - name: gcr-secret
+```
+
+### Prerequisites
+
+1. The referenced Secrets must exist in the **same namespace** as the Agent
+2. Secrets must be of type `kubernetes.io/dockerconfigjson`
+
+Create registry credentials:
+
+```bash
+kubectl create secret docker-registry harbor-registry-secret \
+  --docker-server=registry.corp.example.com \
+  --docker-username=myuser \
+  --docker-password=mypassword \
+  -n kubeopencode-system
+```
+
+The `imagePullSecrets` are added to the Pod spec of all generated Pods, enabling Kubernetes to authenticate when pulling `agentImage`, `executorImage`, or `attachImage` from private registries.
+
+## Pod Security
+
+KubeOpenCode applies a restricted security context by default to all agent containers, following the Kubernetes Pod Security Standards (Restricted profile).
+
+### Default Security Context
+
+When no `securityContext` is specified in `podSpec`, the controller applies these defaults to all containers (init containers and the worker container):
+
+- `allowPrivilegeEscalation: false`
+- `capabilities: drop: ["ALL"]`
+- `seccompProfile: type: RuntimeDefault`
+
+These defaults align with the Kubernetes Restricted Pod Security Standard and are suitable for most workloads.
+
+### Custom Container Security Context
+
+Override the default security context for tighter or workload-specific settings using `podSpec.securityContext`:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: hardened-agent
+spec:
+  profile: "Security-hardened agent with strict container settings"
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  podSpec:
+    securityContext:
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+      seccompProfile:
+        type: RuntimeDefault
+```
+
+> **Note**: When using `readOnlyRootFilesystem: true`, ensure the agent image supports it. You may need to use `emptyDir` volumes for writable paths (e.g., `/tmp`, `/home/agent`).
+
+### Pod-Level Security Context
+
+Use `podSpec.podSecurityContext` to configure security attributes that apply to the entire Pod (all containers):
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: uid-agent
+spec:
+  profile: "Agent running as specific user and group"
+  agentImage: quay.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  podSpec:
+    podSecurityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+```
+
+`podSecurityContext` is useful for:
+- Enforcing a specific UID/GID for all containers
+- Setting `fsGroup` for shared volume permissions
+- Meeting namespace-level Pod Security Admission requirements
+
 ## OpenCode Configuration
 
 The `config` field allows you to provide OpenCode configuration as an inline JSON string:

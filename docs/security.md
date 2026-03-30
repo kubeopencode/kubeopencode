@@ -224,7 +224,21 @@ The controller runs with hardened security settings:
 
 ## Agent Pod Security
 
-Agent Pods rely on cluster-level security policies. For production deployments, consider:
+### Default Security Context
+
+KubeOpenCode applies a restricted security context by default to all agent containers (init containers and the worker container). When no custom `securityContext` is specified in `podSpec`, the following defaults are applied:
+
+- `allowPrivilegeEscalation: false` - prevents containers from gaining additional privileges
+- `capabilities: drop: ["ALL"]` - drops all Linux capabilities
+- `seccompProfile: type: RuntimeDefault` - enables the default seccomp profile
+
+These defaults align with the Kubernetes [Restricted Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted) and are suitable for most workloads.
+
+You can override these defaults or add stricter settings using `podSpec.securityContext` (container-level) and `podSpec.podSecurityContext` (pod-level). See [Features - Pod Security](features.md#pod-security) for detailed configuration examples.
+
+### Runtime Isolation
+
+For production deployments, consider additional isolation measures:
 
 - Configuring Pod Security Standards (PSS) at the namespace level
 - Using `spec.podSpec.runtimeClassName` for gVisor or Kata Containers isolation
@@ -249,7 +263,32 @@ spec:
     # Labels for NetworkPolicy targeting
     labels:
       network-policy: agent-restricted
+    # Tighter container security
+    securityContext:
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+    # Pod-level security
+    podSecurityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
 ```
+
+## Private Registry Authentication
+
+When agent images are hosted in private registries that require authentication, configure `imagePullSecrets` on the Agent. The referenced Secrets must be of type `kubernetes.io/dockerconfigjson` and exist in the same namespace as the Agent.
+
+See [Features - Private Registry Authentication](features.md#private-registry-authentication) for detailed configuration and examples.
+
+## Network Proxy Configuration
+
+Enterprise environments often require outbound traffic to pass through a corporate proxy. KubeOpenCode supports proxy configuration at both the Agent level and the cluster level via `KubeOpenCodeConfig`. Agent-level settings override cluster-level settings.
+
+See [Features - HTTP/HTTPS Proxy Configuration](features.md#httphttps-proxy-configuration) for detailed configuration and examples.
 
 ## Best Practices
 

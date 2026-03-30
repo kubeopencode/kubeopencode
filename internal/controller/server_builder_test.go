@@ -578,3 +578,337 @@ func TestBuildServerDeployment_SetsOPENCODE_PERMISSIONWhenConfigHasNoPermission(
 		t.Errorf("OPENCODE_PERMISSION env var should be set when config has no permission field")
 	}
 }
+
+func TestBuildServerDeploymentWithProxy(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			ServerConfig: &kubeopenv1alpha1.ServerConfig{
+				Port: 4096,
+			},
+		},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		proxy: &kubeopenv1alpha1.ProxyConfig{
+			HttpProxy:  "http://proxy:8080",
+			HttpsProxy: "http://proxy:8443",
+			NoProxy:    "localhost,127.0.0.1",
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil)
+
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	hasProxyEnv := func(envs []corev1.EnvVar) bool {
+		for _, env := range envs {
+			if env.Name == "HTTP_PROXY" || env.Name == "HTTPS_PROXY" {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Verify all init containers have proxy env vars
+	for _, ic := range deployment.Spec.Template.Spec.InitContainers {
+		if !hasProxyEnv(ic.Env) {
+			t.Errorf("init container %q missing proxy env vars", ic.Name)
+		}
+	}
+
+	// Verify main container has proxy env vars
+	container := deployment.Spec.Template.Spec.Containers[0]
+	if !hasProxyEnv(container.Env) {
+		t.Errorf("server container missing proxy env vars")
+	}
+
+	// Verify NO_PROXY includes .svc,.cluster.local
+	for _, env := range container.Env {
+		if env.Name == "NO_PROXY" {
+			if env.Value != "localhost,127.0.0.1,.svc,.cluster.local" {
+				t.Errorf("NO_PROXY = %q, want %q", env.Value, "localhost,127.0.0.1,.svc,.cluster.local")
+			}
+		}
+	}
+}
+
+func TestBuildServerDeploymentWithImagePullSecrets(t *testing.T) {
+	tests := []struct {
+		name             string
+		imagePullSecrets []corev1.LocalObjectReference
+		wantCount        int
+	}{
+		{
+			name: "single imagePullSecret",
+			imagePullSecrets: []corev1.LocalObjectReference{
+				{Name: "my-registry-secret"},
+			},
+			wantCount: 1,
+		},
+		{
+			name: "multiple imagePullSecrets",
+			imagePullSecrets: []corev1.LocalObjectReference{
+				{Name: "harbor-secret"},
+				{Name: "gcr-secret"},
+			},
+			wantCount: 2,
+		},
+		{
+			name:             "empty list - no imagePullSecrets",
+			imagePullSecrets: nil,
+			wantCount:        0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-agent",
+					Namespace: "default",
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServerConfig: &kubeopenv1alpha1.ServerConfig{
+						Port: 4096,
+					},
+				},
+			}
+
+			cfg := agentConfig{
+				executorImage:    "test-executor:v1.0.0",
+				agentImage:       "test-agent:v1.0.0",
+				workspaceDir:     "/workspace",
+				imagePullSecrets: tt.imagePullSecrets,
+			}
+
+			deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil)
+
+			if deployment == nil {
+				t.Fatal("BuildServerDeployment returned nil")
+			}
+
+			podSpec := deployment.Spec.Template.Spec
+
+			if tt.wantCount == 0 {
+				if len(podSpec.ImagePullSecrets) != 0 {
+					t.Errorf("ImagePullSecrets count = %d, want 0", len(podSpec.ImagePullSecrets))
+				}
+				return
+			}
+
+			if len(podSpec.ImagePullSecrets) != tt.wantCount {
+				t.Fatalf("ImagePullSecrets count = %d, want %d", len(podSpec.ImagePullSecrets), tt.wantCount)
+			}
+
+			for i, secret := range tt.imagePullSecrets {
+				if podSpec.ImagePullSecrets[i].Name != secret.Name {
+					t.Errorf("ImagePullSecrets[%d].Name = %q, want %q", i, podSpec.ImagePullSecrets[i].Name, secret.Name)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildServerDeploymentWithSecurityContext(t *testing.T) {
+	t.Run("default security context applied", func(t *testing.T) {
+		agent := &kubeopenv1alpha1.Agent{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-agent",
+				Namespace: "default",
+			},
+			Spec: kubeopenv1alpha1.AgentSpec{
+				ServerConfig: &kubeopenv1alpha1.ServerConfig{
+					Port: 4096,
+				},
+			},
+		}
+
+		cfg := agentConfig{
+			executorImage: "test-executor:v1.0.0",
+			agentImage:    "test-agent:v1.0.0",
+			workspaceDir:  "/workspace",
+		}
+
+		deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil)
+
+		if deployment == nil {
+			t.Fatal("BuildServerDeployment returned nil")
+		}
+
+		container := deployment.Spec.Template.Spec.Containers[0]
+		if container.SecurityContext == nil {
+			t.Fatal("server container SecurityContext should not be nil")
+		}
+		if container.SecurityContext.AllowPrivilegeEscalation == nil || *container.SecurityContext.AllowPrivilegeEscalation != false {
+			t.Errorf("AllowPrivilegeEscalation should be false")
+		}
+		if container.SecurityContext.Capabilities == nil || len(container.SecurityContext.Capabilities.Drop) != 1 || container.SecurityContext.Capabilities.Drop[0] != "ALL" {
+			t.Errorf("Capabilities.Drop should be [ALL]")
+		}
+
+		// Init containers should also have default security context
+		for _, ic := range deployment.Spec.Template.Spec.InitContainers {
+			if ic.SecurityContext == nil {
+				t.Errorf("init container %q SecurityContext should not be nil", ic.Name)
+				continue
+			}
+			if ic.SecurityContext.AllowPrivilegeEscalation == nil || *ic.SecurityContext.AllowPrivilegeEscalation != false {
+				t.Errorf("init container %q AllowPrivilegeEscalation should be false", ic.Name)
+			}
+		}
+	})
+
+	t.Run("custom security context on server container", func(t *testing.T) {
+		agent := &kubeopenv1alpha1.Agent{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-agent",
+				Namespace: "default",
+			},
+			Spec: kubeopenv1alpha1.AgentSpec{
+				ServerConfig: &kubeopenv1alpha1.ServerConfig{
+					Port: 4096,
+				},
+			},
+		}
+
+		runAsNonRoot := true
+		cfg := agentConfig{
+			executorImage: "test-executor:v1.0.0",
+			agentImage:    "test-agent:v1.0.0",
+			workspaceDir:  "/workspace",
+			podSpec: &kubeopenv1alpha1.AgentPodSpec{
+				SecurityContext: &corev1.SecurityContext{
+					RunAsNonRoot: &runAsNonRoot,
+				},
+			},
+		}
+
+		deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil)
+
+		if deployment == nil {
+			t.Fatal("BuildServerDeployment returned nil")
+		}
+
+		container := deployment.Spec.Template.Spec.Containers[0]
+		if container.SecurityContext == nil {
+			t.Fatal("server container SecurityContext should not be nil")
+		}
+		if container.SecurityContext.RunAsNonRoot == nil || *container.SecurityContext.RunAsNonRoot != true {
+			t.Errorf("custom SecurityContext RunAsNonRoot should be true")
+		}
+
+		// Init containers should still use default security context
+		for _, ic := range deployment.Spec.Template.Spec.InitContainers {
+			if ic.SecurityContext == nil {
+				t.Errorf("init container %q SecurityContext should not be nil", ic.Name)
+				continue
+			}
+			if ic.SecurityContext.AllowPrivilegeEscalation == nil || *ic.SecurityContext.AllowPrivilegeEscalation != false {
+				t.Errorf("init container %q should use default AllowPrivilegeEscalation=false", ic.Name)
+			}
+		}
+	})
+}
+
+func TestBuildServerDeploymentWithCABundle(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			ServerConfig: &kubeopenv1alpha1.ServerConfig{
+				Port: 4096,
+			},
+		},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		caBundle: &kubeopenv1alpha1.CABundleConfig{
+			ConfigMapRef: &kubeopenv1alpha1.CABundleReference{
+				Name: "corp-ca-bundle",
+				Key:  "ca-bundle.crt",
+			},
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil)
+
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	// Verify CA bundle volume exists
+	var foundCAVolume bool
+	for _, vol := range deployment.Spec.Template.Spec.Volumes {
+		if vol.Name == CABundleVolumeName {
+			foundCAVolume = true
+			if vol.ConfigMap == nil {
+				t.Fatalf("CA bundle volume should have ConfigMap source")
+			}
+			if vol.ConfigMap.Name != "corp-ca-bundle" {
+				t.Errorf("CA volume ConfigMap.Name = %q, want %q", vol.ConfigMap.Name, "corp-ca-bundle")
+			}
+		}
+	}
+	if !foundCAVolume {
+		t.Fatalf("CA bundle volume %q not found", CABundleVolumeName)
+	}
+
+	// Verify all init containers have the CA mount and env
+	for _, ic := range deployment.Spec.Template.Spec.InitContainers {
+		var hasCAMount bool
+		for _, vm := range ic.VolumeMounts {
+			if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath && vm.ReadOnly {
+				hasCAMount = true
+			}
+		}
+		if !hasCAMount {
+			t.Errorf("init container %q missing CA bundle volume mount", ic.Name)
+		}
+
+		var hasCAEnv bool
+		for _, env := range ic.Env {
+			if env.Name == CustomCACertEnvVar && env.Value == CABundleMountPath+"/"+CABundleFileName {
+				hasCAEnv = true
+			}
+		}
+		if !hasCAEnv {
+			t.Errorf("init container %q missing %s env var", ic.Name, CustomCACertEnvVar)
+		}
+	}
+
+	// Verify server container has the CA mount and env
+	container := deployment.Spec.Template.Spec.Containers[0]
+	var hasCAMount bool
+	for _, vm := range container.VolumeMounts {
+		if vm.Name == CABundleVolumeName && vm.MountPath == CABundleMountPath && vm.ReadOnly {
+			hasCAMount = true
+		}
+	}
+	if !hasCAMount {
+		t.Errorf("server container missing CA bundle volume mount")
+	}
+
+	var hasCAEnv bool
+	for _, env := range container.Env {
+		if env.Name == CustomCACertEnvVar && env.Value == CABundleMountPath+"/"+CABundleFileName {
+			hasCAEnv = true
+		}
+	}
+	if !hasCAEnv {
+		t.Errorf("server container missing %s env var", CustomCACertEnvVar)
+	}
+}

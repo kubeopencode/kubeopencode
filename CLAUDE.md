@@ -447,6 +447,10 @@ Key Agent spec fields:
 - `config`: OpenCode configuration as inline JSON string (written to `/tools/opencode.json`)
 - `credentials`: Secrets as env vars or file mounts (supports single key or entire secret)
 - `caBundle`: Custom CA certificates for private HTTPS/Git servers (from ConfigMap or Secret)
+- `proxy`: HTTP/HTTPS proxy configuration (httpProxy, httpsProxy, noProxy); Agent-level overrides cluster-level
+- `imagePullSecrets`: Private registry image pull secrets (kubernetes.io/dockerconfigjson type, same namespace)
+- `podSpec.securityContext`: Container-level security context override (default: allowPrivilegeEscalation=false, drop ALL caps, RuntimeDefault seccomp)
+- `podSpec.podSecurityContext`: Pod-level security attributes (runAsUser, runAsGroup, fsGroup)
 - `serviceAccountName`: Kubernetes ServiceAccount for RBAC
 - `maxConcurrentTasks`: Limit concurrent Tasks using this Agent (nil/0 = unlimited)
 - `serverConfig`: Enable Server mode (persistent OpenCode server instead of per-Task Pods)
@@ -484,6 +488,29 @@ spec:
   #   - -c
   #   - /tools/opencode run --format json "$(cat ${WORKSPACE_DIR}/task.md)"
   serviceAccountName: kubeopencode-agent
+```
+
+**Proxy and Private Registry:**
+
+Agents in enterprise environments can configure proxy settings and private registry authentication:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: enterprise-agent
+spec:
+  profile: "Enterprise agent with proxy and private registry"
+  agentImage: registry.corp.example.com/kubeopencode/agent-opencode:latest
+  executorImage: registry.corp.example.com/kubeopencode/agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  proxy:
+    httpProxy: "http://proxy.corp.example.com:8080"
+    httpsProxy: "http://proxy.corp.example.com:8080"
+    noProxy: "localhost,127.0.0.1,10.0.0.0/8,.corp.example.com"
+  imagePullSecrets:
+    - name: harbor-registry-secret
 ```
 
 **OpenCode Configuration:**

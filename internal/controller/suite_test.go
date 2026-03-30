@@ -144,3 +144,8 @@ var _ = AfterSuite(func() {
 func stringPtr(s string) *string {
 	return &s
 }
+
+// int64Ptr returns a pointer to the given int64 value
+func int64Ptr(i int64) *int64 {
+	return &i
+}

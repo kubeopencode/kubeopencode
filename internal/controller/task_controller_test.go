@@ -3310,4 +3310,290 @@ var _ = Describe("TaskController", func() {
 			Expect(k8sClient.Delete(ctx, caConfigMap)).Should(Succeed())
 		})
 	})
+
+	Context("When creating a Task with Agent proxy configuration", func() {
+		It("Should inject proxy environment variables into all containers", func() {
+			taskName := "test-task-proxy"
+			agentName := "agent-proxy-test"
+			description := "Test proxy configuration"
+
+			By("Creating Agent with proxy config")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "default",
+					WorkspaceDir:       "/workspace",
+					Proxy: &kubeopenv1alpha1.ProxyConfig{
+						HttpProxy:  "http://proxy.corp:8080",
+						HttpsProxy: "http://proxy.corp:8080",
+						NoProxy:    "localhost,10.0.0.0/8",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task referencing Agent with proxy")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			// Helper to check proxy env vars on a container
+			checkProxyEnvVars := func(envList []corev1.EnvVar, containerName string) {
+				envMap := make(map[string]string)
+				for _, e := range envList {
+					envMap[e.Name] = e.Value
+				}
+				Expect(envMap).Should(HaveKeyWithValue("HTTP_PROXY", "http://proxy.corp:8080"),
+					"Expected %s to have HTTP_PROXY", containerName)
+				Expect(envMap).Should(HaveKeyWithValue("http_proxy", "http://proxy.corp:8080"),
+					"Expected %s to have http_proxy", containerName)
+				Expect(envMap).Should(HaveKeyWithValue("HTTPS_PROXY", "http://proxy.corp:8080"),
+					"Expected %s to have HTTPS_PROXY", containerName)
+				Expect(envMap).Should(HaveKeyWithValue("https_proxy", "http://proxy.corp:8080"),
+					"Expected %s to have https_proxy", containerName)
+				Expect(envMap).Should(HaveKey("NO_PROXY"),
+					"Expected %s to have NO_PROXY", containerName)
+				Expect(envMap["NO_PROXY"]).Should(ContainSubstring(".svc"),
+					"Expected %s NO_PROXY to contain .svc", containerName)
+				Expect(envMap["NO_PROXY"]).Should(ContainSubstring(".cluster.local"),
+					"Expected %s NO_PROXY to contain .cluster.local", containerName)
+				Expect(envMap).Should(HaveKey("no_proxy"),
+					"Expected %s to have no_proxy", containerName)
+				Expect(envMap["no_proxy"]).Should(ContainSubstring(".svc"),
+					"Expected %s no_proxy to contain .svc", containerName)
+				Expect(envMap["no_proxy"]).Should(ContainSubstring(".cluster.local"),
+					"Expected %s no_proxy to contain .cluster.local", containerName)
+			}
+
+			By("Verifying ALL init containers have proxy env vars")
+			for _, initC := range createdPod.Spec.InitContainers {
+				checkProxyEnvVars(initC.Env, fmt.Sprintf("init container %q", initC.Name))
+			}
+
+			By("Verifying worker container has proxy env vars")
+			Expect(createdPod.Spec.Containers).Should(HaveLen(1))
+			checkProxyEnvVars(createdPod.Spec.Containers[0].Env, "worker container")
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
+
+	Context("When creating a Task with Agent imagePullSecrets", func() {
+		It("Should add imagePullSecrets to the Pod spec", func() {
+			taskName := "test-task-pullsecrets"
+			agentName := "agent-pullsecrets-test"
+			description := "Test imagePullSecrets"
+
+			By("Creating Agent with imagePullSecrets")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "default",
+					WorkspaceDir:       "/workspace",
+					ImagePullSecrets: []corev1.LocalObjectReference{
+						{Name: "harbor-secret"},
+						{Name: "gcr-secret"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task referencing Agent with imagePullSecrets")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying Pod has imagePullSecrets")
+			Expect(createdPod.Spec.ImagePullSecrets).Should(HaveLen(2))
+			secretNames := make([]string, len(createdPod.Spec.ImagePullSecrets))
+			for i, s := range createdPod.Spec.ImagePullSecrets {
+				secretNames[i] = s.Name
+			}
+			Expect(secretNames).Should(ContainElement("harbor-secret"))
+			Expect(secretNames).Should(ContainElement("gcr-secret"))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
+
+	Context("When creating a Task, Pod has default security context", func() {
+		It("Should apply restricted default security context to all containers", func() {
+			taskName := "test-task-default-secctx"
+			description := "Test default security context"
+
+			By("Creating Task referencing shared test agent")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: testAgentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			// Helper to verify default security context on a container
+			verifyDefaultSecCtx := func(sc *corev1.SecurityContext, containerName string) {
+				Expect(sc).ShouldNot(BeNil(), "Expected %s to have security context", containerName)
+				Expect(sc.AllowPrivilegeEscalation).ShouldNot(BeNil(),
+					"Expected %s to have AllowPrivilegeEscalation set", containerName)
+				Expect(*sc.AllowPrivilegeEscalation).Should(BeFalse(),
+					"Expected %s AllowPrivilegeEscalation=false", containerName)
+				Expect(sc.Capabilities).ShouldNot(BeNil(),
+					"Expected %s to have Capabilities set", containerName)
+				Expect(sc.Capabilities.Drop).Should(ContainElement(corev1.Capability("ALL")),
+					"Expected %s to drop ALL capabilities", containerName)
+				Expect(sc.SeccompProfile).ShouldNot(BeNil(),
+					"Expected %s to have SeccompProfile set", containerName)
+				Expect(sc.SeccompProfile.Type).Should(Equal(corev1.SeccompProfileTypeRuntimeDefault),
+					"Expected %s SeccompProfile=RuntimeDefault", containerName)
+			}
+
+			By("Verifying worker container has default security context")
+			Expect(createdPod.Spec.Containers).Should(HaveLen(1))
+			verifyDefaultSecCtx(createdPod.Spec.Containers[0].SecurityContext, "worker container")
+
+			By("Verifying init containers have default security context")
+			for _, initC := range createdPod.Spec.InitContainers {
+				verifyDefaultSecCtx(initC.SecurityContext, fmt.Sprintf("init container %q", initC.Name))
+			}
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+		})
+	})
+
+	Context("When creating a Task with Agent custom security context", func() {
+		It("Should apply custom security context to the Pod and containers", func() {
+			taskName := "test-task-custom-secctx"
+			agentName := "agent-custom-secctx-test"
+			description := "Test custom security context"
+
+			By("Creating Agent with custom security contexts")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "default",
+					WorkspaceDir:       "/workspace",
+					PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+						SecurityContext: &corev1.SecurityContext{
+							RunAsNonRoot:             boolPtr(true),
+							AllowPrivilegeEscalation: boolPtr(false),
+						},
+						PodSecurityContext: &corev1.PodSecurityContext{
+							RunAsUser: int64Ptr(1000),
+							FSGroup:   int64Ptr(1000),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating Task referencing Agent with custom security context")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Pod to be created")
+			podName := fmt.Sprintf("%s-pod", taskName)
+			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
+			createdPod := &corev1.Pod{}
+			Eventually(func() bool {
+				return k8sClient.Get(ctx, podLookupKey, createdPod) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying worker container has custom security context")
+			workerSC := createdPod.Spec.Containers[0].SecurityContext
+			Expect(workerSC).ShouldNot(BeNil())
+			Expect(workerSC.RunAsNonRoot).ShouldNot(BeNil())
+			Expect(*workerSC.RunAsNonRoot).Should(BeTrue())
+			Expect(workerSC.AllowPrivilegeEscalation).ShouldNot(BeNil())
+			Expect(*workerSC.AllowPrivilegeEscalation).Should(BeFalse())
+
+			By("Verifying Pod has custom pod-level security context")
+			podSC := createdPod.Spec.SecurityContext
+			Expect(podSC).ShouldNot(BeNil())
+			Expect(podSC.RunAsUser).ShouldNot(BeNil())
+			Expect(*podSC.RunAsUser).Should(Equal(int64(1000)))
+			Expect(podSC.FSGroup).ShouldNot(BeNil())
+			Expect(*podSC.FSGroup).Should(Equal(int64(1000)))
+
+			By("Verifying init containers still have default security context")
+			for _, initC := range createdPod.Spec.InitContainers {
+				Expect(initC.SecurityContext).ShouldNot(BeNil(),
+					"Expected init container %q to have security context", initC.Name)
+				Expect(initC.SecurityContext.AllowPrivilegeEscalation).ShouldNot(BeNil(),
+					"Expected init container %q to have AllowPrivilegeEscalation set", initC.Name)
+				Expect(*initC.SecurityContext.AllowPrivilegeEscalation).Should(BeFalse(),
+					"Expected init container %q AllowPrivilegeEscalation=false", initC.Name)
+			}
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
 })

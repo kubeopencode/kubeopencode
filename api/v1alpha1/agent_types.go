@@ -106,6 +106,31 @@ type ServerStatus struct {
 	Ready bool `json:"ready,omitempty"`
 }
 
+// ProxyConfig configures HTTP/HTTPS proxy settings for all containers in generated Pods.
+// These environment variables are injected into every init container and worker container.
+// The ".svc" and ".cluster.local" suffixes are always appended to NoProxy to prevent
+// proxying in-cluster traffic.
+type ProxyConfig struct {
+	// HttpProxy is the URL of the HTTP proxy server.
+	// Sets HTTP_PROXY and http_proxy environment variables.
+	// Example: "http://proxy.corp.example.com:8080"
+	// +optional
+	HttpProxy string `json:"httpProxy,omitempty"`
+
+	// HttpsProxy is the URL of the HTTPS proxy server.
+	// Sets HTTPS_PROXY and https_proxy environment variables.
+	// Example: "http://proxy.corp.example.com:8080"
+	// +optional
+	HttpsProxy string `json:"httpsProxy,omitempty"`
+
+	// NoProxy is a comma-separated list of hosts that should bypass the proxy.
+	// Sets NO_PROXY and no_proxy environment variables.
+	// ".svc" and ".cluster.local" are always appended automatically.
+	// Example: "localhost,127.0.0.1,10.0.0.0/8,.corp.example.com"
+	// +optional
+	NoProxy string `json:"noProxy,omitempty"`
+}
+
 // AgentSpec defines agent configuration
 type AgentSpec struct {
 	// Profile is a brief, human-readable summary of the Agent's purpose and capabilities.
@@ -266,6 +291,39 @@ type AgentSpec struct {
 	// +optional
 	CABundle *CABundleConfig `json:"caBundle,omitempty"`
 
+	// Proxy configures HTTP/HTTPS proxy settings for all containers in generated Pods.
+	// When set, HTTP_PROXY, HTTPS_PROXY, NO_PROXY (and lowercase variants) environment
+	// variables are injected into all init containers and the worker container.
+	//
+	// This is useful in enterprise environments where all outbound traffic must go
+	// through a corporate proxy server.
+	//
+	// Agent-level proxy overrides cluster-level proxy from KubeOpenCodeConfig.
+	//
+	// Example:
+	//   proxy:
+	//     httpProxy: "http://proxy.corp.example.com:8080"
+	//     httpsProxy: "http://proxy.corp.example.com:8080"
+	//     noProxy: "localhost,127.0.0.1,10.0.0.0/8"
+	// +optional
+	Proxy *ProxyConfig `json:"proxy,omitempty"`
+
+	// ImagePullSecrets is a list of references to secrets for pulling container images
+	// from private registries. These are added to the Pod spec's imagePullSecrets field.
+	//
+	// This is useful when agentImage, executorImage, or attachImage are hosted in
+	// private registries that require authentication (e.g., Harbor, AWS ECR, GCR).
+	//
+	// The referenced Secrets must exist in the same namespace as the Agent and be
+	// of type kubernetes.io/dockerconfigjson.
+	//
+	// Example:
+	//   imagePullSecrets:
+	//     - name: harbor-registry-secret
+	//     - name: gcr-secret
+	// +optional
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
 	// ServerConfig enables Server mode for this Agent.
 	// When set, the Agent runs as a persistent OpenCode server (Deployment + Service)
 	// instead of creating ephemeral Pods per Task.
@@ -367,6 +425,36 @@ type AgentPodSpec struct {
 	//       cpu: "2"
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// SecurityContext defines the security options for the agent container.
+	// This is applied to the worker container (and init containers where applicable).
+	//
+	// If not specified, a restricted default is applied:
+	//   - allowPrivilegeEscalation: false
+	//   - capabilities: drop ALL
+	//   - seccompProfile: RuntimeDefault
+	//
+	// Enterprise users can further tighten this with:
+	//   - runAsNonRoot: true
+	//   - readOnlyRootFilesystem: true (requires emptyDir volumes for writable paths)
+	//
+	// Example:
+	//   securityContext:
+	//     runAsNonRoot: true
+	//     allowPrivilegeEscalation: false
+	// +optional
+	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
+
+	// PodSecurityContext defines pod-level security attributes and common container settings.
+	// Applied to the Pod spec directly (affects all containers).
+	//
+	// Example:
+	//   podSecurityContext:
+	//     runAsUser: 1000
+	//     runAsGroup: 1000
+	//     fsGroup: 1000
+	// +optional
+	PodSecurityContext *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`
 }
 
 // PodScheduling defines scheduling configuration for agent pods.

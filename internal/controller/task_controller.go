@@ -360,8 +360,11 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		}
 	}
 
-	// Get system configuration (image, pull policies) from cluster-scoped KubeOpenCodeConfig
+	// Get system configuration (image, pull policies, proxy) from cluster-scoped KubeOpenCodeConfig
 	sysCfg := r.getSystemConfig(ctx)
+
+	// Apply cluster-level defaults where Agent doesn't specify its own
+	agentConfig.applySystemDefaults(sysCfg)
 
 	// Create Pod with agent configuration and context mounts
 	// For Server-mode, serverURL is passed to generate --attach command
@@ -1004,30 +1007,31 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubeopenv1alpha1.
 }
 
 // getSystemConfig retrieves the system configuration from KubeOpenCodeConfig.
-// It looks for the cluster-scoped KubeOpenCodeConfig named "default".
-// Returns a systemConfig with defaults if no config is found.
 func (r *TaskReconciler) getSystemConfig(ctx context.Context) systemConfig {
-	log := log.FromContext(ctx)
+	return resolveSystemConfig(ctx, r.Client)
+}
 
-	// Default configuration
+// resolveSystemConfig retrieves system-level configuration from the cluster-scoped
+// KubeOpenCodeConfig singleton. Returns defaults if no config is found.
+// Shared by TaskReconciler and AgentReconciler.
+func resolveSystemConfig(ctx context.Context, reader client.Reader) systemConfig {
+	logger := log.FromContext(ctx)
+
 	cfg := systemConfig{
 		systemImage:           DefaultKubeOpenCodeImage,
 		systemImagePullPolicy: corev1.PullIfNotPresent,
 	}
 
-	// Try to get cluster-scoped KubeOpenCodeConfig
 	config := &kubeopenv1alpha1.KubeOpenCodeConfig{}
 	configKey := types.NamespacedName{Name: KubeOpenCodeConfigName}
 
-	if err := r.Get(ctx, configKey, config); err != nil {
+	if err := reader.Get(ctx, configKey, config); err != nil {
 		if !errors.IsNotFound(err) {
-			log.Error(err, "unable to get KubeOpenCodeConfig for system config, using defaults")
+			logger.Error(err, "unable to get KubeOpenCodeConfig for system config, using defaults")
 		}
-		// Config not found, use defaults
 		return cfg
 	}
 
-	// Apply system image configuration if specified
 	if config.Spec.SystemImage != nil {
 		if config.Spec.SystemImage.Image != "" {
 			cfg.systemImage = config.Spec.SystemImage.Image
@@ -1036,6 +1040,8 @@ func (r *TaskReconciler) getSystemConfig(ctx context.Context) systemConfig {
 			cfg.systemImagePullPolicy = config.Spec.SystemImage.ImagePullPolicy
 		}
 	}
+
+	cfg.proxy = config.Spec.Proxy
 
 	return cfg
 }

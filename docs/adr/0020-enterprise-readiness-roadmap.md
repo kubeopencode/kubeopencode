@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Proposed (Partially Implemented: CA Certificates via ADR 0021, Prometheus Metrics, HTTP/HTTPS Proxy, imagePullSecrets, Pod Security Standards)
 
 ## Context
 

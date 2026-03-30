@@ -300,6 +300,33 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		}
 	}
 
+	// Add custom CA bundle to all containers if configured
+	if agentCfg.caBundle != nil && (agentCfg.caBundle.ConfigMapRef != nil || agentCfg.caBundle.SecretRef != nil) {
+		caVolume, caMount, caEnv := buildCABundleVolumeMountEnv(agentCfg.caBundle)
+		volumes = append(volumes, caVolume)
+
+		// Add CA bundle mount and env to all init containers
+		for i := range initContainers {
+			initContainers[i].VolumeMounts = append(initContainers[i].VolumeMounts, caMount)
+			initContainers[i].Env = append(initContainers[i].Env, caEnv)
+		}
+
+		// Add CA bundle mount and env to the worker container
+		volumeMounts = append(volumeMounts, caMount)
+		envVars = append(envVars, caEnv)
+	}
+
+	// Add HTTP/HTTPS proxy environment variables to all containers if configured
+	if agentCfg.proxy != nil {
+		proxyEnvs := buildProxyEnvVars(agentCfg.proxy)
+		// Add to all init containers
+		for i := range initContainers {
+			initContainers[i].Env = append(initContainers[i].Env, proxyEnvs...)
+		}
+		// Add to worker container env vars
+		envVars = append(envVars, proxyEnvs...)
+	}
+
 	// Build the serve command.
 	// When context-init handles config file writing, we don't need inline heredoc.
 	hasContextInit := len(ctxFileMounts) > 0 || len(ctxDirMounts) > 0
@@ -367,6 +394,20 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		container.Resources = *agentCfg.podSpec.Resources
 	}
 
+	// Apply security context - use custom if provided, otherwise use restricted default
+	if agentCfg.podSpec != nil && agentCfg.podSpec.SecurityContext != nil {
+		container.SecurityContext = agentCfg.podSpec.SecurityContext
+	} else {
+		container.SecurityContext = defaultSecurityContext()
+	}
+
+	// Apply default security context to init containers
+	for i := range initContainers {
+		if initContainers[i].SecurityContext == nil {
+			initContainers[i].SecurityContext = defaultSecurityContext()
+		}
+	}
+
 	// Build pod template spec
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: agentCfg.serviceAccountName,
@@ -374,6 +415,11 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		Containers:         []corev1.Container{container},
 		Volumes:            volumes,
 		RestartPolicy:      corev1.RestartPolicyAlways,
+	}
+
+	// Add imagePullSecrets for private registry authentication
+	if len(agentCfg.imagePullSecrets) > 0 {
+		podSpec.ImagePullSecrets = agentCfg.imagePullSecrets
 	}
 
 	// Apply scheduling configuration if provided
@@ -393,6 +439,11 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 	// Apply runtime class if specified
 	if agentCfg.podSpec != nil && agentCfg.podSpec.RuntimeClassName != nil {
 		podSpec.RuntimeClassName = agentCfg.podSpec.RuntimeClassName
+	}
+
+	// Apply pod-level security context if specified
+	if agentCfg.podSpec != nil && agentCfg.podSpec.PodSecurityContext != nil {
+		podSpec.SecurityContext = agentCfg.podSpec.PodSecurityContext
 	}
 
 	// Single replica for now (simplicity)

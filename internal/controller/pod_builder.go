@@ -32,6 +32,8 @@ type agentConfig struct {
 	maxConcurrentTasks *int32
 	quota              *kubeopenv1alpha1.QuotaConfig
 	caBundle           *kubeopenv1alpha1.CABundleConfig // Custom CA bundle configuration (nil = no custom CA)
+	proxy              *kubeopenv1alpha1.ProxyConfig    // HTTP/HTTPS proxy configuration (nil = no proxy)
+	imagePullSecrets   []corev1.LocalObjectReference    // Image pull secrets for private registries
 	serverConfig       *kubeopenv1alpha1.ServerConfig   // Server mode configuration (nil = Pod mode)
 }
 
@@ -51,6 +53,8 @@ func ResolveAgentConfig(agent *kubeopenv1alpha1.Agent) agentConfig {
 		maxConcurrentTasks: agent.Spec.MaxConcurrentTasks,
 		quota:              agent.Spec.Quota,
 		caBundle:           agent.Spec.CABundle,
+		proxy:              agent.Spec.Proxy,
+		imagePullSecrets:   agent.Spec.ImagePullSecrets,
 		serverConfig:       agent.Spec.ServerConfig,
 	}
 }
@@ -64,6 +68,18 @@ type systemConfig struct {
 	// systemImagePullPolicy is the image pull policy for system containers.
 	// Defaults to IfNotPresent if not specified.
 	systemImagePullPolicy corev1.PullPolicy
+	// proxy is the cluster-wide proxy configuration from KubeOpenCodeConfig.
+	// Agent-level proxy takes precedence over this.
+	proxy *kubeopenv1alpha1.ProxyConfig
+}
+
+// applySystemDefaults merges cluster-level configuration from KubeOpenCodeConfig
+// into the agent config where the Agent doesn't specify its own values.
+// Agent-level settings always take precedence over cluster-level.
+func (c *agentConfig) applySystemDefaults(sys systemConfig) {
+	if c.proxy == nil && sys.proxy != nil {
+		c.proxy = sys.proxy
+	}
 }
 
 // fileMount represents a file to be mounted at a specific path
@@ -592,6 +608,73 @@ func buildCABundleVolumeMountEnv(caBundle *kubeopenv1alpha1.CABundleConfig) (cor
 	return volume, mount, env
 }
 
+// buildProxyEnvVars creates environment variables for HTTP/HTTPS proxy configuration.
+// Both uppercase and lowercase variants are set for maximum compatibility.
+// ".svc" and ".cluster.local" are always appended to NO_PROXY to prevent proxying
+// in-cluster Kubernetes traffic.
+func buildProxyEnvVars(proxy *kubeopenv1alpha1.ProxyConfig) []corev1.EnvVar {
+	if proxy == nil {
+		return nil
+	}
+
+	var envVars []corev1.EnvVar
+
+	if proxy.HttpProxy != "" {
+		envVars = append(envVars,
+			corev1.EnvVar{Name: "HTTP_PROXY", Value: proxy.HttpProxy},
+			corev1.EnvVar{Name: "http_proxy", Value: proxy.HttpProxy},
+		)
+	}
+
+	if proxy.HttpsProxy != "" {
+		envVars = append(envVars,
+			corev1.EnvVar{Name: "HTTPS_PROXY", Value: proxy.HttpsProxy},
+			corev1.EnvVar{Name: "https_proxy", Value: proxy.HttpsProxy},
+		)
+	}
+
+	// Build NO_PROXY: user-specified values + mandatory in-cluster suffixes.
+	// Each suffix is checked independently to avoid duplication.
+	noProxy := proxy.NoProxy
+	if noProxy == "" {
+		noProxy = ".svc,.cluster.local"
+	} else {
+		if !strings.Contains(noProxy, ".svc") {
+			noProxy = noProxy + ",.svc"
+		}
+		if !strings.Contains(noProxy, ".cluster.local") {
+			noProxy = noProxy + ",.cluster.local"
+		}
+	}
+
+	envVars = append(envVars,
+		corev1.EnvVar{Name: "NO_PROXY", Value: noProxy},
+		corev1.EnvVar{Name: "no_proxy", Value: noProxy},
+	)
+
+	return envVars
+}
+
+// defaultSecurityContext returns the default restricted security context for containers.
+// This enforces baseline Pod Security Standards:
+// - No privilege escalation
+// - Drop all Linux capabilities
+// - RuntimeDefault seccomp profile
+//
+// Users can override this via AgentPodSpec.SecurityContext for stricter settings
+// (e.g., runAsNonRoot, readOnlyRootFilesystem).
+func defaultSecurityContext() *corev1.SecurityContext {
+	return &corev1.SecurityContext{
+		AllowPrivilegeEscalation: boolPtr(false),
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+}
+
 // buildPod creates a Pod object for the task with context mounts.
 // The Pod is created in the same namespace as the Task.
 // The serverURL parameter is used for Server-mode Agents: when non-empty, the Pod will use
@@ -898,6 +981,17 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		envVars = append(envVars, caEnv)
 	}
 
+	// Add HTTP/HTTPS proxy environment variables to all containers if configured
+	if cfg.proxy != nil {
+		proxyEnvs := buildProxyEnvVars(cfg.proxy)
+		// Add to all init containers
+		for i := range initContainers {
+			initContainers[i].Env = append(initContainers[i].Env, proxyEnvs...)
+		}
+		// Add to worker container env vars
+		envVars = append(envVars, proxyEnvs...)
+	}
+
 	// Build pod labels - start with base labels
 	podLabels := map[string]string{
 		"app":                  "kubeopencode",
@@ -959,6 +1053,20 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		VolumeMounts:    volumeMounts,
 	}
 
+	// Apply security context - use custom if provided, otherwise use restricted default
+	if cfg.podSpec != nil && cfg.podSpec.SecurityContext != nil {
+		agentContainer.SecurityContext = cfg.podSpec.SecurityContext
+	} else {
+		agentContainer.SecurityContext = defaultSecurityContext()
+	}
+
+	// Apply default security context to init containers
+	for i := range initContainers {
+		if initContainers[i].SecurityContext == nil {
+			initContainers[i].SecurityContext = defaultSecurityContext()
+		}
+	}
+
 	// Build containers list
 	containers := []corev1.Container{agentContainer}
 
@@ -969,6 +1077,11 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		Containers:         containers,
 		Volumes:            volumes,
 		RestartPolicy:      corev1.RestartPolicyNever,
+	}
+
+	// Add imagePullSecrets for private registry authentication
+	if len(cfg.imagePullSecrets) > 0 {
+		podSpec.ImagePullSecrets = cfg.imagePullSecrets
 	}
 
 	// Apply PodSpec configuration if specified
@@ -994,6 +1107,11 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		// Apply resource requirements if specified
 		if cfg.podSpec.Resources != nil {
 			podSpec.Containers[0].Resources = *cfg.podSpec.Resources
+		}
+
+		// Apply pod-level security context if specified
+		if cfg.podSpec.PodSecurityContext != nil {
+			podSpec.SecurityContext = cfg.podSpec.PodSecurityContext
 		}
 	}
 

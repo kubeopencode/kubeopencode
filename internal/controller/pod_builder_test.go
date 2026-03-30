@@ -2477,3 +2477,437 @@ func TestSessionTitle(t *testing.T) {
 		t.Errorf("sessionTitle suffix should be 8 hex chars, got %q (len=%d)", suffix, len(suffix))
 	}
 }
+
+func TestBuildProxyEnvVars(t *testing.T) {
+	tests := []struct {
+		name     string
+		proxy    *kubeopenv1alpha1.ProxyConfig
+		wantEnvs map[string]string // expected env var name -> value
+		wantNil  bool
+	}{
+		{
+			name:    "nil proxy returns nil",
+			proxy:   nil,
+			wantNil: true,
+		},
+		{
+			name: "only httpProxy set",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+			},
+			wantEnvs: map[string]string{
+				"HTTP_PROXY": "http://proxy:8080",
+				"http_proxy": "http://proxy:8080",
+				"NO_PROXY":   ".svc,.cluster.local",
+				"no_proxy":   ".svc,.cluster.local",
+			},
+		},
+		{
+			name: "only httpsProxy set",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpsProxy: "http://proxy:8443",
+			},
+			wantEnvs: map[string]string{
+				"HTTPS_PROXY": "http://proxy:8443",
+				"https_proxy": "http://proxy:8443",
+				"NO_PROXY":    ".svc,.cluster.local",
+				"no_proxy":    ".svc,.cluster.local",
+			},
+		},
+		{
+			name: "full config with all three fields",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy:  "http://proxy:8080",
+				HttpsProxy: "http://proxy:8443",
+				NoProxy:    "localhost,127.0.0.1",
+			},
+			wantEnvs: map[string]string{
+				"HTTP_PROXY":  "http://proxy:8080",
+				"http_proxy":  "http://proxy:8080",
+				"HTTPS_PROXY": "http://proxy:8443",
+				"https_proxy": "http://proxy:8443",
+				"NO_PROXY":    "localhost,127.0.0.1,.svc,.cluster.local",
+				"no_proxy":    "localhost,127.0.0.1,.svc,.cluster.local",
+			},
+		},
+		{
+			name: "noProxy auto-appends .svc,.cluster.local when not present",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+				NoProxy:   "10.0.0.0/8,172.16.0.0/12",
+			},
+			wantEnvs: map[string]string{
+				"NO_PROXY": "10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local",
+				"no_proxy": "10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local",
+			},
+		},
+		{
+			name: "noProxy does not duplicate .svc if already present",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+				NoProxy:   "localhost,.svc,.cluster.local",
+			},
+			wantEnvs: map[string]string{
+				"NO_PROXY": "localhost,.svc,.cluster.local",
+				"no_proxy": "localhost,.svc,.cluster.local",
+			},
+		},
+		{
+			name: "noProxy has .cluster.local but not .svc appends only .svc",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+				NoProxy:   "localhost,.cluster.local",
+			},
+			wantEnvs: map[string]string{
+				"NO_PROXY": "localhost,.cluster.local,.svc",
+				"no_proxy": "localhost,.cluster.local,.svc",
+			},
+		},
+		{
+			name: "empty noProxy defaults to .svc,.cluster.local",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+				NoProxy:   "",
+			},
+			wantEnvs: map[string]string{
+				"NO_PROXY": ".svc,.cluster.local",
+				"no_proxy": ".svc,.cluster.local",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildProxyEnvVars(tt.proxy)
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("buildProxyEnvVars() = %v, want nil", got)
+				}
+				return
+			}
+			envMap := make(map[string]string)
+			for _, env := range got {
+				envMap[env.Name] = env.Value
+			}
+			for wantName, wantValue := range tt.wantEnvs {
+				if gotValue, ok := envMap[wantName]; !ok {
+					t.Errorf("missing env var %q", wantName)
+				} else if gotValue != wantValue {
+					t.Errorf("env %q = %q, want %q", wantName, gotValue, wantValue)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildPodWithProxy(t *testing.T) {
+	tests := []struct {
+		name       string
+		proxy      *kubeopenv1alpha1.ProxyConfig
+		wantProxy  bool
+	}{
+		{
+			name: "proxy set - all containers have proxy env vars",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy:  "http://proxy:8080",
+				HttpsProxy: "http://proxy:8443",
+				NoProxy:    "localhost",
+			},
+			wantProxy: true,
+		},
+		{
+			name:      "proxy nil - no proxy env vars",
+			proxy:     nil,
+			wantProxy: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task",
+					Namespace: "default",
+					UID:       "test-uid",
+				},
+			}
+			task.APIVersion = "kubeopencode.io/v1alpha1"
+			task.Kind = "Task"
+
+			cfg := agentConfig{
+				agentImage:         "test-opencode:v1.0.0",
+				executorImage:      "test-executor:v1.0.0",
+				workspaceDir:       "/workspace",
+				serviceAccountName: "test-sa",
+				proxy:              tt.proxy,
+			}
+
+			pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+			hasProxyEnv := func(envs []corev1.EnvVar) bool {
+				for _, env := range envs {
+					if env.Name == "HTTP_PROXY" || env.Name == "HTTPS_PROXY" {
+						return true
+					}
+				}
+				return false
+			}
+
+			// Check all init containers
+			for _, ic := range pod.Spec.InitContainers {
+				if hasProxyEnv(ic.Env) != tt.wantProxy {
+					t.Errorf("init container %q: hasProxy = %v, want %v", ic.Name, !tt.wantProxy, tt.wantProxy)
+				}
+			}
+
+			// Check worker container
+			container := pod.Spec.Containers[0]
+			if hasProxyEnv(container.Env) != tt.wantProxy {
+				t.Errorf("worker container: hasProxy = %v, want %v", !tt.wantProxy, tt.wantProxy)
+			}
+		})
+	}
+}
+
+func TestBuildPodWithImagePullSecrets(t *testing.T) {
+	tests := []struct {
+		name             string
+		imagePullSecrets []corev1.LocalObjectReference
+		wantCount        int
+	}{
+		{
+			name: "single imagePullSecret",
+			imagePullSecrets: []corev1.LocalObjectReference{
+				{Name: "my-registry-secret"},
+			},
+			wantCount: 1,
+		},
+		{
+			name: "multiple imagePullSecrets",
+			imagePullSecrets: []corev1.LocalObjectReference{
+				{Name: "harbor-secret"},
+				{Name: "gcr-secret"},
+				{Name: "dockerhub-secret"},
+			},
+			wantCount: 3,
+		},
+		{
+			name:             "empty list - no imagePullSecrets",
+			imagePullSecrets: nil,
+			wantCount:        0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task",
+					Namespace: "default",
+					UID:       "test-uid",
+				},
+			}
+			task.APIVersion = "kubeopencode.io/v1alpha1"
+			task.Kind = "Task"
+
+			cfg := agentConfig{
+				agentImage:         "test-opencode:v1.0.0",
+				executorImage:      "test-executor:v1.0.0",
+				workspaceDir:       "/workspace",
+				serviceAccountName: "test-sa",
+				imagePullSecrets:   tt.imagePullSecrets,
+			}
+
+			pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+			if tt.wantCount == 0 {
+				if len(pod.Spec.ImagePullSecrets) != 0 {
+					t.Errorf("ImagePullSecrets count = %d, want 0", len(pod.Spec.ImagePullSecrets))
+				}
+				return
+			}
+
+			if len(pod.Spec.ImagePullSecrets) != tt.wantCount {
+				t.Fatalf("ImagePullSecrets count = %d, want %d", len(pod.Spec.ImagePullSecrets), tt.wantCount)
+			}
+
+			for i, secret := range tt.imagePullSecrets {
+				if pod.Spec.ImagePullSecrets[i].Name != secret.Name {
+					t.Errorf("ImagePullSecrets[%d].Name = %q, want %q", i, pod.Spec.ImagePullSecrets[i].Name, secret.Name)
+				}
+			}
+		})
+	}
+}
+
+func TestDefaultSecurityContext(t *testing.T) {
+	sc := defaultSecurityContext()
+
+	if sc == nil {
+		t.Fatal("defaultSecurityContext() returned nil")
+	}
+
+	// AllowPrivilegeEscalation: false
+	if sc.AllowPrivilegeEscalation == nil || *sc.AllowPrivilegeEscalation != false {
+		t.Errorf("AllowPrivilegeEscalation = %v, want false", sc.AllowPrivilegeEscalation)
+	}
+
+	// Capabilities: Drop ALL
+	if sc.Capabilities == nil {
+		t.Fatal("Capabilities should not be nil")
+	}
+	if len(sc.Capabilities.Drop) != 1 || sc.Capabilities.Drop[0] != "ALL" {
+		t.Errorf("Capabilities.Drop = %v, want [ALL]", sc.Capabilities.Drop)
+	}
+
+	// SeccompProfile: RuntimeDefault
+	if sc.SeccompProfile == nil {
+		t.Fatal("SeccompProfile should not be nil")
+	}
+	if sc.SeccompProfile.Type != corev1.SeccompProfileTypeRuntimeDefault {
+		t.Errorf("SeccompProfile.Type = %q, want %q", sc.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
+	}
+}
+
+func TestBuildPodSecurityContext(t *testing.T) {
+	t.Run("no podSpec SecurityContext - agent uses default", func(t *testing.T) {
+		task := &kubeopenv1alpha1.Task{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-task",
+				Namespace: "default",
+				UID:       "test-uid",
+			},
+		}
+		task.APIVersion = "kubeopencode.io/v1alpha1"
+		task.Kind = "Task"
+
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+		}
+
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+		container := pod.Spec.Containers[0]
+		if container.SecurityContext == nil {
+			t.Fatal("agent container SecurityContext should not be nil")
+		}
+		if container.SecurityContext.AllowPrivilegeEscalation == nil || *container.SecurityContext.AllowPrivilegeEscalation != false {
+			t.Errorf("default SecurityContext AllowPrivilegeEscalation should be false")
+		}
+		if container.SecurityContext.Capabilities == nil || len(container.SecurityContext.Capabilities.Drop) == 0 {
+			t.Errorf("default SecurityContext should drop ALL capabilities")
+		}
+	})
+
+	t.Run("custom podSpec SecurityContext - agent uses custom", func(t *testing.T) {
+		task := &kubeopenv1alpha1.Task{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-task",
+				Namespace: "default",
+				UID:       "test-uid",
+			},
+		}
+		task.APIVersion = "kubeopencode.io/v1alpha1"
+		task.Kind = "Task"
+
+		runAsNonRoot := true
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+			podSpec: &kubeopenv1alpha1.AgentPodSpec{
+				SecurityContext: &corev1.SecurityContext{
+					RunAsNonRoot: &runAsNonRoot,
+				},
+			},
+		}
+
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+		container := pod.Spec.Containers[0]
+		if container.SecurityContext == nil {
+			t.Fatal("agent container SecurityContext should not be nil")
+		}
+		if container.SecurityContext.RunAsNonRoot == nil || *container.SecurityContext.RunAsNonRoot != true {
+			t.Errorf("custom SecurityContext RunAsNonRoot should be true")
+		}
+		// Should NOT have the default fields since custom overrides entirely
+		if container.SecurityContext.AllowPrivilegeEscalation != nil {
+			t.Errorf("custom SecurityContext should not have AllowPrivilegeEscalation from default")
+		}
+	})
+
+	t.Run("init containers always get default security context", func(t *testing.T) {
+		task := &kubeopenv1alpha1.Task{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-task",
+				Namespace: "default",
+				UID:       "test-uid",
+			},
+		}
+		task.APIVersion = "kubeopencode.io/v1alpha1"
+		task.Kind = "Task"
+
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+		}
+
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+		for _, ic := range pod.Spec.InitContainers {
+			if ic.SecurityContext == nil {
+				t.Errorf("init container %q SecurityContext should not be nil", ic.Name)
+				continue
+			}
+			if ic.SecurityContext.AllowPrivilegeEscalation == nil || *ic.SecurityContext.AllowPrivilegeEscalation != false {
+				t.Errorf("init container %q AllowPrivilegeEscalation should be false", ic.Name)
+			}
+		}
+	})
+
+	t.Run("podSpec PodSecurityContext is set on pod spec", func(t *testing.T) {
+		task := &kubeopenv1alpha1.Task{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-task",
+				Namespace: "default",
+				UID:       "test-uid",
+			},
+		}
+		task.APIVersion = "kubeopencode.io/v1alpha1"
+		task.Kind = "Task"
+
+		var runAsUser int64 = 1000
+		var fsGroup int64 = 1000
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+			podSpec: &kubeopenv1alpha1.AgentPodSpec{
+				PodSecurityContext: &corev1.PodSecurityContext{
+					RunAsUser: &runAsUser,
+					FSGroup:   &fsGroup,
+				},
+			},
+		}
+
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+		if pod.Spec.SecurityContext == nil {
+			t.Fatal("Pod.Spec.SecurityContext should not be nil")
+		}
+		if pod.Spec.SecurityContext.RunAsUser == nil || *pod.Spec.SecurityContext.RunAsUser != 1000 {
+			t.Errorf("PodSecurityContext.RunAsUser = %v, want 1000", pod.Spec.SecurityContext.RunAsUser)
+		}
+		if pod.Spec.SecurityContext.FSGroup == nil || *pod.Spec.SecurityContext.FSGroup != 1000 {
+			t.Errorf("PodSecurityContext.FSGroup = %v, want 1000", pod.Spec.SecurityContext.FSGroup)
+		}
+	})
+}

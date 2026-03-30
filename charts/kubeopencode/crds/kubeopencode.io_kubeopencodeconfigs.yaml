@@ -83,6 +83,32 @@ spec:
                     minimum: 0
                     type: integer
                 type: object
+              proxy:
+                description: |-
+                  Proxy configures cluster-wide HTTP/HTTPS proxy settings for all generated Pods.
+                  Agent-level proxy settings take precedence over cluster-level settings.
+                  If not specified, no proxy environment variables are injected.
+                properties:
+                  httpProxy:
+                    description: |-
+                      HttpProxy is the URL of the HTTP proxy server.
+                      Sets HTTP_PROXY and http_proxy environment variables.
+                      Example: "http://proxy.corp.example.com:8080"
+                    type: string
+                  httpsProxy:
+                    description: |-
+                      HttpsProxy is the URL of the HTTPS proxy server.
+                      Sets HTTPS_PROXY and https_proxy environment variables.
+                      Example: "http://proxy.corp.example.com:8080"
+                    type: string
+                  noProxy:
+                    description: |-
+                      NoProxy is a comma-separated list of hosts that should bypass the proxy.
+                      Sets NO_PROXY and no_proxy environment variables.
+                      ".svc" and ".cluster.local" are always appended automatically.
+                      Example: "localhost,127.0.0.1,10.0.0.0/8,.corp.example.com"
+                    type: string
+                type: object
               systemImage:
                 description: |-
                   SystemImage configures the KubeOpenCode system image used for internal components

@@ -131,6 +131,11 @@ Agent (execution configuration)
     ├── contexts: []ContextItem      (inline context definitions)
     ├── credentials: []Credential
     ├── caBundle: *CABundleConfig    (custom CA certificates for TLS)
+    ├── proxy: *ProxyConfig          (HTTP/HTTPS proxy settings)
+    │   ├── httpProxy: string        (HTTP proxy URL)
+    │   ├── httpsProxy: string       (HTTPS proxy URL)
+    │   └── noProxy: string          (comma-separated bypass list)
+    ├── imagePullSecrets: []LocalObjectReference  (private registry auth)
     ├── podSpec: *AgentPodSpec
     ├── serviceAccountName: string
     ├── maxConcurrentTasks: *int32   (limit concurrent Tasks, nil/0 = unlimited)
@@ -143,9 +148,13 @@ KubeOpenCodeConfig (system configuration)
     ├── systemImage: *SystemImageConfig       (internal KubeOpenCode components)
     │   ├── image: string                     (default: DefaultKubeOpenCodeImage)
     │   └── imagePullPolicy: PullPolicy       (default: IfNotPresent)
-    └── cleanup: *CleanupConfig               (Task cleanup policies)
-        ├── ttlSecondsAfterFinished: *int32   (TTL for finished Tasks, nil = disabled)
-        └── maxRetainedTasks: *int32          (max Tasks to retain, nil = unlimited)
+    ├── cleanup: *CleanupConfig               (Task cleanup policies)
+    │   ├── ttlSecondsAfterFinished: *int32   (TTL for finished Tasks, nil = disabled)
+    │   └── maxRetainedTasks: *int32          (max Tasks to retain, nil = unlimited)
+    └── proxy: *ProxyConfig                   (cluster-wide HTTP/HTTPS proxy)
+        ├── httpProxy: string                 (HTTP proxy URL)
+        ├── httpsProxy: string                (HTTPS proxy URL)
+        └── noProxy: string                   (comma-separated bypass list)
 ```
 
 ### Complete Type Definitions
@@ -224,17 +233,26 @@ type Agent struct {
 }
 
 type AgentSpec struct {
-    Profile            string           // Brief human-readable summary of Agent's purpose (optional, for documentation/discovery)
-    AgentImage         string           // OpenCode init container image (copies binary to /tools)
-    ExecutorImage      string           // Main worker container image (runs tasks)
-    WorkspaceDir       string           // Working directory (default: "/workspace")
-    Command            []string         // Custom entrypoint command
-    Contexts           []ContextItem    // Inline context definitions
+    Profile            string                      // Brief human-readable summary of Agent's purpose (optional, for documentation/discovery)
+    AgentImage         string                      // OpenCode init container image (copies binary to /tools)
+    ExecutorImage      string                      // Main worker container image (runs tasks)
+    WorkspaceDir       string                      // Working directory (default: "/workspace")
+    Command            []string                    // Custom entrypoint command
+    Contexts           []ContextItem               // Inline context definitions
     Credentials        []Credential
-    CABundle           *CABundleConfig  // Custom CA certificates for private HTTPS/Git servers
-    PodSpec            *AgentPodSpec    // Pod configuration (labels, scheduling, runtime)
+    CABundle           *CABundleConfig              // Custom CA certificates for private HTTPS/Git servers
+    Proxy              *ProxyConfig                 // HTTP/HTTPS proxy settings for all containers
+    ImagePullSecrets   []corev1.LocalObjectReference // Private registry image pull secrets
+    PodSpec            *AgentPodSpec                // Pod configuration (labels, scheduling, runtime, security)
     ServiceAccountName string
-    MaxConcurrentTasks *int32           // Limit concurrent Tasks (nil/0 = unlimited)
+    MaxConcurrentTasks *int32                       // Limit concurrent Tasks (nil/0 = unlimited)
+}
+
+// ProxyConfig configures HTTP/HTTPS proxy for all containers in generated Pods
+type ProxyConfig struct {
+    HttpProxy  string // HTTP proxy URL (sets HTTP_PROXY and http_proxy)
+    HttpsProxy string // HTTPS proxy URL (sets HTTPS_PROXY and https_proxy)
+    NoProxy    string // Comma-separated bypass list (.svc,.cluster.local always appended)
 }
 
 // CABundleConfig configures custom CA certificates for TLS
@@ -257,6 +275,7 @@ type KubeOpenCodeConfig struct {
 type KubeOpenCodeConfigSpec struct {
     SystemImage *SystemImageConfig // System image for internal components
     Cleanup     *CleanupConfig     // Task cleanup configuration
+    Proxy       *ProxyConfig       // Cluster-wide HTTP/HTTPS proxy settings
 }
 
 // SystemImageConfig configures the KubeOpenCode system image
@@ -575,7 +594,14 @@ spec:
 | `spec.caBundle.configMapRef.key` | string | No | Key in ConfigMap (default: "ca-bundle.crt") |
 | `spec.caBundle.secretRef.name` | string | Yes (if secretRef) | Secret name containing the CA bundle |
 | `spec.caBundle.secretRef.key` | string | No | Key in Secret (default: "ca.crt") |
-| `spec.podSpec` | *AgentPodSpec | No | Advanced Pod configuration (labels, scheduling, runtimeClass) |
+| `spec.proxy` | *ProxyConfig | No | HTTP/HTTPS proxy settings for all containers |
+| `spec.proxy.httpProxy` | string | No | HTTP proxy URL (sets HTTP_PROXY and http_proxy) |
+| `spec.proxy.httpsProxy` | string | No | HTTPS proxy URL (sets HTTPS_PROXY and https_proxy) |
+| `spec.proxy.noProxy` | string | No | Comma-separated bypass list (.svc,.cluster.local always appended) |
+| `spec.imagePullSecrets` | []LocalObjectReference | No | Private registry image pull secrets (kubernetes.io/dockerconfigjson type) |
+| `spec.podSpec` | *AgentPodSpec | No | Advanced Pod configuration (labels, scheduling, runtimeClass, security) |
+| `spec.podSpec.securityContext` | *SecurityContext | No | Container-level security context override (default: restricted) |
+| `spec.podSpec.podSecurityContext` | *PodSecurityContext | No | Pod-level security attributes (runAsUser, fsGroup, etc.) |
 | `spec.maxConcurrentTasks` | *int32 | No | Limit concurrent Tasks (nil/0 = unlimited) |
 | `spec.quota` | *QuotaConfig | No | Rate limiting for Task starts |
 | `spec.quota.maxTaskStarts` | int32 | Yes (if quota set) | Maximum Task starts within the window |
@@ -860,6 +886,10 @@ spec:
 | `spec.systemImage.imagePullPolicy` | string | No | Pull policy for system containers: Always, Never, IfNotPresent (default: IfNotPresent) |
 | `spec.cleanup.ttlSecondsAfterFinished` | int32 | No | TTL in seconds for cleaning up finished Tasks. Tasks are deleted after this duration from CompletionTime. |
 | `spec.cleanup.maxRetainedTasks` | int32 | No | Maximum number of completed/failed Tasks to retain per namespace. Oldest Tasks (by CompletionTime) are deleted first. |
+| `spec.proxy` | *ProxyConfig | No | Cluster-wide HTTP/HTTPS proxy settings. Agent-level proxy overrides this. |
+| `spec.proxy.httpProxy` | string | No | HTTP proxy URL |
+| `spec.proxy.httpsProxy` | string | No | HTTPS proxy URL |
+| `spec.proxy.noProxy` | string | No | Comma-separated bypass list (.svc,.cluster.local always appended) |
 
 **Image Pull Policy:**
 

@@ -76,10 +76,10 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// Resolve agent configuration
 	agentCfg := ResolveAgentConfig(&agent)
-	sysCfg := systemConfig{
-		systemImage:           DefaultKubeOpenCodeImage,
-		systemImagePullPolicy: corev1.PullIfNotPresent,
-	}
+	sysCfg := r.getSystemConfig(ctx)
+
+	// Apply cluster-level defaults where Agent doesn't specify its own
+	agentCfg.applySystemDefaults(sysCfg)
 
 	// Process Agent contexts (Text, ConfigMap, Git, Runtime)
 	contextConfigMap, fileMounts, dirMounts, gitMounts, err := r.processAgentContexts(ctx, &agent, agentCfg)
@@ -382,6 +382,11 @@ func setAgentCondition(agent *kubeopenv1alpha1.Agent, conditionType string, stat
 		Reason:             reason,
 		Message:            message,
 	})
+}
+
+// getSystemConfig retrieves the system configuration from KubeOpenCodeConfig.
+func (r *AgentReconciler) getSystemConfig(ctx context.Context) systemConfig {
+	return resolveSystemConfig(ctx, r.Client)
 }
 
 // SetupWithManager sets up the controller with the Manager.

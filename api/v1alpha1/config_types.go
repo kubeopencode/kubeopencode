@@ -40,6 +40,12 @@ type KubeOpenCodeConfigSpec struct {
 	// If not specified, Tasks are not automatically deleted (default behavior).
 	// +optional
 	Cleanup *CleanupConfig `json:"cleanup,omitempty"`
+
+	// Proxy configures cluster-wide HTTP/HTTPS proxy settings for all generated Pods.
+	// Agent-level proxy settings take precedence over cluster-level settings.
+	// If not specified, no proxy environment variables are injected.
+	// +optional
+	Proxy *ProxyConfig `json:"proxy,omitempty"`
 }
 
 // CleanupConfig defines cleanup policies for completed/failed Tasks.
