@@ -448,6 +448,20 @@ agent-push-all: ## Push base and all agent images
 agent-buildx-all: ## Multi-arch build and push all images
 	$(MAKE) -C agents buildx-all
 
+##@ Website
+
+website-install: ## Install website dependencies
+	cd website && pnpm install
+.PHONY: website-install
+
+website-dev: ## Start website dev server
+	cd website && pnpm start
+.PHONY: website-dev
+
+website-build: ## Build website for production
+	cd website && pnpm build
+.PHONY: website-build
+
 ##@ Help
 
 # Display this help

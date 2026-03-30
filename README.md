@@ -3,10 +3,10 @@
 </p>
 
 <p align="center">
-  <em>A Kubernetes-native system for executing AI-powered tasks</em>
+  <em>Kubernetes-native Agent Platform for Teams and Enterprise</em>
 </p>
 
-> **Note**: This project builds on the excellent [OpenCode](https://opencode.ai) AI coding agent. KubeOpenCode is an independent project — not built by or affiliated with the OpenCode team. We're grateful to the OpenCode community for creating such a powerful tool.
+> **Note**: KubeOpenCode builds on the excellent [OpenCode](https://opencode.ai) AI coding agent. OpenCode is great for individual developers — KubeOpenCode makes it work for **teams and enterprises** by adding governance, shared agent configurations, scale, and enterprise infrastructure integration. This is an independent project, not affiliated with the OpenCode team.
 
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
@@ -19,7 +19,13 @@
 
 ## Overview
 
-KubeOpenCode enables you to execute [OpenCode](https://opencode.ai) AI agent tasks using Kubernetes Custom Resources. It provides a simple, declarative, GitOps-friendly approach to running AI coding agents as Kubernetes Pods.
+KubeOpenCode is a Kubernetes-native agent platform that enables teams to deploy, manage, and govern AI coding agents at scale. Built on [OpenCode](https://opencode.ai), it turns individual AI coding capabilities into a shared, enterprise-ready platform.
+
+**Why KubeOpenCode?**
+
+- **For Teams**: Shared agent configurations, batch operations across repositories, concurrency control, and centralized credential management — so your entire team can leverage AI agents with consistent standards.
+- **For Enterprise**: RBAC, private registry support, corporate proxy integration, custom CA certificates, pod security policies, and audit-ready infrastructure — meeting the governance and compliance requirements of enterprise environments.
+- **Kubernetes-Native**: Declarative CRDs, GitOps-friendly, works with Helm/Kustomize/ArgoCD — no new tools to learn, just `kubectl apply`.
 
 ## Community
 

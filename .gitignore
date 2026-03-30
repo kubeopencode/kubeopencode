@@ -22,6 +22,11 @@ node_modules/
 ui/dist/
 ui/coverage/
 
+# Website
+website/node_modules/
+website/build/
+website/.docusaurus/
+
 # OpenCode Web UI (self-hosted build artifacts)
 internal/opencode-app/dist/
 !internal/opencode-app/dist/.gitkeep

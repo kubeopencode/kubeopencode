@@ -1,0 +1,35 @@
+.heroBanner {
+  padding: 4rem 0;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 2rem;
+  }
+}
+
+.heroDescription {
+  font-size: 1.2rem;
+  max-width: 600px;
+  margin: 0 auto 2rem;
+  opacity: 0.9;
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quickExample {
+  padding: 4rem 0;
+  background: var(--ifm-background-surface-color);
+}
+
+.quickExample ul {
+  margin-top: 1rem;
+  line-height: 2;
+}

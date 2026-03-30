@@ -1,0 +1,27 @@
+/**
+ * KubeOpenCode custom theme colors.
+ * Uses a blue-tinted palette inspired by Kubernetes branding.
+ */
+
+:root {
+  --ifm-color-primary: #326ce5;
+  --ifm-color-primary-dark: #2359d4;
+  --ifm-color-primary-darker: #2154c8;
+  --ifm-color-primary-darkest: #1b45a5;
+  --ifm-color-primary-light: #4a7ee8;
+  --ifm-color-primary-lighter: #5686ea;
+  --ifm-color-primary-lightest: #7da1ef;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #5b9bf5;
+  --ifm-color-primary-dark: #3d87f3;
+  --ifm-color-primary-darker: #2e7df2;
+  --ifm-color-primary-darkest: #0d62e6;
+  --ifm-color-primary-light: #79aff7;
+  --ifm-color-primary-lighter: #88b9f8;
+  --ifm-color-primary-lightest: #b5d4fb;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
