@@ -273,5 +273,14 @@ func (h *AgentHandler) setSuspendState(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 
-	writeJSON(w, http.StatusOK, agentToResponse(&agent))
+	resp := agentToResponse(&agent)
+	// Optimistically reflect the spec change in the response since the
+	// controller has not reconciled the status yet.
+	if resp.ServerStatus != nil {
+		resp.ServerStatus.Suspended = suspend
+		if suspend {
+			resp.ServerStatus.Ready = false
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

@@ -145,14 +145,21 @@ function AgentsPage() {
                       </h3>
                       <p className="text-xs text-stone-400 mt-0.5 font-mono">{agent.namespace}</p>
                     </div>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium border ${
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border ${
                       agent.serverStatus?.suspended
                         ? 'bg-amber-50 text-amber-600 border-amber-200'
                         : agent.mode === 'Server'
-                          ? 'bg-violet-50 text-violet-600 border-violet-200'
+                          ? agent.serverStatus?.ready
+                            ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                            : 'bg-violet-50 text-violet-600 border-violet-200'
                           : 'bg-stone-50 text-stone-400 border-stone-200'
                     }`}>
-                      {agent.serverStatus?.suspended ? 'Suspended' : agent.mode}
+                      {agent.mode === 'Server' && !agent.serverStatus?.suspended && (
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          agent.serverStatus?.ready ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
+                        }`} />
+                      )}
+                      {agent.serverStatus?.suspended ? 'Suspended' : agent.mode === 'Server' ? (agent.serverStatus?.ready ? 'Live' : 'Starting') : agent.mode}
                     </span>
                   </div>
 

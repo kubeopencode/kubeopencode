@@ -55,7 +55,7 @@ function ResourceFilter({ onFilterChange, filters, placeholder, children }: Reso
           />
         </div>
 
-        <div className="relative min-w-[180px] sm:min-w-[220px]">
+        <div className="relative flex-1 min-w-[180px]">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" />
             <line x1="7" y1="7" x2="7.01" y2="7" />

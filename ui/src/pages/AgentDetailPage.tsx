@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
@@ -10,33 +10,57 @@ import { DetailSkeleton } from '../components/Skeleton';
 
 function SuspendResumeButton({ namespace, name, suspended, onSuccess }: { namespace: string; name: string; suspended: boolean; onSuccess: () => void }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [optimisticSuspended, setOptimisticSuspended] = useState<boolean | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const displaySuspended = optimisticSuspended !== null ? optimisticSuspended : suspended;
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   const handleClick = async () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
     setLoading(true);
+    setError('');
+    const newState = !displaySuspended;
     try {
-      if (suspended) {
+      if (displaySuspended) {
         await api.resumeAgent(namespace, name);
       } else {
         await api.suspendAgent(namespace, name);
       }
-      onSuccess();
+      setOptimisticSuspended(newState);
+      // Keep button disabled until refetch completes
+      timerRef.current = setTimeout(() => {
+        onSuccess();
+        setOptimisticSuspended(null);
+        setLoading(false);
+      }, 1500);
     } catch (err) {
-      console.error('Failed to update agent suspend state:', err);
-    } finally {
+      setOptimisticSuspended(null);
       setLoading(false);
+      setError(newState ? 'Failed to suspend' : 'Failed to resume');
+      setTimeout(() => setError(''), 3000);
     }
   };
   return (
-    <button
-      onClick={handleClick}
-      disabled={loading}
-      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-        suspended
-          ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-          : 'bg-amber-600 text-white hover:bg-amber-700'
-      } disabled:opacity-50`}
-    >
-      {loading ? '...' : suspended ? 'Resume' : 'Suspend'}
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleClick}
+        disabled={loading}
+        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+          displaySuspended
+            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+            : 'bg-amber-600 text-white hover:bg-amber-700'
+        } disabled:opacity-50`}
+      >
+        {loading ? '...' : displaySuspended ? 'Resume' : 'Suspend'}
+      </button>
+      {error && <span className="text-xs text-red-500">{error}</span>}
+    </div>
   );
 }
 
@@ -149,20 +173,39 @@ function AgentDetailPage() {
                 <p className="mt-2 text-sm text-stone-500 leading-relaxed">{agent.profile}</p>
               )}
             </div>
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border ${
-              agent.mode === 'Server'
-                ? agent.serverStatus?.ready
-                  ? 'bg-violet-50 text-violet-600 border-violet-200'
-                  : 'bg-amber-50 text-amber-600 border-amber-200'
-                : 'bg-stone-50 text-stone-500 border-stone-200'
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${
+            <div className="flex items-center gap-3">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border ${
                 agent.mode === 'Server'
-                  ? agent.serverStatus?.ready ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
-                  : 'bg-stone-400'
-              }`} />
-              {agent.mode} Mode{agent.mode === 'Server' && !agent.serverStatus?.ready ? ' (Not Ready)' : ''}
-            </span>
+                  ? agent.serverStatus?.ready
+                    ? 'bg-violet-50 text-violet-600 border-violet-200'
+                    : 'bg-amber-50 text-amber-600 border-amber-200'
+                  : 'bg-stone-50 text-stone-500 border-stone-200'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  agent.mode === 'Server'
+                    ? agent.serverStatus?.ready ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
+                    : 'bg-stone-400'
+                }`} />
+                {agent.mode} Mode{agent.mode === 'Server' && !agent.serverStatus?.ready ? ' (Not Ready)' : ''}
+              </span>
+              {agent.mode === 'Server' && agent.serverStatus && (
+                <SuspendResumeButton
+                  namespace={agent.namespace}
+                  name={agent.name}
+                  suspended={agent.serverStatus.suspended}
+                  onSuccess={() => refetch()}
+                />
+              )}
+              <Link
+                to={`/tasks/create?agent=${agent.namespace}/${agent.name}`}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                </svg>
+                Create Task
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -274,14 +317,6 @@ function AgentDetailPage() {
                         <span className="text-stone-500">Not Ready</span>
                       )}
                     </dd>
-                  </div>
-                  <div className="col-span-2">
-                    <SuspendResumeButton
-                      namespace={agent.namespace}
-                      name={agent.name}
-                      suspended={agent.serverStatus.suspended}
-                      onSuccess={() => refetch()}
-                    />
                   </div>
                 </div>
               ) : (
@@ -396,18 +431,6 @@ function AgentDetailPage() {
             </div>
           )}
 
-          {/* Create Task CTA */}
-          <div className="pt-4 border-t border-stone-100">
-            <Link
-              to={`/tasks/create?agent=${agent.namespace}/${agent.name}`}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-              </svg>
-              Create Task with this Agent
-            </Link>
-          </div>
         </div>
       </div>
 

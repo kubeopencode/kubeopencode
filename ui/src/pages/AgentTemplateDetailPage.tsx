@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
@@ -6,6 +6,61 @@ import Labels from '../components/Labels';
 import Breadcrumbs from '../components/Breadcrumbs';
 import YamlViewer from '../components/YamlViewer';
 import { DetailSkeleton } from '../components/Skeleton';
+
+function CreateAgentSnippet({ namespace, templateName }: { namespace: string; templateName: string }) {
+  const [copied, setCopied] = useState(false);
+  const yaml = `apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: my-agent
+  namespace: ${namespace}
+spec:
+  templateRef:
+    name: ${templateName}
+  workspaceDir: /workspace
+  profile: "Describe your agent's role here"`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(yaml);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="pt-4 border-t border-stone-100">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Create Agent with this Template</h3>
+        <button
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+        >
+          {copied ? (
+            <>
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Copied
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+              </svg>
+              Copy YAML
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="bg-stone-900 rounded-lg px-4 py-3 border border-stone-700 overflow-x-auto">
+        <code className="text-xs text-emerald-400 font-mono whitespace-pre">{yaml}</code>
+      </pre>
+      <p className="mt-2 text-[11px] text-stone-400">
+        Copy and customize this YAML, then apply with <code className="bg-stone-100 px-1.5 py-0.5 rounded text-stone-500 font-mono">kubectl apply -f agent.yaml</code>
+      </p>
+    </div>
+  );
+}
 
 function AgentTemplateDetailPage() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
@@ -246,6 +301,9 @@ function AgentTemplateDetailPage() {
               </div>
             </div>
           )}
+
+          {/* Create Agent with this Template */}
+          <CreateAgentSnippet namespace={tmpl.namespace} templateName={tmpl.name} />
         </div>
       </div>
 
