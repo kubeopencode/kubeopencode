@@ -14,6 +14,10 @@ rules:
 - apiGroups: ["kubeopencode.io"]
   resources: ["tasks"]
   verbs: ["create", "delete", "patch"]
+# Write access to Agents (create via UI, update for suspend/resume)
+- apiGroups: ["kubeopencode.io"]
+  resources: ["agents"]
+  verbs: ["create", "update"]
 # Read access to Pods (for status and log streaming)
 - apiGroups: [""]
   resources: ["pods"]
