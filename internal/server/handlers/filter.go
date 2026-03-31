@@ -88,3 +88,16 @@ func MatchesNameFilter(name, filter string) bool {
 	}
 	return strings.Contains(strings.ToLower(name), strings.ToLower(filter))
 }
+
+// MatchesPhaseFilter checks if a phase matches the filter, supporting comma-separated values (e.g. "Running,Failed")
+func MatchesPhaseFilter(phase, filter string) bool {
+	if filter == "" {
+		return true
+	}
+	for _, f := range strings.Split(filter, ",") {
+		if strings.EqualFold(phase, strings.TrimSpace(f)) {
+			return true
+		}
+	}
+	return false
+}

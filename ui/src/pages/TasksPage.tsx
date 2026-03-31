@@ -6,19 +6,26 @@ import StatusBadge from '../components/StatusBadge';
 import Labels from '../components/Labels';
 import TimeAgo from '../components/TimeAgo';
 import ResourceFilter from '../components/ResourceFilter';
+import MultiSelect from '../components/MultiSelect';
 import { TableSkeleton } from '../components/Skeleton';
 import { useFilterState } from '../hooks/useFilterState';
 import { useNamespace } from '../contexts/NamespaceContext';
 import { LABEL_AGENT, appendLabelSelector } from '../utils/labels';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
-const PHASE_OPTIONS = ['', 'Pending', 'Queued', 'Running', 'Completed', 'Failed'];
+const PHASE_OPTIONS = [
+  { value: 'Pending', label: 'Pending' },
+  { value: 'Queued', label: 'Queued' },
+  { value: 'Running', label: 'Running' },
+  { value: 'Completed', label: 'Completed' },
+  { value: 'Failed', label: 'Failed' },
+];
 
 function TasksPage() {
   const { namespace, isAllNamespaces } = useNamespace();
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [phaseFilter, setPhaseFilter] = useState('');
+  const [phaseFilter, setPhaseFilter] = useState<string[]>([]);
   const [agentFilter, setAgentFilter] = useState('');
   const [filters, setFilters] = useFilterState();
 
@@ -58,7 +65,7 @@ function TasksPage() {
         sortOrder: 'desc' as const,
         name: filters.name || undefined,
         labelSelector: labelSelector || undefined,
-        phase: phaseFilter || undefined,
+        phase: phaseFilter.length > 0 ? phaseFilter.join(',') : undefined,
       };
       return isAllNamespaces
         ? api.listAllTasks(params)
@@ -90,44 +97,34 @@ function TasksPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="mb-4 space-y-3">
+      <div className="mb-4">
         <ResourceFilter
           filters={filters}
           onFilterChange={setFilters}
           placeholder="Filter tasks by name..."
-        />
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1">
-            {PHASE_OPTIONS.map((phase) => (
-              <button
-                key={phase || 'all'}
-                onClick={() => setPhaseFilter(phase)}
-                className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                  phaseFilter === phase
-                    ? 'bg-stone-900 text-white border-stone-900'
-                    : 'bg-white text-stone-500 border-stone-200 hover:border-stone-300 hover:text-stone-700'
-                }`}
-              >
-                {phase || 'All'}
-              </button>
-            ))}
-          </div>
+        >
+          <MultiSelect
+            options={PHASE_OPTIONS}
+            selected={phaseFilter}
+            onChange={setPhaseFilter}
+            label="Status"
+          />
           {uniqueAgentNames.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-stone-400">Agent:</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-stone-400 font-medium">Agent:</span>
               <select
                 value={agentFilter}
                 onChange={(e) => setAgentFilter(e.target.value)}
-                className="block w-44 rounded-lg border border-stone-200 bg-white shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 py-2"
+                className="block w-36 rounded-md border border-stone-200 bg-stone-50 focus:bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-200 text-xs text-stone-600 py-1.5 transition-colors"
               >
-                <option value="">All Agents</option>
+                <option value="">All</option>
                 {uniqueAgentNames.map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
             </div>
           )}
-        </div>
+        </ResourceFilter>
       </div>
 
       {isLoading ? (

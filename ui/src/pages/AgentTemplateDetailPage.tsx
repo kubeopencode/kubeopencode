@@ -67,18 +67,9 @@ function AgentTemplateDetailPage() {
               <h2 className="font-display text-xl font-bold text-stone-900">{tmpl.name}</h2>
               <p className="text-xs text-stone-400 mt-0.5 font-mono">{tmpl.namespace}</p>
             </div>
-            <div className="flex items-center gap-3">
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border ${
-                tmpl.hasServerConfig
-                  ? 'bg-violet-50 text-violet-600 border-violet-200'
-                  : 'bg-stone-50 text-stone-500 border-stone-200'
-              }`}>
-                {tmpl.hasServerConfig ? 'Server' : 'Pod'} Mode
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border bg-teal-50 text-teal-600 border-teal-200">
-                {tmpl.agentCount} {tmpl.agentCount === 1 ? 'Agent' : 'Agents'}
-              </span>
-            </div>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border bg-teal-50 text-teal-600 border-teal-200">
+              {tmpl.agentCount} {tmpl.agentCount === 1 ? 'Agent' : 'Agents'}
+            </span>
           </div>
         </div>
 

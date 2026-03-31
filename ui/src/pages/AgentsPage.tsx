@@ -75,29 +75,30 @@ function AgentsPage() {
         </div>
       </div>
 
-      <div className="mb-4 space-y-3">
+      <div className="mb-4">
         <ResourceFilter
           filters={filters}
           onFilterChange={setFilters}
           placeholder="Filter agents by name..."
-        />
-        {uniqueTemplateNames.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-stone-400">Template:</span>
-            <select
-              value={templateFilter}
-              onChange={(e) => setTemplateFilter(e.target.value)}
-              className="block w-48 rounded-lg border border-stone-200 bg-white shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 py-2"
-            >
-              <option value="">All</option>
-              <option value={FILTER_HAS_TEMPLATE}>Has Template</option>
-              <option value={FILTER_NO_TEMPLATE}>No Template</option>
-              {uniqueTemplateNames.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </div>
-        )}
+        >
+          {uniqueTemplateNames.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-stone-400 font-medium">Template:</span>
+              <select
+                value={templateFilter}
+                onChange={(e) => setTemplateFilter(e.target.value)}
+                className="block w-40 rounded-md border border-stone-200 bg-stone-50 focus:bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-200 text-xs text-stone-600 py-1.5 transition-colors"
+              >
+                <option value="">All</option>
+                <option value={FILTER_HAS_TEMPLATE}>Has Template</option>
+                <option value={FILTER_NO_TEMPLATE}>No Template</option>
+                {uniqueTemplateNames.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </ResourceFilter>
       </div>
 
       {isLoading ? (

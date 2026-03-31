@@ -3,6 +3,7 @@ import { Outlet, NavLink, Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import { useNamespace } from '../contexts/NamespaceContext';
+import NamespaceSelector from './NamespaceSelector';
 import ToastContainer from './ToastContainer';
 import logoImg from '../assets/logo.png';
 
@@ -320,24 +321,13 @@ function Layout() {
               <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
             </svg>
           </button>
-          <div className="flex items-center gap-2 ml-2 lg:ml-0">
-            <svg className="w-4 h-4 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-              <line x1="12" y1="22.08" x2="12" y2="12" />
-            </svg>
-            <select
+          <div className="ml-2 lg:ml-0">
+            <NamespaceSelector
               value={namespace}
-              onChange={(e) => setNamespace(e.target.value)}
-              className="block w-48 rounded-lg border-stone-200 bg-white shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 py-1.5"
-            >
-              <option value={ALL_NAMESPACES}>All Namespaces</option>
-              {namespacesData?.namespaces.map((ns) => (
-                <option key={ns} value={ns}>
-                  {ns}
-                </option>
-              ))}
-            </select>
+              onChange={setNamespace}
+              namespaces={namespacesData?.namespaces || []}
+              allNamespacesValue={ALL_NAMESPACES}
+            />
           </div>
           <div className="flex-1" />
           {runningCount > 0 && (

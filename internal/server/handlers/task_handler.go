@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -81,7 +80,7 @@ func (h *TaskHandler) listTasks(w http.ResponseWriter, r *http.Request, namespac
 		if !MatchesNameFilter(task.Name, filterOpts.Name) {
 			continue
 		}
-		if filterOpts.Phase != "" && !strings.EqualFold(string(task.Status.Phase), filterOpts.Phase) {
+		if filterOpts.Phase != "" && !MatchesPhaseFilter(string(task.Status.Phase), filterOpts.Phase) {
 			continue
 		}
 		filteredItems = append(filteredItems, task)
