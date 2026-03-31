@@ -39,7 +39,7 @@ function ResourceFilter({ onFilterChange, filters, placeholder, children }: Reso
   const hasFilters = name || labelSelector;
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-visible">
       <div className="flex items-center gap-2 p-3">
         <div className="relative flex-1 min-w-[180px]">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
