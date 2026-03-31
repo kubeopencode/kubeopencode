@@ -429,14 +429,3 @@ var _ = Describe("AgentTemplate E2E Tests", Label(LabelAgentTemplate), func() {
 		})
 	})
 })
-
-// Ensure AgentTemplates are cleaned up in AfterSuite
-var _ = AfterSuite(func() {
-	// Delete all AgentTemplates in test namespace
-	templates := &kubeopenv1alpha1.AgentTemplateList{}
-	if err := k8sClient.List(ctx, templates, client.InNamespace(testNS)); err == nil {
-		for _, t := range templates.Items {
-			_ = k8sClient.Delete(ctx, &t)
-		}
-	}
-})

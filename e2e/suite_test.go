@@ -196,6 +196,14 @@ var _ = AfterSuite(func() {
 		}
 	}
 
+	// Delete all AgentTemplates in test namespace
+	templates := &kubeopenv1alpha1.AgentTemplateList{}
+	if err := k8sClient.List(ctx, templates, client.InNamespace(testNS)); err == nil {
+		for _, t := range templates.Items {
+			_ = k8sClient.Delete(ctx, &t)
+		}
+	}
+
 	// Wait for resources to be cleaned up
 	time.Sleep(5 * time.Second)
 
