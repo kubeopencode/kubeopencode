@@ -624,6 +624,97 @@ When this annotation is detected:
 
 ---
 
+## AgentTemplate (Reusable Agent Configuration)
+
+AgentTemplate defines a reusable base configuration for Agents. It allows teams to maintain
+shared settings (images, contexts, credentials, server config) in one place, while individual
+users create lightweight Agents that reference the template.
+
+### AgentTemplateSpec Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `agentImage` | string | No | OpenCode init container image |
+| `executorImage` | string | No | Worker container image |
+| `attachImage` | string | No | Server-mode attach image |
+| `workspaceDir` | string | Yes | Working directory inside container |
+| `command` | []string | No | Entrypoint command override |
+| `contexts` | []ContextItem | No | Default contexts |
+| `config` | *string | No | OpenCode JSON config |
+| `credentials` | []Credential | No | Secret references |
+| `podSpec` | *AgentPodSpec | No | Advanced pod configuration |
+| `serviceAccountName` | string | Yes | Kubernetes ServiceAccount |
+| `caBundle` | *CABundleConfig | No | Custom CA certificates |
+| `proxy` | *ProxyConfig | No | HTTP/HTTPS proxy settings |
+| `imagePullSecrets` | []LocalObjectReference | No | Private registry secrets |
+| `serverConfig` | *ServerConfig | No | Server mode configuration |
+
+### Merge Strategy
+
+When an Agent references a template via `spec.templateRef`, fields are merged:
+
+- **Scalar/pointer fields**: Agent value wins if non-zero/non-nil; otherwise template value is used
+- **List fields** (contexts, credentials, imagePullSecrets): Agent **replaces** the template list entirely if specified (not appended)
+- **Agent-only fields** (profile, maxConcurrentTasks, quota): Always from Agent (not in template)
+
+### Tracking
+
+Agents that reference a template automatically get the label:
+```
+kubeopencode.io/agent-template: <template-name>
+```
+
+This enables:
+- Querying all Agents using a specific template
+- UI showing bidirectional links between Agents and templates
+- Re-reconciliation of Agents when a template changes
+
+### Example
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: AgentTemplate
+metadata:
+  name: team-python-dev
+  namespace: engineering
+spec:
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  contexts:
+    - name: coding-standards
+      type: Text
+      text: |
+        Always follow PEP 8. Use type hints.
+  credentials:
+    - name: github-token
+      secretRef:
+        name: shared-github-creds
+        key: token
+      env: GITHUB_TOKEN
+  serverConfig:
+    port: 4096
+    persistence:
+      sessions:
+        size: "2Gi"
+---
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: alice-dev-agent
+  namespace: engineering
+spec:
+  templateRef:
+    name: team-python-dev
+  profile: "Alice's personal dev agent"
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  maxConcurrentTasks: 5
+```
+
+---
+
 ## Agent Configuration
 
 ### Agent Image Discovery

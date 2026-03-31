@@ -8,7 +8,7 @@ metadata:
 rules:
 # Read access to KubeOpenCode resources
 - apiGroups: ["kubeopencode.io"]
-  resources: ["tasks", "agents", "kubeopencodeconfigs"]
+  resources: ["tasks", "agents", "agenttemplates", "kubeopencodeconfigs"]
   verbs: ["get", "list", "watch"]
 # Write access to Tasks (create, delete, patch for stop annotation)
 - apiGroups: ["kubeopencode.io"]

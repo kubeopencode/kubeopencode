@@ -167,6 +167,28 @@ function AgentDetailPage() {
         </div>
 
         <div className="px-6 py-5 space-y-6">
+          {/* Template Reference */}
+          {agent.templateRef && (
+            <div>
+              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Template</h3>
+              <Link
+                to={`/templates/${agent.namespace}/${agent.templateRef.name}`}
+                className="inline-flex items-center gap-2 bg-teal-50 rounded-lg px-4 py-2.5 border border-teal-200 hover:border-teal-300 transition-colors group"
+              >
+                <svg className="w-4 h-4 text-teal-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" />
+                  <rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+                <span className="text-sm font-medium text-teal-700 group-hover:text-teal-800">{agent.templateRef.name}</span>
+                <svg className="w-3.5 h-3.5 text-teal-400 group-hover:text-teal-600 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </Link>
+            </div>
+          )}
+
           {/* Configuration */}
           <div>
             <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">Configuration</h3>

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -128,4 +129,60 @@ func writeResourceOutput(w http.ResponseWriter, r *http.Request, statusCode int,
 		return
 	}
 	writeJSON(w, statusCode, jsonResponse)
+}
+
+// credentialsToInfo converts CRD credentials to API response format (without exposing secrets).
+func credentialsToInfo(creds []kubeopenv1alpha1.Credential) []types.CredentialInfo {
+	if len(creds) == 0 {
+		return nil
+	}
+	result := make([]types.CredentialInfo, 0, len(creds))
+	for _, cred := range creds {
+		info := types.CredentialInfo{
+			Name:      cred.Name,
+			SecretRef: cred.SecretRef.Name,
+		}
+		if cred.MountPath != nil {
+			info.MountPath = *cred.MountPath
+		}
+		if cred.Env != nil {
+			info.Env = *cred.Env
+		}
+		result = append(result, info)
+	}
+	return result
+}
+
+// contextsToItems converts CRD context items to API response format.
+func contextsToItems(ctxs []kubeopenv1alpha1.ContextItem) []types.ContextItem {
+	if len(ctxs) == 0 {
+		return nil
+	}
+	result := make([]types.ContextItem, 0, len(ctxs))
+	for _, ctx := range ctxs {
+		result = append(result, types.ContextItem{
+			Name:        ctx.Name,
+			Description: ctx.Description,
+			Type:        string(ctx.Type),
+			MountPath:   ctx.MountPath,
+		})
+	}
+	return result
+}
+
+// conditionsToResponse converts CRD conditions to API response format.
+func conditionsToResponse(conds []metav1.Condition) []types.Condition {
+	if len(conds) == 0 {
+		return nil
+	}
+	result := make([]types.Condition, 0, len(conds))
+	for _, c := range conds {
+		result = append(result, types.Condition{
+			Type:    c.Type,
+			Status:  string(c.Status),
+			Reason:  c.Reason,
+			Message: c.Message,
+		})
+	}
+	return result
 }

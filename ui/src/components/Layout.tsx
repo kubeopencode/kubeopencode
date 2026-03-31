@@ -138,6 +138,26 @@ function Layout() {
             </span>
           )}
         </NavLink>
+
+        <NavLink
+          to="/templates"
+          className={({ isActive }) =>
+            `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all ${
+              isActive || location.pathname.startsWith('/templates/')
+                ? 'bg-primary-50 text-primary-700 font-medium'
+                : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
+            }`
+          }
+          onClick={() => setMobileSidebarOpen(false)}
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+          <span className="flex-1">Templates</span>
+        </NavLink>
       </div>
 
       <div className="flex-1" />
@@ -241,6 +261,22 @@ function Layout() {
                 <line x1="9" y1="16" x2="15" y2="16" />
                 <line x1="2" y1="10" x2="4" y2="10" />
                 <line x1="20" y1="10" x2="22" y2="10" />
+              </svg>
+            </NavLink>
+            <NavLink
+              to="/templates"
+              className={({ isActive }) =>
+                `w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+                  isActive ? 'text-primary-700 bg-primary-50' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
+                }`
+              }
+              title="Templates"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="7" height="7" rx="1" />
               </svg>
             </NavLink>
 

@@ -67,6 +67,7 @@ KubeOpenCode is a Kubernetes-native agent platform that enables teams to deploy,
 - **Agent**: AI agent configuration (HOW to execute) — supports two modes:
   - **Pod Mode** (default): Ephemeral Pod per Task, ideal for batch operations
   - **Server Mode**: Persistent agent service with interactive access, ideal for live coding assistants
+- **AgentTemplate**: Reusable base configuration for Agents — teams maintain shared settings, individuals create personal Agents that inherit from the template
 - **KubeOpenCodeConfig**: System-level configuration (optional)
 
 > **Note**: Workflow orchestration and webhook triggers have been delegated to Argo Workflows and Argo Events respectively. KubeOpenCode focuses on the core Task/Agent abstraction.

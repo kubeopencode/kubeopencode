@@ -10,6 +10,7 @@ rules:
   - kubeopencode.io
   resources:
   - agents
+  - agenttemplates
   - contexts
   - cronworkflows
   - kubeopencodeconfigs
@@ -30,6 +31,7 @@ rules:
   - kubeopencode.io
   resources:
   - agents/status
+  - agenttemplates/status
   - contexts/status
   - cronworkflows/status
   - kubeopencodeconfigs/status
@@ -47,6 +49,7 @@ rules:
   resources:
   - tasks/finalizers
   - agents/finalizers
+  - agenttemplates/finalizers
   verbs:
   - update
 # ConfigMaps and Secrets (full access for task context)

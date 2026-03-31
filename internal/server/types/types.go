@@ -97,6 +97,7 @@ type AgentResponse struct {
 	Name               string            `json:"name"`
 	Namespace          string            `json:"namespace"`
 	Profile            string            `json:"profile,omitempty"`
+	TemplateRef        *AgentReference   `json:"templateRef,omitempty"`
 	ExecutorImage      string            `json:"executorImage,omitempty"`
 	AgentImage         string            `json:"agentImage,omitempty"`
 	WorkspaceDir       string            `json:"workspaceDir,omitempty"`
@@ -111,6 +112,32 @@ type AgentResponse struct {
 	Mode               string            `json:"mode"`
 	Conditions         []Condition       `json:"conditions,omitempty"`
 	ServerStatus       *ServerStatusInfo `json:"serverStatus,omitempty"`
+}
+
+// AgentTemplateResponse represents an agent template in API responses
+type AgentTemplateResponse struct {
+	Name               string            `json:"name"`
+	Namespace          string            `json:"namespace"`
+	AgentImage         string            `json:"agentImage,omitempty"`
+	ExecutorImage      string            `json:"executorImage,omitempty"`
+	WorkspaceDir       string            `json:"workspaceDir,omitempty"`
+	ServiceAccountName string            `json:"serviceAccountName,omitempty"`
+	ContextsCount      int               `json:"contextsCount"`
+	CredentialsCount   int               `json:"credentialsCount"`
+	HasServerConfig    bool              `json:"hasServerConfig"`
+	Credentials        []CredentialInfo  `json:"credentials,omitempty"`
+	Contexts           []ContextItem     `json:"contexts,omitempty"`
+	CreatedAt          time.Time         `json:"createdAt"`
+	Labels             map[string]string `json:"labels,omitempty"`
+	Conditions         []Condition       `json:"conditions,omitempty"`
+	AgentCount         int               `json:"agentCount"`
+}
+
+// AgentTemplateListResponse represents a list of agent templates
+type AgentTemplateListResponse struct {
+	Templates  []AgentTemplateResponse `json:"templates"`
+	Total      int                     `json:"total"`
+	Pagination *Pagination             `json:"pagination,omitempty"`
 }
 
 // ServerStatusInfo represents server status for Server-mode agents

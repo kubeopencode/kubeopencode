@@ -91,6 +91,7 @@ export interface Agent {
   name: string;
   namespace: string;
   profile?: string;
+  templateRef?: AgentReference;
   executorImage?: string;
   agentImage?: string;
   workspaceDir?: string;
@@ -105,6 +106,30 @@ export interface Agent {
   mode: string;
   conditions?: Condition[];
   serverStatus?: ServerStatusInfo;
+}
+
+export interface AgentTemplate {
+  name: string;
+  namespace: string;
+  agentImage?: string;
+  executorImage?: string;
+  workspaceDir?: string;
+  serviceAccountName?: string;
+  contextsCount: number;
+  credentialsCount: number;
+  hasServerConfig: boolean;
+  credentials?: CredentialInfo[];
+  contexts?: ContextItem[];
+  createdAt: string;
+  labels?: Record<string, string>;
+  conditions?: Condition[];
+  agentCount: number;
+}
+
+export interface AgentTemplateListResponse {
+  templates: AgentTemplate[];
+  total: number;
+  pagination?: Pagination;
 }
 
 export interface AgentListResponse {
@@ -247,6 +272,38 @@ export const api = {
 
   resumeAgent: (namespace: string, name: string) =>
     request<Agent>(`/namespaces/${namespace}/agents/${name}/resume`, { method: 'POST' }),
+
+  // Agent Templates
+  listAllAgentTemplates: (params?: FilterParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<AgentTemplateListResponse>(`/agenttemplates${queryString ? `?${queryString}` : ''}`);
+  },
+
+  listAgentTemplates: (namespace: string, params?: FilterParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<AgentTemplateListResponse>(`/namespaces/${namespace}/agenttemplates${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getAgentTemplate: (namespace: string, name: string) =>
+    request<AgentTemplate>(`/namespaces/${namespace}/agenttemplates/${name}`),
+
+  getAgentTemplateYaml: async (namespace: string, name: string): Promise<string> => {
+    const response = await fetch(`${API_BASE}/namespaces/${namespace}/agenttemplates/${name}?output=yaml`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.text();
+  },
 
 };
 

@@ -187,6 +187,14 @@ func (s *Server) setupRoutes() *chi.Mux {
 			r.Get("/{name}/logs", taskHandler.GetLogs)
 		})
 
+		// AgentTemplate endpoints
+		agentTemplateHandler := handlers.NewAgentTemplateHandler(s.k8sClient)
+		r.Get("/agenttemplates", agentTemplateHandler.ListAll)
+		r.Route("/namespaces/{namespace}/agenttemplates", func(r chi.Router) {
+			r.Get("/", agentTemplateHandler.List)
+			r.Get("/{name}", agentTemplateHandler.Get)
+		})
+
 		// Agent endpoints
 		r.Get("/agents", agentHandler.ListAll)
 		r.Route("/namespaces/{namespace}/agents", func(r chi.Router) {

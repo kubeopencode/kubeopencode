@@ -27,7 +27,7 @@ metadata:
 rules:
 # View tasks and agents
 - apiGroups: ["kubeopencode.io"]
-  resources: ["tasks", "agents"]
+  resources: ["tasks", "agents", "agenttemplates"]
   verbs: ["get", "list", "watch"]
 # Create, stop, and delete tasks
 - apiGroups: ["kubeopencode.io"]

@@ -6,6 +6,8 @@ import TaskDetailPage from './pages/TaskDetailPage';
 import TaskCreatePage from './pages/TaskCreatePage';
 import AgentsPage from './pages/AgentsPage';
 import AgentDetailPage from './pages/AgentDetailPage';
+import AgentTemplatesPage from './pages/AgentTemplatesPage';
+import AgentTemplateDetailPage from './pages/AgentTemplateDetailPage';
 
 function App() {
   return (
@@ -18,6 +20,8 @@ function App() {
           <Route path="tasks/:namespace/:name" element={<TaskDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="agents/:namespace/:name" element={<AgentDetailPage />} />
+          <Route path="templates" element={<AgentTemplatesPage />} />
+          <Route path="templates/:namespace/:name" element={<AgentTemplateDetailPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

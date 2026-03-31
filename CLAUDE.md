@@ -50,7 +50,8 @@ Webhook/event handling has been delegated to [Argo Events](https://argoproj.gith
 
 1. **Task** - Single task execution (the primary API)
 2. **Agent** - AI agent configuration (HOW to execute)
-3. **KubeOpenCodeConfig** - Cluster-scoped system-level configuration (optional)
+3. **AgentTemplate** - Reusable base configuration for Agents (optional)
+4. **KubeOpenCodeConfig** - Cluster-scoped system-level configuration (optional)
 
 > **Note**: Workflow orchestration and webhook triggers have been delegated to Argo Workflows and Argo Events respectively. KubeOpenCode focuses on the core Task/Agent abstraction.
 
@@ -292,6 +293,7 @@ kubeopencode/
 │   └── devbox/          # Universal development environment (executor)
 ├── api/v1alpha1/          # CRD type definitions
 │   ├── types.go           # Main API types (Task, Agent, KubeOpenCodeConfig)
+│   ├── agenttemplate_types.go  # AgentTemplate CRD types
 │   ├── register.go        # Scheme registration
 │   └── zz_generated.deepcopy.go  # Generated deepcopy
 ├── cmd/kubeopencode/          # Unified binary entry point
@@ -302,6 +304,9 @@ kubeopencode/
 │   └── url_fetch.go       # URL context fetching subcommand
 ├── internal/controller/   # Controller reconcilers
 │   ├── task_controller.go # Task reconciliation logic
+│   ├── agent_controller.go # Agent reconciliation (Server mode + template labels)
+│   ├── agenttemplate_controller.go # AgentTemplate reconciliation
+│   ├── template_merge.go  # Template + Agent merge logic
 │   ├── pod_builder.go     # Pod creation from Task specs
 │   └── context_resolver.go # Context resolution logic
 ├── deploy/               # Kubernetes manifests
@@ -435,9 +440,72 @@ internal/controller/
 4. Update controller's `resolveContextContent` function to handle new type
 5. Update documentation
 
+### AgentTemplate (Reusable Agent Configuration)
+
+AgentTemplate defines a reusable base configuration for Agents. Teams can maintain a single
+AgentTemplate with shared settings and individual users can create Agents that reference it.
+
+**Key concepts:**
+- Namespace-scoped (same namespace as Agents that reference it)
+- Agent references template via `spec.templateRef.name`
+- Label `kubeopencode.io/agent-template: <name>` is automatically set on referencing Agents
+- Controller watches template changes and re-reconciles dependent Agents
+
+**AgentTemplate spec fields** (same as Agent minus instance-specific fields):
+- `agentImage`, `executorImage`, `attachImage`, `workspaceDir` (required), `command`
+- `contexts`, `config`, `credentials`
+- `podSpec`, `serviceAccountName` (required)
+- `caBundle`, `proxy`, `imagePullSecrets`, `serverConfig`
+
+**Merge strategy** (when Agent references a template):
+- Scalar/pointer fields: Agent wins if non-zero/non-nil, else template value
+- List fields (contexts, credentials, imagePullSecrets): Agent **replaces** template if non-nil
+- `workspaceDir` and `serviceAccountName` are required on both AgentTemplate and Agent
+
+**Agent-only fields** (NOT in template):
+- `profile` (each Agent describes itself)
+- `maxConcurrentTasks`, `quota` (per-instance limits)
+- `templateRef` (the reference itself)
+
+**Example:**
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: AgentTemplate
+metadata:
+  name: team-base-config
+spec:
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  contexts:
+    - name: coding-standards
+      type: Text
+      text: "Always use signed commits..."
+  credentials:
+    - name: github-token
+      secretRef:
+        name: github-creds
+        key: token
+      env: GITHUB_TOKEN
+---
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: alice-agent
+spec:
+  templateRef:
+    name: team-base-config
+  profile: "Alice's personal development agent"
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  maxConcurrentTasks: 3
+```
+
 ### Agent Configuration
 
 Key Agent spec fields:
+- `templateRef`: Optional reference to an AgentTemplate in the same namespace
 - `profile`: Optional brief human-readable summary of the Agent's purpose and capabilities (for documentation/discovery, visible via `kubectl get agents -o wide`)
 - `agentImage`: OpenCode init container image (copies binary to `/tools`)
 - `executorImage`: Main worker container image for task execution

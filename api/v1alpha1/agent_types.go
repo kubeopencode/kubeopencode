@@ -183,8 +183,21 @@ type ProxyConfig struct {
 	NoProxy string `json:"noProxy,omitempty"`
 }
 
+// AgentTemplateReference is a reference to an AgentTemplate in the same namespace.
+type AgentTemplateReference struct {
+	// Name of the AgentTemplate.
+	// +required
+	Name string `json:"name"`
+}
+
 // AgentSpec defines agent configuration
 type AgentSpec struct {
+	// TemplateRef references an AgentTemplate in the same namespace.
+	// When set, the Agent inherits configuration from the template.
+	// Agent-level fields override template values (scalar: non-zero wins; lists: replace).
+	// +optional
+	TemplateRef *AgentTemplateReference `json:"templateRef,omitempty"`
+
 	// Profile is a brief, human-readable summary of the Agent's purpose and capabilities.
 	// This is for documentation and discovery only — it has no functional effect on execution.
 	// Visible via `kubectl get agents -o wide` for quick identification.

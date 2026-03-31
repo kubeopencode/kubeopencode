@@ -512,6 +512,71 @@ When this annotation is detected:
 
 **Note:** Logs are lost when a Task is stopped. For log persistence, use an external log aggregation system.
 
+## Agent Templates
+
+AgentTemplate allows teams to define reusable base configurations for Agents. One person
+maintains the shared template (images, contexts, credentials, server config), and team members
+create personal Agents that reference it.
+
+### Creating a Template
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: AgentTemplate
+metadata:
+  name: team-config
+spec:
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  contexts:
+    - name: coding-standards
+      type: Text
+      text: "Follow team coding standards..."
+  credentials:
+    - name: github-token
+      secretRef:
+        name: shared-github-creds
+        key: token
+      env: GITHUB_TOKEN
+```
+
+### Creating an Agent from a Template
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: my-agent
+spec:
+  templateRef:
+    name: team-config
+  profile: "My personal development agent"
+  # Required fields (even with template):
+  executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  # Instance-specific settings:
+  maxConcurrentTasks: 3
+```
+
+### Merge Behavior
+
+When an Agent references a template:
+- **Scalar fields** (images, workspaceDir, config, etc.): Agent wins if set, otherwise template value
+- **List fields** (contexts, credentials, imagePullSecrets): Agent's list **replaces** the template's (not appended)
+- **Agent-only fields** (profile, maxConcurrentTasks, quota): Always from Agent
+
+### Tracking
+
+Agents using a template automatically get the label `kubeopencode.io/agent-template: <name>`,
+enabling template-based queries:
+
+```bash
+# List all agents using a template
+kubectl get agents -l kubeopencode.io/agent-template=team-config
+```
+
 ## Concurrency Control
 
 Limit concurrent tasks per Agent when using rate-limited AI services:

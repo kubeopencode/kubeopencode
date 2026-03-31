@@ -2239,6 +2239,18 @@ spec:
                   Users are responsible for creating the ServiceAccount and appropriate RBAC bindings
                   based on what permissions their agent needs.
                 type: string
+              templateRef:
+                description: |-
+                  TemplateRef references an AgentTemplate in the same namespace.
+                  When set, the Agent inherits configuration from the template.
+                  Agent-level fields override template values (scalar: non-zero wins; lists: replace).
+                properties:
+                  name:
+                    description: Name of the AgentTemplate.
+                    type: string
+                required:
+                - name
+                type: object
               workspaceDir:
                 description: |-
                   WorkspaceDir specifies the working directory inside the agent container.

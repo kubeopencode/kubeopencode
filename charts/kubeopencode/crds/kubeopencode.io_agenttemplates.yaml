@@ -4,34 +4,30 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
-  name: agents.kubeopencode.io
+  name: agenttemplates.kubeopencode.io
 spec:
   group: kubeopencode.io
   names:
-    kind: Agent
-    listKind: AgentList
-    plural: agents
+    kind: AgentTemplate
+    listKind: AgentTemplateList
+    plural: agenttemplates
     shortNames:
-    - ag
-    singular: agent
+    - agt
+    singular: agenttemplate
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.profile
-      name: Profile
-      priority: 1
-      type: string
     - jsonPath: .spec.executorImage
       name: Image
+      priority: 1
+      type: string
+    - jsonPath: .spec.workspaceDir
+      name: WorkspaceDir
       priority: 1
       type: string
     - jsonPath: .spec.serviceAccountName
       name: ServiceAccount
       type: string
-    - jsonPath: .spec.maxConcurrentTasks
-      name: MaxTasks
-      priority: 1
-      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -39,9 +35,10 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Agent defines the AI agent configuration for task execution.
-          Agent = AI agent + permissions + tools + infrastructure
-          This is the execution black box - Task creators don't need to understand execution details.
+          AgentTemplate defines a reusable base configuration for Agents.
+          Teams can maintain a single AgentTemplate with shared settings (images, contexts,
+          credentials, etc.) and individual users can create Agents that reference the
+          template, inheriting its configuration while optionally overriding specific fields.
         properties:
           apiVersion:
             description: |-
@@ -61,39 +58,22 @@ spec:
           metadata:
             type: object
           spec:
-            description: Spec defines the agent configuration
+            description: Spec defines the template configuration
             properties:
               agentImage:
                 description: |-
                   AgentImage specifies the OpenCode init container image.
                   This image contains the OpenCode binary that gets copied to /tools volume.
-                  The init container runs this image and copies the opencode binary to /tools/opencode.
                   If not specified, defaults to "quay.io/kubeopencode/kubeopencode-agent-opencode:latest".
                 type: string
               attachImage:
                 description: |-
                   AttachImage specifies the lightweight image used for Server-mode --attach Pods.
-                  When ServerConfig is set, Tasks create Pods that run `opencode run --attach <server-url>`.
-                  These Pods only need the OpenCode binary and network access, not the full development
-                  environment. Using a minimal image (~25MB) instead of devbox (~1GB) significantly
-                  reduces image pull time and resource usage.
-
                   If not specified, defaults to "quay.io/kubeopencode/kubeopencode-agent-attach:latest".
                   This field is ignored when ServerConfig is nil (Pod mode).
                 type: string
               caBundle:
-                description: |-
-                  CABundle configures custom CA certificates for TLS verification.
-                  The CA bundle is mounted into all init containers (git-init, url-fetch, context-init)
-                  and the worker container, enabling HTTPS access to servers using private/self-signed CAs.
-
-                  Compatible with cert-manager trust-manager Bundle resources (ConfigMap with "ca-bundle.crt" key).
-
-                  Example:
-                    caBundle:
-                      configMapRef:
-                        name: custom-ca-bundle
-                        key: ca-bundle.crt
+                description: CABundle configures custom CA certificates for TLS verification.
                 properties:
                   configMapRef:
                     description: |-
@@ -135,49 +115,17 @@ spec:
               command:
                 description: |-
                   Command specifies the entrypoint command for the agent container.
-                  This is optional and overrides the default ENTRYPOINT of the container image.
-
                   If not specified, defaults to:
                     ["sh", "-c", "/tools/opencode run \"$(cat ${WORKSPACE_DIR}/task.md)\""]
-
-                  The command defines HOW the agent executes tasks. Most users should not
-                  need to customize this. Override only if you need custom execution behavior.
-
-                  ## Example
-
-                    command: ["sh", "-c", "/tools/opencode run --format json \"$(cat /workspace/task.md)\""]
                 items:
                   type: string
                 type: array
               config:
-                description: |-
-                  Config provides OpenCode configuration as a JSON string.
-                  This configuration is written to /tools/opencode.json and the OPENCODE_CONFIG
-                  environment variable is set to point to this file.
-
-                  The config should be a valid JSON object compatible with OpenCode's config schema.
-                  See: https://opencode.ai/config.json for the schema.
-
-                  Example:
-                    config: |
-                      {
-                        "$schema": "https://opencode.ai/config.json",
-                        "model": "google/gemini-2.5-pro",
-                        "small_model": "google/gemini-2.5-flash"
-                      }
+                description: Config provides OpenCode configuration as a JSON string.
                 type: string
               contexts:
-                description: |-
-                  Contexts provides default contexts for all tasks using this Agent.
-                  These have the lowest priority in context merging.
-
-                  Context priority (lowest to highest):
-                    1. Agent.contexts (Agent-level defaults)
-                    2. Task.contexts (Task-specific contexts)
-                    3. Task.description (highest, becomes ${WORKSPACE_DIR}/task.md)
-
-                  Use this for organization-wide defaults like coding standards, security policies,
-                  or common tool configurations that should apply to all tasks.
+                description: Contexts provides default contexts for all tasks using
+                  Agents derived from this template.
                 items:
                   description: |-
                     ContextItem defines context with content and mount path.
@@ -378,16 +326,8 @@ spec:
                     rule: self.type != 'Git' || has(self.mountPath)
                 type: array
               credentials:
-                description: |-
-                  Credentials defines secrets that should be available to the agent.
-                  Similar to GitHub Actions secrets, these can be mounted as files or
-                  exposed as environment variables.
-
-                  Example use cases:
-                    - GitHub token for repository access (env: GITHUB_TOKEN)
-                    - SSH keys for git operations (file: ~/.ssh/id_rsa)
-                    - API keys for external services (env: ANTHROPIC_API_KEY)
-                    - Cloud credentials (file: ~/.config/gcloud/credentials.json)
+                description: Credentials defines secrets that should be available
+                  to the agent.
                 items:
                   description: |-
                     Credential represents a secret that should be available to the agent.
@@ -457,25 +397,12 @@ spec:
               executorImage:
                 description: |-
                   ExecutorImage specifies the main worker container image for task execution.
-                  This is the development environment where tasks actually run.
-                  The container uses /tools/opencode (provided by agentImage init container) to execute AI tasks.
                   If not specified, defaults to "quay.io/kubeopencode/kubeopencode-agent-devbox:latest".
                 type: string
               imagePullSecrets:
                 description: |-
                   ImagePullSecrets is a list of references to secrets for pulling container images
-                  from private registries. These are added to the Pod spec's imagePullSecrets field.
-
-                  This is useful when agentImage, executorImage, or attachImage are hosted in
-                  private registries that require authentication (e.g., Harbor, AWS ECR, GCR).
-
-                  The referenced Secrets must exist in the same namespace as the Agent and be
-                  of type kubernetes.io/dockerconfigjson.
-
-                  Example:
-                    imagePullSecrets:
-                      - name: harbor-registry-secret
-                      - name: gcr-secret
+                  from private registries.
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the
@@ -493,27 +420,9 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
-              maxConcurrentTasks:
-                description: |-
-                  MaxConcurrentTasks limits the number of Tasks that can run concurrently
-                  using this Agent. When the limit is reached, new Tasks will enter Queued
-                  phase until capacity becomes available.
-
-                  This is useful when the Agent uses backend AI services with rate limits
-                  (e.g., Claude, Gemini API quotas) to prevent overwhelming the service.
-
-                  - nil or 0: unlimited (default behavior, no concurrency limit)
-                  - positive number: maximum number of Tasks that can be in Running phase
-
-                  Example:
-                    maxConcurrentTasks: 3  # Only 3 Tasks can run at once
-                format: int32
-                type: integer
               podSpec:
-                description: |-
-                  PodSpec defines advanced Pod configuration for agent pods.
-                  This includes labels, scheduling, runtime class, and other Pod-level settings.
-                  Use this for fine-grained control over how agent pods are created.
+                description: PodSpec defines advanced Pod configuration for agent
+                  pods.
                 properties:
                   labels:
                     additionalProperties:
@@ -2071,31 +1980,9 @@ spec:
                         type: object
                     type: object
                 type: object
-              profile:
-                description: |-
-                  Profile is a brief, human-readable summary of the Agent's purpose and capabilities.
-                  This is for documentation and discovery only — it has no functional effect on execution.
-                  Visible via `kubectl get agents -o wide` for quick identification.
-
-                  Example:
-                    profile: "Full-stack development agent with GitHub and AWS access"
-                type: string
               proxy:
-                description: |-
-                  Proxy configures HTTP/HTTPS proxy settings for all containers in generated Pods.
-                  When set, HTTP_PROXY, HTTPS_PROXY, NO_PROXY (and lowercase variants) environment
-                  variables are injected into all init containers and the worker container.
-
-                  This is useful in enterprise environments where all outbound traffic must go
-                  through a corporate proxy server.
-
-                  Agent-level proxy overrides cluster-level proxy from KubeOpenCodeConfig.
-
-                  Example:
-                    proxy:
-                      httpProxy: "http://proxy.corp.example.com:8080"
-                      httpsProxy: "http://proxy.corp.example.com:8080"
-                      noProxy: "localhost,127.0.0.1,10.0.0.0/8"
+                description: Proxy configures HTTP/HTTPS proxy settings for all containers
+                  in generated Pods.
                 properties:
                   httpProxy:
                     description: |-
@@ -2117,57 +2004,9 @@ spec:
                       Example: "localhost,127.0.0.1,10.0.0.0/8,.corp.example.com"
                     type: string
                 type: object
-              quota:
-                description: |-
-                  Quota defines rate limiting for Task starts within a sliding time window.
-                  When configured, Tasks will be queued if the quota is exceeded.
-                  This is complementary to maxConcurrentTasks:
-                    - maxConcurrentTasks: limits how many Tasks run at once
-                    - quota: limits how quickly new Tasks can start
-
-                  Example:
-                    quota:
-                      maxTaskStarts: 10
-                      windowSeconds: 3600  # 10 tasks per hour
-                properties:
-                  maxTaskStarts:
-                    description: MaxTaskStarts is the maximum number of Task starts
-                      allowed within the window.
-                    format: int32
-                    minimum: 1
-                    type: integer
-                  windowSeconds:
-                    description: |-
-                      WindowSeconds defines the sliding window duration in seconds.
-                      For example, 3600 (1 hour) means "max N tasks per hour".
-                    format: int32
-                    maximum: 86400
-                    minimum: 60
-                    type: integer
-                required:
-                - maxTaskStarts
-                - windowSeconds
-                type: object
               serverConfig:
-                description: |-
-                  ServerConfig enables Server mode for this Agent.
-                  When set, the Agent runs as a persistent OpenCode server (Deployment + Service)
-                  instead of creating ephemeral Pods per Task.
-
-                  Server mode is useful for:
-                    - Long-running agents (e.g., Slack bots, interactive assistants)
-                    - Shared context across Tasks (pre-loaded repositories, faster startup)
-                    - Avoiding cold start latency for each Task
-
-                  When ServerConfig is nil (default), the Agent operates in Pod mode:
-                  each Task creates a new Pod that runs to completion.
-
-                  In Server mode, Tasks create lightweight Pods that use `opencode run --attach`
-                  to connect to the persistent server.
-
-                  Example:
-                    serverConfig:
-                      port: 4096
+                description: ServerConfig enables Server mode for Agents derived from
+                  this template.
                 properties:
                   persistence:
                     description: |-
@@ -2231,31 +2070,13 @@ spec:
                     type: boolean
                 type: object
               serviceAccountName:
-                description: |-
-                  ServiceAccountName specifies the Kubernetes ServiceAccount to use for agent pods.
-                  This controls what cluster resources the agent can access via RBAC.
-
-                  The ServiceAccount must exist in the Agent's namespace (where Pods run).
-                  Users are responsible for creating the ServiceAccount and appropriate RBAC bindings
-                  based on what permissions their agent needs.
+                description: ServiceAccountName specifies the Kubernetes ServiceAccount
+                  to use for agent pods.
                 type: string
-              templateRef:
-                description: |-
-                  TemplateRef references an AgentTemplate in the same namespace.
-                  When set, the Agent inherits configuration from the template.
-                  Agent-level fields override template values (scalar: non-zero wins; lists: replace).
-                properties:
-                  name:
-                    description: Name of the AgentTemplate.
-                    type: string
-                required:
-                - name
-                type: object
               workspaceDir:
                 description: |-
                   WorkspaceDir specifies the working directory inside the agent container.
                   This is where task.md and context files are mounted.
-                  The agent image must support the WORKSPACE_DIR environment variable.
                 minLength: 1
                 pattern: ^/.*
                 type: string
@@ -2264,11 +2085,11 @@ spec:
             - workspaceDir
             type: object
           status:
-            description: Status represents the current status of the Agent
+            description: Status represents the current status of the AgentTemplate
             properties:
               conditions:
                 description: Conditions represent the latest available observations
-                  of the Agent's state.
+                  of the AgentTemplate's state.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -2332,66 +2153,6 @@ spec:
                   by the controller.
                 format: int64
                 type: integer
-              serverStatus:
-                description: |-
-                  ServerStatus contains the status of the OpenCode server when running in Server mode.
-                  This is only populated when spec.serverConfig is set.
-                properties:
-                  deploymentName:
-                    description: |-
-                      DeploymentName is the name of the Kubernetes Deployment running the server.
-                      Format: "{agent-name}-server"
-                    type: string
-                  ready:
-                    description: Ready indicates whether the server deployment is
-                      ready to accept tasks.
-                    type: boolean
-                  serviceName:
-                    description: |-
-                      ServiceName is the name of the Kubernetes Service exposing the server.
-                      Format: "{agent-name}"
-                    type: string
-                  suspended:
-                    description: |-
-                      Suspended indicates the server is intentionally scaled to 0 replicas.
-                      When true, Ready is always false. Use this to distinguish "suspended"
-                      from "not ready due to an issue".
-                    type: boolean
-                  url:
-                    description: |-
-                      URL is the in-cluster URL to reach the OpenCode server.
-                      Format: "http://{service-name}.{namespace}.svc.cluster.local:{port}"
-                      Tasks use this URL with `opencode run --attach` to connect to the server.
-                    type: string
-                type: object
-              taskStartHistory:
-                description: |-
-                  TaskStartHistory tracks recent Task starts for quota enforcement.
-                  The controller prunes entries older than the quota window automatically.
-                  This is only populated when quota is configured on the Agent.
-                items:
-                  description: |-
-                    TaskStartRecord represents a record of a Task start for quota tracking.
-                    Stored in AgentStatus to persist across controller restarts.
-                  properties:
-                    startTime:
-                      description: StartTime is when the Task transitioned to Running
-                        phase.
-                      format: date-time
-                      type: string
-                    taskName:
-                      description: TaskName is the name of the Task that was started.
-                      type: string
-                    taskNamespace:
-                      description: TaskNamespace is the namespace of the Task.
-                      type: string
-                  required:
-                  - startTime
-                  - taskName
-                  - taskNamespace
-                  type: object
-                type: array
-                x-kubernetes-list-type: atomic
             type: object
         required:
         - spec

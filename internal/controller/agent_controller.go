@@ -13,10 +13,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
@@ -66,9 +69,22 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	// Only handle Server-mode Agents
-	if !IsServerMode(&agent) {
-		// Not a Server-mode Agent, clean up any stale server resources
+	// Manage agent-template label
+	if err := r.reconcileTemplateLabel(ctx, &agent); err != nil {
+		logger.Error(err, "Failed to reconcile template label")
+		return ctrl.Result{}, err
+	}
+
+	// Resolve agent configuration (merge with template if referenced).
+	// Must happen before IsServerMode check because template may provide serverConfig.
+	agentCfg, err := r.resolveAgentConfig(ctx, &agent)
+	if err != nil {
+		logger.Error(err, "Failed to resolve agent config")
+		return ctrl.Result{}, err
+	}
+
+	// Only handle Server-mode Agents (check merged config, not just agent spec)
+	if agentCfg.serverConfig == nil {
 		if err := r.cleanupServerResources(ctx, &agent); err != nil {
 			logger.Error(err, "Failed to cleanup server resources")
 			return ctrl.Result{}, err
@@ -77,9 +93,6 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	logger.Info("Reconciling Server-mode Agent", "agent", agent.Name)
-
-	// Resolve agent configuration
-	agentCfg := ResolveAgentConfig(&agent)
 	sysCfg := r.getSystemConfig(ctx)
 
 	// Apply cluster-level defaults where Agent doesn't specify its own
@@ -477,6 +490,75 @@ func (r *AgentReconciler) getSystemConfig(ctx context.Context) systemConfig {
 	return resolveSystemConfig(ctx, r.Client)
 }
 
+// LabelAgentTemplate is the label key used to track which AgentTemplate an Agent references.
+const LabelAgentTemplate = "kubeopencode.io/agent-template"
+
+// resolveAgentConfig resolves the Agent configuration, merging with template if referenced.
+func (r *AgentReconciler) resolveAgentConfig(ctx context.Context, agent *kubeopenv1alpha1.Agent) (agentConfig, error) {
+	return ResolveAgentConfigFromTemplate(ctx, r.Client, agent)
+}
+
+// reconcileTemplateLabel ensures the agent-template label is consistent with the templateRef.
+// Uses Patch instead of Update to avoid unnecessary reconciliation loops.
+func (r *AgentReconciler) reconcileTemplateLabel(ctx context.Context, agent *kubeopenv1alpha1.Agent) error {
+	if agent.Labels == nil {
+		agent.Labels = make(map[string]string)
+	}
+
+	var desiredValue string
+	if agent.Spec.TemplateRef != nil {
+		desiredValue = agent.Spec.TemplateRef.Name
+	}
+
+	currentValue := agent.Labels[LabelAgentTemplate]
+	if desiredValue == currentValue {
+		return nil
+	}
+
+	patch := client.MergeFrom(agent.DeepCopy())
+
+	if desiredValue == "" {
+		delete(agent.Labels, LabelAgentTemplate)
+	} else {
+		agent.Labels[LabelAgentTemplate] = desiredValue
+	}
+
+	if err := r.Patch(ctx, agent, patch); err != nil {
+		return fmt.Errorf("failed to patch template label: %w", err)
+	}
+	return nil
+}
+
+// findAgentsForTemplate returns reconcile requests for all Agents referencing
+// the given AgentTemplate. Used to re-reconcile Agents when a template changes.
+func (r *AgentReconciler) findAgentsForTemplate(ctx context.Context, obj client.Object) []reconcile.Request {
+	logger := log.FromContext(ctx)
+	tmpl, ok := obj.(*kubeopenv1alpha1.AgentTemplate)
+	if !ok {
+		return nil
+	}
+
+	var agentList kubeopenv1alpha1.AgentList
+	if err := r.List(ctx, &agentList,
+		client.InNamespace(tmpl.Namespace),
+		client.MatchingLabels{LabelAgentTemplate: tmpl.Name},
+	); err != nil {
+		logger.Error(err, "Failed to list Agents for template", "template", tmpl.Name)
+		return nil
+	}
+
+	requests := make([]reconcile.Request, len(agentList.Items))
+	for i, agent := range agentList.Items {
+		requests[i] = reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      agent.Name,
+				Namespace: agent.Namespace,
+			},
+		}
+	}
+	return requests
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *AgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -485,5 +567,6 @@ func (r *AgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
+		Watches(&kubeopenv1alpha1.AgentTemplate{}, handler.EnqueueRequestsFromMapFunc(r.findAgentsForTemplate)).
 		Complete(r)
 }

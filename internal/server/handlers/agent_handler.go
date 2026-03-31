@@ -201,6 +201,10 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		Mode:             mode,
 	}
 
+	if agent.Spec.TemplateRef != nil {
+		resp.TemplateRef = &types.AgentReference{Name: agent.Spec.TemplateRef.Name}
+	}
+
 	if agent.Spec.MaxConcurrentTasks != nil {
 		resp.MaxConcurrentTasks = agent.Spec.MaxConcurrentTasks
 	}
@@ -212,15 +216,7 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		}
 	}
 
-	// Add conditions
-	for _, c := range agent.Status.Conditions {
-		resp.Conditions = append(resp.Conditions, types.Condition{
-			Type:    c.Type,
-			Status:  string(c.Status),
-			Reason:  c.Reason,
-			Message: c.Message,
-		})
-	}
+	resp.Conditions = conditionsToResponse(agent.Status.Conditions)
 
 	// Add server status if in Server mode
 	if agent.Status.ServerStatus != nil {
@@ -234,31 +230,8 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		}
 	}
 
-	// Add credential info (without exposing secrets)
-	for _, cred := range agent.Spec.Credentials {
-		credInfo := types.CredentialInfo{
-			Name:      cred.Name,
-			SecretRef: cred.SecretRef.Name,
-		}
-		if cred.MountPath != nil {
-			credInfo.MountPath = *cred.MountPath
-		}
-		if cred.Env != nil {
-			credInfo.Env = *cred.Env
-		}
-		resp.Credentials = append(resp.Credentials, credInfo)
-	}
-
-	// Add context info
-	for _, ctx := range agent.Spec.Contexts {
-		ctxItem := types.ContextItem{
-			Name:        ctx.Name,
-			Description: ctx.Description,
-			Type:        string(ctx.Type),
-			MountPath:   ctx.MountPath,
-		}
-		resp.Contexts = append(resp.Contexts, ctxItem)
-	}
+	resp.Credentials = credentialsToInfo(agent.Spec.Credentials)
+	resp.Contexts = contextsToItems(agent.Spec.Contexts)
 
 	return resp
 }

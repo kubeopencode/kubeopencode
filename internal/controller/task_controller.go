@@ -578,12 +578,20 @@ func (r *TaskReconciler) getAgentConfigWithName(ctx context.Context, task *kubeo
 		return agentConfig{}, "", fmt.Errorf("agent %q not found in namespace %q: %w", agentName, task.Namespace, err)
 	}
 
-	// ServiceAccountName is required
-	if agent.Spec.ServiceAccountName == "" {
+	// Resolve config, merging with template if referenced
+	cfg, err := ResolveAgentConfigFromTemplate(ctx, r.Client, agent)
+	if err != nil {
+		log.Error(err, "unable to resolve agent config", "agent", agentName)
+		return agentConfig{}, "", err
+	}
+
+	// ServiceAccountName is required (ResolveAgentConfigFromTemplate validates
+	// post-merge, but agents without templates also need this check)
+	if cfg.serviceAccountName == "" {
 		return agentConfig{}, "", fmt.Errorf("agent %q is missing required field serviceAccountName", agentName)
 	}
 
-	return ResolveAgentConfig(agent), agentName, nil
+	return cfg, agentName, nil
 }
 
 // getAgentForQuota fetches the Agent object for quota operations.
