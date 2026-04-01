@@ -9,7 +9,7 @@ on:
     # Allow manual trigger for ad-hoc rebuilding
 
 env:
-  GO_VERSION: "1.25"
+  GO_VERSION: "1.26"
   IMG_REGISTRY: quay.io
   IMG_ORG: kubeopencode
   IMG_NAME: kubeopencode
