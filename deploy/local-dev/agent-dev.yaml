@@ -1,22 +1,22 @@
 # Copyright Contributors to the KubeOpenCode project
 # Minimal Agent for local testing
 #
-# This Agent runs a persistent OpenCode server without persistence.
-# Session data and workspace files use ephemeral storage.
+# Lightweight agent without persistence — session data and workspace
+# files use ephemeral storage and are lost on pod restarts.
 #
 # Features demonstrated:
 #   - templateRef: inherits shared config from AgentTemplate
-#   - Minimal agent: no persistence, no suspend
+#   - No persistence, no idle timeout
 #
 apiVersion: kubeopencode.io/v1alpha1
 kind: Agent
 metadata:
-  name: pod-agent
+  name: dev-agent
 spec:
   # Inherit shared configuration from AgentTemplate
   templateRef:
     name: local-dev-base
-  profile: "Minimal agent for isolated task execution"
+  profile: "Lightweight development agent (no persistence)"
   # Required fields (also in template, but required on Agent)
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace

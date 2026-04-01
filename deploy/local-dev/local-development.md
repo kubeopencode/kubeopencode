@@ -317,8 +317,8 @@ kubectl get deployment -n test
 | ServiceAccount | `kubeopencode-agent` | Agent service account |
 | Role/RoleBinding | `kubeopencode-agent` | RBAC permissions |
 | AgentTemplate | `local-dev-base` | Shared base configuration (images, credentials, workspace) |
-| Agent | `server-agent` | Persistent agent with session + workspace persistence |
-| Agent | `pod-agent` | Persistent agent (minimal, no persistence) |
+| Agent | `persistent-agent` | Persistent agent with session + workspace persistence |
+| Agent | `dev-agent` | Lightweight agent (no persistence, ephemeral storage) |
 
 ### Features Demonstrated
 
@@ -327,10 +327,10 @@ The local-dev resources showcase the following features:
 | Feature | Resource | Description |
 |---------|----------|-------------|
 | **AgentTemplate** | `local-dev-base` | Shared config inherited by both Agents via `templateRef` |
-| **Persistence** | `server-agent` | Persistent OpenCode server with session (1Gi) + workspace (5Gi) PVCs |
-| **Suspend/Resume** | `server-agent` | Can be suspended to save compute (see below) |
-| **Concurrency Control** | `server-agent` | Limited to 3 concurrent tasks |
-| **Minimal Agent** | `pod-agent` | Agent without persistence (uses ephemeral storage) |
+| **Persistence** | `persistent-agent` | Persistent OpenCode server with session (1Gi) + workspace (5Gi) PVCs |
+| **Suspend/Resume** | `persistent-agent` | Can be suspended to save compute (see below) |
+| **Concurrency Control** | `persistent-agent` | Limited to 3 concurrent tasks |
+| **Minimal Agent** | `dev-agent` | Agent without persistence (uses ephemeral storage) |
 | **Agent Profile** | Both agents | Human-readable description for discovery |
 
 ### Test Tasks
@@ -345,7 +345,7 @@ metadata:
   name: server-test
 spec:
   agentRef:
-    name: server-agent
+    name: persistent-agent
   description: "Say hello world"
 EOF
 
@@ -364,7 +364,7 @@ metadata:
   name: pod-test
 spec:
   agentRef:
-    name: pod-agent
+    name: dev-agent
   description: "What is 2+2?"
 EOF
 
@@ -384,7 +384,7 @@ metadata:
   name: concurrent-$i
 spec:
   agentRef:
-    name: server-agent
+    name: persistent-agent
   description: "Count to $i"
 EOF
 done
@@ -395,18 +395,18 @@ kubectl get task -n test -w
 
 ### Testing Persistence
 
-Session and workspace persistence let the server-agent retain state across pod restarts (configured via the `persistence` field).
+Session and workspace persistence let the persistent-agent retain state across pod restarts (configured via the `persistence` field).
 
 #### Verify PVCs Are Created
 
 ```bash
-# After deploying the server-agent, check for PVCs
+# After deploying the persistent-agent, check for PVCs
 kubectl get pvc -n test
 
 # Expected output:
 # NAME                             STATUS   VOLUME   CAPACITY   AGE
-# server-agent-server-sessions     Bound    ...      1Gi        ...
-# server-agent-server-workspace    Bound    ...      5Gi        ...
+# persistent-agent-server-sessions     Bound    ...      1Gi        ...
+# persistent-agent-server-workspace    Bound    ...      5Gi        ...
 ```
 
 #### Test Session Persistence
@@ -420,13 +420,13 @@ metadata:
   name: persist-test-1
 spec:
   agentRef:
-    name: server-agent
+    name: persistent-agent
   description: "Remember that the secret code is 42"
 EOF
 
 # Wait for completion, then restart the server pod
-kubectl rollout restart deployment/server-agent-server -n test
-kubectl rollout status deployment/server-agent-server -n test
+kubectl rollout restart deployment/persistent-agent-server -n test
+kubectl rollout status deployment/persistent-agent-server -n test
 
 # The session history should survive the restart
 ```
@@ -442,12 +442,12 @@ metadata:
   name: persist-test-2
 spec:
   agentRef:
-    name: server-agent
+    name: persistent-agent
   description: "Create a file called hello.txt with the content 'Hello from KubeOpenCode'"
 EOF
 
 # Restart the server pod
-kubectl rollout restart deployment/server-agent-server -n test
+kubectl rollout restart deployment/persistent-agent-server -n test
 
 # The workspace files should still be there after restart
 ```
@@ -460,17 +460,17 @@ Agents can be suspended to save compute resources while retaining all data.
 
 ```bash
 # Edit the agent to set suspend: true
-kubectl patch agent server-agent -n test --type=merge -p '
+kubectl patch agent persistent-agent -n test --type=merge -p '
 spec:
   suspend: true
 '
 
 # Verify the deployment is scaled to 0
 kubectl get deployment -n test
-# Expected: server-agent-server   0/0
+# Expected: persistent-agent-server   0/0
 
 # Check agent status
-kubectl get agent server-agent -n test -o jsonpath='{.status.suspended}'
+kubectl get agent persistent-agent -n test -o jsonpath='{.status.suspended}'
 # Expected: true
 
 # PVCs are retained (no data loss)
@@ -488,7 +488,7 @@ metadata:
   name: queued-test
 spec:
   agentRef:
-    name: server-agent
+    name: persistent-agent
   description: "This will queue until the agent is resumed"
 EOF
 
@@ -501,14 +501,14 @@ kubectl get task queued-test -n test -o jsonpath='{.status.phase}'
 
 ```bash
 # Resume the agent
-kubectl patch agent server-agent -n test --type=merge -p '
+kubectl patch agent persistent-agent -n test --type=merge -p '
 spec:
   suspend: false
 '
 
 # Verify the deployment scales back up
 kubectl get deployment -n test
-# Expected: server-agent-server   1/1
+# Expected: persistent-agent-server   1/1
 
 # Queued tasks should automatically start running
 kubectl get task -n test -w
@@ -565,7 +565,7 @@ Or override in a specific agent's config (agent-level config overrides template 
 
 #### Adjusting Persistence Sizes
 
-Edit `agent-server.yaml` to change PVC sizes:
+Edit `agent-persistent.yaml` to change PVC sizes:
 
 ```yaml
 port: 4096

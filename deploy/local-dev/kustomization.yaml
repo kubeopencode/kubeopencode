@@ -13,7 +13,7 @@
 #   kubectl apply -f deploy/local-dev/namespace.yaml
 #   kubectl apply -f deploy/local-dev/secrets.yaml -n test
 #   kubectl apply -f deploy/local-dev/rbac.yaml -n test
-#   kubectl apply -f deploy/local-dev/agent-server.yaml -n test
+#   kubectl apply -f deploy/local-dev/agent-persistent.yaml -n test
 #
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -25,5 +25,5 @@ resources:
   - secrets.yaml
   - rbac.yaml
   - agenttemplate.yaml
-  - agent-server.yaml
-  - agent-pod.yaml
+  - agent-persistent.yaml
+  - agent-dev.yaml

@@ -1,23 +1,24 @@
 # Copyright Contributors to the KubeOpenCode project
-# Agent for local testing with persistence
+# Persistent Agent for local testing
 #
-# This Agent runs a persistent OpenCode server (Deployment + Service).
-# Tasks connect to the server via --attach flag for faster execution.
+# Agent with session and workspace persistence — data survives pod restarts.
+# Includes idle timeout for automatic suspend/resume.
 #
 # Features demonstrated:
 #   - templateRef: inherits shared config from AgentTemplate
 #   - persistence: session + workspace data survive pod restarts
-#   - suspend: can be suspended/resumed to save compute resources
+#   - idleTimeout: auto-suspends after 30 minutes idle, resumes on new Task
+#   - maxConcurrentTasks: limits concurrent task execution
 #
 apiVersion: kubeopencode.io/v1alpha1
 kind: Agent
 metadata:
-  name: server-agent
+  name: persistent-agent
 spec:
   # Inherit shared configuration from AgentTemplate
   templateRef:
     name: local-dev-base
-  profile: "Persistent agent for local development and testing"
+  profile: "Persistent agent with session history and workspace storage"
   # Required fields (also in template, but required on Agent)
   executorImage: quay.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
@@ -31,6 +32,8 @@ spec:
     # Workspace persistence: git repos and modified files survive pod restarts
     workspace:
       size: "5Gi"
+  # Auto-suspend after 30 minutes with no tasks (auto-resumes when new Task arrives)
+  idleTimeout: "30m"
   # Limit concurrent tasks for local testing
   maxConcurrentTasks: 3
   # Mount OpenCode API credentials (overrides template to demonstrate override)
