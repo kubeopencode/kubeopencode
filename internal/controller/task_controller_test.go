@@ -78,9 +78,9 @@ var _ = Describe("TaskController", func() {
 			Expect(createdPod.OwnerReferences[0].BlockOwnerDeletion).ShouldNot(BeNil())
 			Expect(*createdPod.OwnerReferences[0].BlockOwnerDeletion).Should(BeTrue())
 
-			By("Verifying Pod uses default executor image")
+			By("Verifying Pod uses default attach image (agentRef uses lightweight attach image)")
 			Expect(createdPod.Spec.Containers).Should(HaveLen(1))
-			Expect(createdPod.Spec.Containers[0].Image).Should(Equal(DefaultExecutorImage))
+			Expect(createdPod.Spec.Containers[0].Image).Should(Equal(DefaultAttachImage))
 
 			By("Verifying Pod has OpenCode init container")
 			Expect(createdPod.Spec.InitContainers).ShouldNot(BeEmpty())
@@ -112,11 +112,11 @@ var _ = Describe("TaskController", func() {
 	})
 
 	Context("When creating a Task with Agent reference", func() {
-		It("Should use executor image from Agent for worker container and agent image for init container", func() {
+		It("Should use attach image from Agent for worker container and agent image for init container", func() {
 			taskName := "test-task-agent"
 			agentConfigName := "test-agent-config"
 			customAgentImage := "custom-opencode:v1.0.0"
-			customExecutorImage := "custom-executor:v1.0.0"
+			customAttachImage := "custom-attach:v1.0.0"
 			description := "# Test with Agent"
 
 			By("Creating Agent with custom images")
@@ -127,7 +127,7 @@ var _ = Describe("TaskController", func() {
 				},
 				Spec: kubeopenv1alpha1.AgentSpec{
 					AgentImage:         customAgentImage,
-					ExecutorImage:      customExecutorImage,
+					AttachImage:        customAttachImage,
 					ServiceAccountName: "test-agent",
 					WorkspaceDir:       "/workspace",
 				},
@@ -147,7 +147,7 @@ var _ = Describe("TaskController", func() {
 			}
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
-			By("Checking Pod uses custom executor image for worker container")
+			By("Checking Pod uses custom attach image for worker container (agentRef uses --attach)")
 			podName := fmt.Sprintf("%s-pod", taskName)
 			podLookupKey := types.NamespacedName{Name: podName, Namespace: taskNamespace}
 			createdPod := &corev1.Pod{}
@@ -159,7 +159,7 @@ var _ = Describe("TaskController", func() {
 					return ""
 				}
 				return createdPod.Spec.Containers[0].Image
-			}, timeout, interval).Should(Equal(customExecutorImage))
+			}, timeout, interval).Should(Equal(customAttachImage))
 
 			By("Checking Pod uses custom agent image for init container")
 			Expect(createdPod.Spec.InitContainers).ShouldNot(BeEmpty())
