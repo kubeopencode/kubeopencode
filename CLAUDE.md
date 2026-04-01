@@ -142,6 +142,17 @@ make docker-buildx  # Multi-arch build+push (recommended for remote clusters)
 
 > **CRITICAL**: Always deploy to `kubeopencode-system` namespace.
 
+### UI Server
+
+The UI server listens on port **2746** (not 8080). To access:
+
+```bash
+kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746
+# Then open http://localhost:2746
+```
+
+Helm flag `--set server.enabled=true` deploys the UI server. Port is configured in `charts/kubeopencode/values.yaml` (`server.port: 2746`).
+
 ### Agent Images
 
 Two-container pattern: `opencode` (init container) + `devbox` (executor). Located in `agents/`.
