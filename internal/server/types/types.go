@@ -52,6 +52,31 @@ type CreateAgentRequest struct {
 	TemplateRef        *AgentReference `json:"templateRef,omitempty"`
 	WorkspaceDir       string          `json:"workspaceDir,omitempty"`
 	ServiceAccountName string          `json:"serviceAccountName,omitempty"`
+
+	// P0: Images (required when no template)
+	AgentImage    string `json:"agentImage,omitempty"`
+	ExecutorImage string `json:"executorImage,omitempty"`
+
+	// P1: Common configuration
+	MaxConcurrentTasks *int32 `json:"maxConcurrentTasks,omitempty"`
+	IdleTimeout        string `json:"idleTimeout,omitempty"`
+	Persistence        *CreatePersistenceConfig `json:"persistence,omitempty"`
+
+	// P2: Advanced configuration
+	Port  *int32          `json:"port,omitempty"`
+	Proxy *ProxyConfigInfo `json:"proxy,omitempty"`
+}
+
+// CreatePersistenceConfig represents persistence settings in create request
+type CreatePersistenceConfig struct {
+	Sessions  *CreateVolumePersistence `json:"sessions,omitempty"`
+	Workspace *CreateVolumePersistence `json:"workspace,omitempty"`
+}
+
+// CreateVolumePersistence represents volume persistence settings in create request
+type CreateVolumePersistence struct {
+	StorageClassName string `json:"storageClassName,omitempty"`
+	Size             string `json:"size,omitempty"`
 }
 
 // TaskResponse represents a task in API responses

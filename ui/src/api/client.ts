@@ -61,12 +61,32 @@ export interface CreateTaskRequest {
   templateRef?: { name: string };
 }
 
+export interface CreateVolumePersistence {
+  storageClassName?: string;
+  size?: string;
+}
+
+export interface CreatePersistenceConfig {
+  sessions?: CreateVolumePersistence;
+  workspace?: CreateVolumePersistence;
+}
+
 export interface CreateAgentRequest {
   name: string;
   profile?: string;
   templateRef?: AgentReference;
   workspaceDir?: string;
   serviceAccountName?: string;
+  // P0: Images
+  agentImage?: string;
+  executorImage?: string;
+  // P1: Common configuration
+  maxConcurrentTasks?: number;
+  idleTimeout?: string;
+  persistence?: CreatePersistenceConfig;
+  // P2: Advanced
+  port?: number;
+  proxy?: ProxyConfigInfo;
 }
 
 export interface ContextItem {

@@ -5,8 +5,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -277,12 +279,58 @@ func (h *AgentHandler) Create(w http.ResponseWriter, r *http.Request) {
 			Profile:            req.Profile,
 			WorkspaceDir:       req.WorkspaceDir,
 			ServiceAccountName: req.ServiceAccountName,
+			AgentImage:         req.AgentImage,
+			ExecutorImage:      req.ExecutorImage,
+			MaxConcurrentTasks: req.MaxConcurrentTasks,
 		},
 	}
 
 	if req.TemplateRef != nil {
 		agent.Spec.TemplateRef = &kubeopenv1alpha1.AgentTemplateReference{
 			Name: req.TemplateRef.Name,
+		}
+	}
+
+	if req.IdleTimeout != "" {
+		d, err := time.ParseDuration(req.IdleTimeout)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid idleTimeout format", fmt.Sprintf("expected Go duration (e.g. 30m, 1h): %v", err))
+			return
+		}
+		agent.Spec.IdleTimeout = &metav1.Duration{Duration: d}
+	}
+
+	if req.Persistence != nil {
+		agent.Spec.Persistence = &kubeopenv1alpha1.PersistenceConfig{}
+		if req.Persistence.Sessions != nil {
+			agent.Spec.Persistence.Sessions = &kubeopenv1alpha1.VolumePersistence{
+				Size: req.Persistence.Sessions.Size,
+			}
+			if req.Persistence.Sessions.StorageClassName != "" {
+				sc := req.Persistence.Sessions.StorageClassName
+				agent.Spec.Persistence.Sessions.StorageClassName = &sc
+			}
+		}
+		if req.Persistence.Workspace != nil {
+			agent.Spec.Persistence.Workspace = &kubeopenv1alpha1.VolumePersistence{
+				Size: req.Persistence.Workspace.Size,
+			}
+			if req.Persistence.Workspace.StorageClassName != "" {
+				sc := req.Persistence.Workspace.StorageClassName
+				agent.Spec.Persistence.Workspace.StorageClassName = &sc
+			}
+		}
+	}
+
+	if req.Port != nil {
+		agent.Spec.Port = *req.Port
+	}
+
+	if req.Proxy != nil {
+		agent.Spec.Proxy = &kubeopenv1alpha1.ProxyConfig{
+			HttpProxy:  req.Proxy.HttpProxy,
+			HttpsProxy: req.Proxy.HttpsProxy,
+			NoProxy:    req.Proxy.NoProxy,
 		}
 	}
 

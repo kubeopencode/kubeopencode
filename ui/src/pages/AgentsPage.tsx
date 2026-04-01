@@ -110,6 +110,15 @@ function AgentsPage() {
             Browse available AI agents for task execution
           </p>
         </div>
+        <Link
+          to="/agents/create"
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+          </svg>
+          Create Agent
+        </Link>
       </div>
 
       <div className="mb-4">
