@@ -1,69 +1,55 @@
 # Getting Started with KubeOpenCode
 
-This guide covers installation, configuration, and basic usage of KubeOpenCode.
+## Quick Start (AI-Assisted)
 
-## Prerequisites
-
-- Kubernetes 1.25+
-- Helm 3.8+
-
-## Installation
-
-### Install from OCI Registry
+The fastest way to get started — let your AI coding agent set up everything for you:
 
 ```bash
-# Create namespace
+git clone https://github.com/kubeopencode/kubeopencode.git
+cd kubeopencode
+```
+
+Then tell your AI agent (Claude Code, Cursor, Windsurf, etc.):
+
+> Follow `deploy/local-dev/local-development.md` to set up a local development environment for me.
+
+The agent will handle Kind cluster creation, image builds, Helm installation, and test resource deployment automatically.
+
+## Manual Setup
+
+### Prerequisites
+
+- Kubernetes 1.25+ (or [Kind](https://kind.sigs.k8s.io/) for local development)
+- Helm 3.8+
+
+### Install
+
+```bash
 kubectl create namespace kubeopencode-system
 
-# Install from OCI registry (with UI enabled)
 helm install kubeopencode oci://quay.io/kubeopencode/helm-charts/kubeopencode \
   --namespace kubeopencode-system \
   --set server.enabled=true
 ```
 
-### Install from Local Chart (Development)
+### Access the Web UI
 
 ```bash
-# Create namespace
-kubectl create namespace kubeopencode-system
-
-# Install from local chart
-helm install kubeopencode ./charts/kubeopencode \
-  --namespace kubeopencode-system \
-  --set server.enabled=true
-```
-
-## Access the Web UI
-
-```bash
-# Port forward to access the UI
 kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746
-
-# Open http://localhost:2746 in your browser
+# Open http://localhost:2746
 ```
-
-The Web UI provides:
-- **Task List**: View and filter Tasks across namespaces
-- **Task Detail**: Monitor Task execution with real-time log streaming
-- **Task Creation**: Create new Tasks with Agent selection
-- **Agent Browser**: View available Agents and their configurations
 
 ## Choose Your Approach
-
-KubeOpenCode provides two ways to run AI tasks:
 
 | | **Agent (Persistent)** | **AgentTemplate (Ephemeral)** |
 |---|---|---|
 | **What** | Running AI agent as a Kubernetes service | Blueprint for one-off task Pods |
-| **Best for** | Interactive coding, team-shared agents, Slack bots | Batch operations, CI/CD pipelines, one-off tasks |
-| **Cold start** | None (server always running) | Yes (container startup per Task) |
-| **Context sharing** | Shared across Tasks via server | Isolated per Task |
+| **Best for** | Interactive coding, team-shared agents | Batch operations, CI/CD pipelines |
+| **Cold start** | None (always running) | Yes (container startup per Task) |
 | **Interaction** | Web Terminal, CLI attach, API | Logs only |
 | **Task reference** | `agentRef` | `templateRef` |
 
-## Live Agent (Recommended for Getting Started)
-
-Creating an Agent deploys a persistent AI agent as a Kubernetes service. Your team can interact with it anytime — through the web terminal, CLI, or by submitting Tasks programmatically.
+## Live Agent (Recommended)
 
 ### 1. Create an Agent
 
@@ -81,7 +67,7 @@ spec:
   port: 4096
   persistence:
     sessions:
-      size: "2Gi"   # Persist conversation history across restarts
+      size: "2Gi"
 
   credentials:
     - name: api-key
@@ -100,47 +86,19 @@ spec:
       mountPath: code
 ```
 
-### 2. Wait for the Agent to Be Ready
+### 2. Wait for Ready
 
 ```bash
-# Watch the Agent status
 kubectl get agents -n kubeopencode-system -w
-
 # NAME        PROFILE                         STATUS
 # dev-agent   Interactive development agent    Ready
-
-# Check the created resources
-kubectl get deploy,svc -n kubeopencode-system -l kubeopencode.io/agent=dev-agent
 ```
 
-The controller automatically creates:
-- A **Deployment** running the OpenCode server
-- A **Service** for internal cluster access
+### 3. Interact
 
-### 3. Interact with the Live Agent
+**Web Terminal:** Open http://localhost:2746, navigate to the agent, and click "Terminal".
 
-**Option A: CLI (recommended)**
-
-```bash
-# Install the CLI
-go install github.com/kubeopencode/kubeopencode/cmd/kubeoc@latest
-
-# Attach to the agent — opens an interactive OpenCode terminal
-kubeoc agent attach dev-agent -n kubeopencode-system
-```
-
-**Option B: Web Terminal**
-
-```bash
-# Port forward to the KubeOpenCode dashboard
-kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746
-
-# Open http://localhost:2746, navigate to the agent, and click "Terminal"
-```
-
-**Option C: Submit Tasks programmatically**
-
-Submit Tasks referencing the Agent. They run on the persistent server via lightweight attach Pods:
+**Submit Tasks programmatically:**
 
 ```yaml
 apiVersion: kubeopencode.io/v1alpha1
@@ -156,26 +114,12 @@ spec:
     The bug is reported in issue #123.
 ```
 
-### 4. Monitor and Manage
-
-```bash
-# View agent server logs
-kubectl logs -n kubeopencode-system deploy/dev-agent-server -f
-
-# Check server health
-kubectl get agent dev-agent -n kubeopencode-system -o jsonpath='{.status.ready}'
-
-# Stop the agent (scales down the Deployment)
-kubectl delete agent dev-agent -n kubeopencode-system
-```
-
 ## Ephemeral Tasks (with AgentTemplate)
 
-For batch operations, CI/CD pipelines, and one-off tasks, use an AgentTemplate. Tasks reference the template directly via `templateRef`, creating an ephemeral Pod that runs standalone and terminates when done.
-
-### 1. Create an AgentTemplate
+For batch operations and CI/CD pipelines:
 
 ```yaml
+# 1. Create a template
 apiVersion: kubeopencode.io/v1alpha1
 kind: AgentTemplate
 metadata:
@@ -192,82 +136,30 @@ spec:
         name: ai-credentials
         key: opencode-key
       env: OPENCODE_API_KEY
-```
-
-### 2. Create a Task
-
-```yaml
+---
+# 2. Create a task referencing the template
 apiVersion: kubeopencode.io/v1alpha1
 kind: Task
 metadata:
-  name: update-service-a
+  name: update-deps
   namespace: kubeopencode-system
 spec:
-  # Reference the template (creates ephemeral Pod)
   templateRef:
     name: batch-template
-
-  # Task description (becomes /workspace/task.md)
   description: |
     Update dependencies to latest versions.
     Run tests and create PR.
-
-  # Optional inline contexts
-  contexts:
-    - type: Text
-      text: |
-        # Coding Standards
-        - Use descriptive names
-        - Write unit tests
 ```
 
-### 3. Monitor Progress
-
 ```bash
-# Watch Task status
+# Monitor progress
 kubectl get tasks -n kubeopencode-system -w
-
-# Check detailed status
-kubectl describe task update-service-a -n kubeopencode-system
-
-# View task logs
-kubectl logs $(kubectl get task update-service-a -o jsonpath='{.status.podName}') -n kubeopencode-system
-```
-
-## Batch Operations with Helm
-
-For running the same task across multiple targets, use Helm templating:
-
-```yaml
-# values.yaml
-tasks:
-  - name: update-service-a
-    repo: service-a
-  - name: update-service-b
-    repo: service-b
-  - name: update-service-c
-    repo: service-c
-
-# templates/tasks.yaml
-{{- range .Values.tasks }}
----
-apiVersion: kubeopencode.io/v1alpha1
-kind: Task
-metadata:
-  name: {{ .name }}
-spec:
-  description: "Update dependencies for {{ .repo }}"
-{{- end }}
-```
-
-```bash
-# Generate and apply multiple tasks
-helm template my-tasks ./chart | kubectl apply -f -
 ```
 
 ## Next Steps
 
-- [Features](features.md) - Learn about the context system, concurrency control, and more
+- [Features](features.md) - Context system, concurrency control, and more
 - [Agent Images](agent-images.md) - Build custom agent images
-- [Security](security.md) - RBAC, credential management, and best practices
+- [Security](security.md) - RBAC, credential management
 - [Architecture](architecture.md) - System design and API reference
+- [Local Development](../deploy/local-dev/local-development.md) - Full local dev environment setup
