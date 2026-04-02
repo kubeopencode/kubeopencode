@@ -179,6 +179,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
           tags: |
             ${{ env.IMG_REGISTRY }}/${{ env.IMG_ORG }}/${{ env.IMG_NAME }}:latest
@@ -217,6 +219,8 @@ jobs:
           context: ./agents/opencode
           platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             OPENCODE_VERSION=${{ steps.opencode-version.outputs.version }}
           tags: |
@@ -252,6 +256,8 @@ jobs:
           context: ./agents/devbox
           platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ env.IMG_REGISTRY }}/${{ env.IMG_ORG }}/kubeopencode-agent-devbox:latest
             ${{ env.IMG_REGISTRY }}/${{ env.IMG_ORG }}/kubeopencode-agent-devbox:${{ github.sha }}
@@ -286,6 +292,8 @@ jobs:
           context: ./agents/attach
           platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ env.IMG_REGISTRY }}/${{ env.IMG_ORG }}/kubeopencode-agent-attach:latest
             ${{ env.IMG_REGISTRY }}/${{ env.IMG_ORG }}/kubeopencode-agent-attach:${{ github.sha }}
