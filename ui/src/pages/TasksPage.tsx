@@ -10,7 +10,7 @@ import MultiSelect from '../components/MultiSelect';
 import { TableSkeleton } from '../components/Skeleton';
 import { useFilterState } from '../hooks/useFilterState';
 import { useNamespace } from '../contexts/NamespaceContext';
-import { LABEL_AGENT, LABEL_AGENT_TEMPLATE, appendLabelSelector } from '../utils/labels';
+import { LABEL_AGENT, LABEL_AGENT_TEMPLATE, LABEL_CRONTASK, appendLabelSelector } from '../utils/labels';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const PHASE_OPTIONS = [
@@ -28,17 +28,19 @@ function TasksPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [phaseFilter, setPhaseFilter] = useState<string[]>([]);
-  const [agentFilter, setAgentFilter] = useState('');
+  const [agentFilter, setAgentFilter] = useState<string[]>([]);
+  const [cronTaskFilter, setCronTaskFilter] = useState<string[]>([]);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('');
   const [filters, setFilters] = useFilterState();
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [namespace, phaseFilter, agentFilter, sourceFilter, filters.name, filters.labelSelector]);
+  }, [namespace, phaseFilter, agentFilter, cronTaskFilter, sourceFilter, filters.name, filters.labelSelector]);
 
   // Reset filters when namespace changes
   useEffect(() => {
-    setAgentFilter('');
+    setAgentFilter([]);
+    setCronTaskFilter([]);
     setSourceFilter('');
   }, [namespace]);
 
@@ -56,12 +58,43 @@ function TasksPage() {
     [agentsData]
   );
 
+  const { data: cronTasksData } = useQuery({
+    queryKey: ['crontasks-for-filter', namespace],
+    queryFn: () =>
+      isAllNamespaces
+        ? api.listAllCronTasks({ limit: 100, sortOrder: 'asc' })
+        : api.listCronTasks(namespace, { limit: 100, sortOrder: 'asc' }),
+    staleTime: 60_000,
+  });
+
+  const uniqueCronTaskNames = useMemo(
+    () => cronTasksData ? [...new Set(cronTasksData.cronTasks.map((ct) => ct.name))] : [],
+    [cronTasksData]
+  );
+
+  const agentOptions = useMemo(
+    () => uniqueAgentNames.map((name) => ({ value: name, label: name })),
+    [uniqueAgentNames]
+  );
+
+  const cronTaskOptions = useMemo(
+    () => uniqueCronTaskNames.map((name) => ({ value: name, label: name })),
+    [uniqueCronTaskNames]
+  );
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['tasks', namespace, currentPage, pageSize, phaseFilter, agentFilter, sourceFilter, filters.name, filters.labelSelector],
+    queryKey: ['tasks', namespace, currentPage, pageSize, phaseFilter, agentFilter, cronTaskFilter, sourceFilter, filters.name, filters.labelSelector],
     queryFn: () => {
       let labelSelector = filters.labelSelector || '';
-      if (agentFilter) {
-        labelSelector = appendLabelSelector(labelSelector, `${LABEL_AGENT}=${agentFilter}`);
+      if (agentFilter.length === 1) {
+        labelSelector = appendLabelSelector(labelSelector, `${LABEL_AGENT}=${agentFilter[0]}`);
+      } else if (agentFilter.length > 1) {
+        labelSelector = appendLabelSelector(labelSelector, `${LABEL_AGENT} in (${agentFilter.join(',')})`);
+      }
+      if (cronTaskFilter.length === 1) {
+        labelSelector = appendLabelSelector(labelSelector, `${LABEL_CRONTASK}=${cronTaskFilter[0]}`);
+      } else if (cronTaskFilter.length > 1) {
+        labelSelector = appendLabelSelector(labelSelector, `${LABEL_CRONTASK} in (${cronTaskFilter.join(',')})`);
       }
       if (sourceFilter === 'agent') {
         labelSelector = appendLabelSelector(labelSelector, LABEL_AGENT);
@@ -130,20 +163,21 @@ function TasksPage() {
               <option value="template">Template</option>
             </select>
           </div>
-          {uniqueAgentNames.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-stone-400 font-medium">Agent:</span>
-              <select
-                value={agentFilter}
-                onChange={(e) => setAgentFilter(e.target.value)}
-                className="block w-36 rounded-md border border-stone-200 bg-stone-50 focus:bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-200 text-xs text-stone-600 py-1.5 transition-colors"
-              >
-                <option value="">All</option>
-                {uniqueAgentNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            </div>
+          {agentOptions.length > 0 && (
+            <MultiSelect
+              options={agentOptions}
+              selected={agentFilter}
+              onChange={setAgentFilter}
+              label="Agent"
+            />
+          )}
+          {cronTaskOptions.length > 0 && (
+            <MultiSelect
+              options={cronTaskOptions}
+              selected={cronTaskFilter}
+              onChange={setCronTaskFilter}
+              label="CronTask"
+            />
           )}
         </ResourceFilter>
       </div>

@@ -276,6 +276,14 @@ function AgentDetailPage() {
         </div>
 
         <div className="px-6 py-5 space-y-6">
+          {/* Labels */}
+          {agent.labels && Object.keys(agent.labels).length > 0 && (
+            <div>
+              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
+              <Labels labels={agent.labels} />
+            </div>
+          )}
+
           {/* Template Reference */}
           {agent.templateRef && (
             <div>
@@ -330,16 +338,16 @@ function AgentDetailPage() {
                   <dd className="mt-1 text-sm text-stone-700 font-mono">{agent.maxConcurrentTasks}</dd>
                 </div>
               )}
+              {agent.standby && (
+                <div>
+                  <dt className="text-xs text-stone-400">Standby</dt>
+                  <dd className="mt-1 text-sm text-stone-700">
+                    Auto-suspend after <span className="font-mono font-medium text-stone-800">{agent.standby.idleTimeout}</span> idle
+                  </dd>
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Labels */}
-          {agent.labels && Object.keys(agent.labels).length > 0 && (
-            <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
-              <Labels labels={agent.labels} />
-            </div>
-          )}
 
           {/* Quota */}
           {agent.quota && (
