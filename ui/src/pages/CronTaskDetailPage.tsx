@@ -184,89 +184,122 @@ function CronTaskDetailPage() {
           {/* Labels */}
           {cronTask.labels && Object.keys(cronTask.labels).length > 0 && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Labels</h3>
               <Labels labels={cronTask.labels} />
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+          {/* Agent */}
+          {cronTask.taskTemplate.agentRef && (
             <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Schedule</dt>
-              <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{cronTask.schedule}</dd>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Agent</h3>
+              <Link
+                to={`/agents/${cronTask.namespace}/${cronTask.taskTemplate.agentRef.name}`}
+                className="inline-flex items-center gap-2 bg-violet-50 rounded-lg px-4 py-2.5 border border-violet-200 hover:border-violet-300 transition-colors group"
+              >
+                <svg className="w-4 h-4 text-violet-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <circle cx="9" cy="16" r="1" />
+                  <circle cx="15" cy="16" r="1" />
+                  <path d="M9 7L9 4M15 7L15 4M12 7L12 2" />
+                </svg>
+                <span className="text-sm font-medium text-violet-700 group-hover:text-violet-800">{cronTask.taskTemplate.agentRef.name}</span>
+                <svg className="w-3.5 h-3.5 text-violet-400 group-hover:text-violet-600 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </Link>
             </div>
+          )}
+
+          {/* Template */}
+          {cronTask.taskTemplate.templateRef && (
             <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Timezone</dt>
-              <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{cronTask.timeZone || 'UTC'}</dd>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Template</h3>
+              <Link
+                to={`/templates/${cronTask.namespace}/${cronTask.taskTemplate.templateRef.name}`}
+                className="inline-flex items-center gap-2 bg-teal-50 rounded-lg px-4 py-2.5 border border-teal-200 hover:border-teal-300 transition-colors group"
+              >
+                <svg className="w-4 h-4 text-teal-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" />
+                  <rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+                <span className="text-sm font-medium text-teal-700 group-hover:text-teal-800">{cronTask.taskTemplate.templateRef.name}</span>
+                <svg className="w-3.5 h-3.5 text-teal-400 group-hover:text-teal-600 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </Link>
             </div>
-            <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Concurrency Policy</dt>
-              <dd className="mt-1.5 text-sm text-stone-800">{cronTask.concurrencyPolicy}</dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Source</dt>
-              <dd className="mt-1.5 text-sm text-stone-800">
-                {cronTask.taskTemplate.agentRef ? (
-                  <Link
-                    to={`/agents/${cronTask.namespace}/${cronTask.taskTemplate.agentRef.name}`}
-                    className="text-stone-800 hover:text-primary-600 transition-colors font-mono text-xs"
-                  >
-                    {cronTask.taskTemplate.agentRef.name}
-                  </Link>
-                ) : cronTask.taskTemplate.templateRef ? (
-                  <Link
-                    to={`/templates/${cronTask.namespace}/${cronTask.taskTemplate.templateRef.name}`}
-                    className="text-amber-600 hover:text-amber-700 transition-colors font-mono text-xs"
-                  >
-                    {cronTask.taskTemplate.templateRef.name}
-                  </Link>
-                ) : (
-                  <span className="font-mono text-xs">-</span>
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Total Executions</dt>
-              <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{cronTask.totalExecutions}</dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Running Tasks</dt>
-              <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{cronTask.active}</dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Last Scheduled</dt>
-              <dd className="mt-1.5 text-sm text-stone-800">
-                {cronTask.lastScheduleTime ? <TimeAgo date={cronTask.lastScheduleTime} /> : '-'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Next Schedule</dt>
-              <dd className="mt-1.5 text-sm text-stone-800">
-                {cronTask.nextScheduleTime ? <TimeAgo date={cronTask.nextScheduleTime} /> : '-'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Created</dt>
-              <dd className="mt-1.5 text-sm text-stone-800">
-                <TimeAgo date={cronTask.createdAt} />
-              </dd>
-            </div>
-            {cronTask.maxRetainedTasks !== undefined && cronTask.maxRetainedTasks > 0 && (
+          )}
+
+          {/* Schedule */}
+          <div>
+            <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-4">Schedule</h3>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               <div>
-                <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Max Retained Tasks</dt>
-                <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{cronTask.maxRetainedTasks}</dd>
+                <dt className="text-xs text-stone-400">Cron Expression</dt>
+                <dd className="mt-1 text-sm text-stone-800 font-mono">{cronTask.schedule}</dd>
               </div>
-            )}
-            {cronTask.startingDeadlineSeconds !== undefined && (
               <div>
-                <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Starting Deadline</dt>
-                <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{cronTask.startingDeadlineSeconds}s</dd>
+                <dt className="text-xs text-stone-400">Timezone</dt>
+                <dd className="mt-1 text-sm text-stone-800 font-mono">{cronTask.timeZone || 'UTC'}</dd>
               </div>
-            )}
+              <div>
+                <dt className="text-xs text-stone-400">Concurrency Policy</dt>
+                <dd className="mt-1 text-sm text-stone-800">{cronTask.concurrencyPolicy}</dd>
+              </div>
+              {cronTask.startingDeadlineSeconds !== undefined && (
+                <div>
+                  <dt className="text-xs text-stone-400">Starting Deadline</dt>
+                  <dd className="mt-1 text-sm text-stone-800 font-mono">{cronTask.startingDeadlineSeconds}s</dd>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Execution */}
+          <div>
+            <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-4">Execution</h3>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+              <div>
+                <dt className="text-xs text-stone-400">Total Executions</dt>
+                <dd className="mt-1 text-sm text-stone-800 font-mono">{cronTask.totalExecutions}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-stone-400">Running Tasks</dt>
+                <dd className="mt-1 text-sm text-stone-800 font-mono">{cronTask.active}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-stone-400">Last Scheduled</dt>
+                <dd className="mt-1 text-sm text-stone-800">
+                  {cronTask.lastScheduleTime ? <TimeAgo date={cronTask.lastScheduleTime} /> : '-'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-stone-400">Next Schedule</dt>
+                <dd className="mt-1 text-sm text-stone-800">
+                  {cronTask.nextScheduleTime ? <TimeAgo date={cronTask.nextScheduleTime} /> : '-'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-stone-400">Created</dt>
+                <dd className="mt-1 text-sm text-stone-800">
+                  <TimeAgo date={cronTask.createdAt} />
+                </dd>
+              </div>
+              {cronTask.maxRetainedTasks !== undefined && cronTask.maxRetainedTasks > 0 && (
+                <div>
+                  <dt className="text-xs text-stone-400">Max Retained Tasks</dt>
+                  <dd className="mt-1 text-sm text-stone-800 font-mono">{cronTask.maxRetainedTasks}</dd>
+                </div>
+              )}
+            </div>
           </div>
 
           {cronTask.taskTemplate.description && (
             <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-2">Description</dt>
+              <dt className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-2">Description</dt>
               <dd className="bg-stone-50 rounded-lg p-4 border border-stone-100">
                 <pre className="text-sm text-stone-700 whitespace-pre-wrap font-body leading-relaxed">{cronTask.taskTemplate.description}</pre>
               </dd>
@@ -275,7 +308,7 @@ function CronTaskDetailPage() {
 
           {cronTask.conditions && cronTask.conditions.length > 0 && (
             <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-2">Conditions</dt>
+              <dt className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-2">Conditions</dt>
               <dd className="space-y-2">
                 {cronTask.conditions.map((condition, idx) => (
                   <div key={idx} className="bg-stone-50 rounded-lg p-3 border border-stone-100">
@@ -325,16 +358,16 @@ function CronTaskDetailPage() {
           <table className="min-w-full divide-y divide-stone-100">
             <thead className="bg-stone-50/60">
               <tr>
-                <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">
+                <th className="px-5 py-3 text-left text-xs font-display font-semibold text-stone-500 uppercase tracking-wider">
                   Name
                 </th>
-                <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">
+                <th className="px-5 py-3 text-left text-xs font-display font-semibold text-stone-500 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider hidden sm:table-cell">
+                <th className="px-5 py-3 text-left text-xs font-display font-semibold text-stone-500 uppercase tracking-wider hidden sm:table-cell">
                   Duration
                 </th>
-                <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">
+                <th className="px-5 py-3 text-left text-xs font-display font-semibold text-stone-500 uppercase tracking-wider">
                   Created
                 </th>
               </tr>

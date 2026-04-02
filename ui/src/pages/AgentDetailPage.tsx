@@ -99,7 +99,7 @@ function ServerConnectCommands({ namespace, agentName }: { namespace: string; ag
 
   return (
     <div>
-      <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Quick Connect</h3>
+      <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Quick Connect</h3>
       <div className="space-y-3">
         <div>
           <p className="text-xs text-stone-500 mb-1.5">
@@ -279,7 +279,7 @@ function AgentDetailPage() {
           {/* Labels */}
           {agent.labels && Object.keys(agent.labels).length > 0 && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Labels</h3>
               <Labels labels={agent.labels} />
             </div>
           )}
@@ -287,7 +287,7 @@ function AgentDetailPage() {
           {/* Template Reference */}
           {agent.templateRef && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Template</h3>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Template</h3>
               <Link
                 to={`/templates/${agent.namespace}/${agent.templateRef.name}`}
                 className="inline-flex items-center gap-2 bg-teal-50 rounded-lg px-4 py-2.5 border border-teal-200 hover:border-teal-300 transition-colors group"
@@ -306,65 +306,87 @@ function AgentDetailPage() {
             </div>
           )}
 
-          {/* Configuration */}
-          <div>
-            <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">Configuration</h3>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-              {agent.executorImage && (
-                <div>
-                  <dt className="text-xs text-stone-400">Executor Image</dt>
-                  <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100 break-all">
-                    {agent.executorImage}
-                  </dd>
-                </div>
-              )}
-              {agent.agentImage && (
-                <div>
-                  <dt className="text-xs text-stone-400">Agent Image</dt>
-                  <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100 break-all">
-                    {agent.agentImage}
-                  </dd>
-                </div>
-              )}
-              {agent.workspaceDir && (
-                <div>
-                  <dt className="text-xs text-stone-400">Workspace Directory</dt>
-                  <dd className="mt-1 text-sm text-stone-700 font-mono">{agent.workspaceDir}</dd>
-                </div>
-              )}
-              {agent.maxConcurrentTasks && (
-                <div>
-                  <dt className="text-xs text-stone-400">Max Concurrent Tasks</dt>
-                  <dd className="mt-1 text-sm text-stone-700 font-mono">{agent.maxConcurrentTasks}</dd>
-                </div>
-              )}
-              {agent.standby && (
-                <div>
-                  <dt className="text-xs text-stone-400">Standby</dt>
-                  <dd className="mt-1 text-sm text-stone-700">
-                    Auto-suspend after <span className="font-mono font-medium text-stone-800">{agent.standby.idleTimeout}</span> idle
-                  </dd>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Quota */}
-          {agent.quota && (
+          {/* Images */}
+          {(agent.executorImage || agent.agentImage) && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Quota</h3>
-              <div className="bg-stone-50 rounded-lg p-4 border border-stone-100">
-                <p className="text-sm text-stone-600">
-                  Maximum <span className="font-mono font-medium text-stone-800">{agent.quota.maxTaskStarts}</span> task starts per{' '}
-                  <span className="font-mono font-medium text-stone-800">{agent.quota.windowSeconds}</span> seconds
-                </p>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-4">Images</h3>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                {agent.executorImage && (
+                  <div>
+                    <dt className="text-xs text-stone-400">Executor Image</dt>
+                    <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100 break-all">
+                      {agent.executorImage}
+                    </dd>
+                  </div>
+                )}
+                {agent.agentImage && (
+                  <div>
+                    <dt className="text-xs text-stone-400">Agent Image</dt>
+                    <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100 break-all">
+                      {agent.agentImage}
+                    </dd>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Runtime */}
+          {(agent.workspaceDir || agent.serviceAccountName) && (
+            <div>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-4">Runtime</h3>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                {agent.workspaceDir && (
+                  <div>
+                    <dt className="text-xs text-stone-400">Workspace Directory</dt>
+                    <dd className="mt-1 text-sm text-stone-700 font-mono">{agent.workspaceDir}</dd>
+                  </div>
+                )}
+                {agent.serviceAccountName && (
+                  <div>
+                    <dt className="text-xs text-stone-400">Service Account</dt>
+                    <dd className="mt-1 text-sm text-stone-700 font-mono">{agent.serviceAccountName}</dd>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Task Management */}
+          {(agent.maxConcurrentTasks || agent.quota || agent.standby) && (
+            <div>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-4">Task Management</h3>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                {agent.maxConcurrentTasks && (
+                  <div>
+                    <dt className="text-xs text-stone-400">Max Concurrent Tasks</dt>
+                    <dd className="mt-1 text-sm text-stone-700 font-mono">{agent.maxConcurrentTasks}</dd>
+                  </div>
+                )}
+                {agent.quota && (
+                  <div>
+                    <dt className="text-xs text-stone-400">Quota</dt>
+                    <dd className="mt-1 text-sm text-stone-700">
+                      Max <span className="font-mono font-medium text-stone-800">{agent.quota.maxTaskStarts}</span> starts per{' '}
+                      <span className="font-mono font-medium text-stone-800">{agent.quota.windowSeconds}</span>s
+                    </dd>
+                  </div>
+                )}
+                {agent.standby && (
+                  <div>
+                    <dt className="text-xs text-stone-400">Standby</dt>
+                    <dd className="mt-1 text-sm text-stone-700">
+                      Auto-suspend after <span className="font-mono font-medium text-stone-800">{agent.standby.idleTimeout}</span> idle
+                    </dd>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           {/* Server Status */}
           <div>
-            <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Server Status</h3>
+            <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Server Status</h3>
             {agent.serverStatus ? (
               <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                 <div>
@@ -421,7 +443,7 @@ function AgentDetailPage() {
           {/* Conditions */}
           {agent.conditions && agent.conditions.length > 0 && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Conditions</h3>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Conditions</h3>
               <div className="space-y-2">
                 {agent.conditions.map((condition, idx) => (
                   <div key={idx} className="bg-stone-50 rounded-lg p-3 border border-stone-100">
@@ -450,7 +472,7 @@ function AgentDetailPage() {
           {/* Credentials */}
           {agent.credentials && agent.credentials.length > 0 && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">
                 Credentials ({agent.credentials.length})
               </h3>
               <div className="space-y-2">
@@ -475,7 +497,7 @@ function AgentDetailPage() {
           {/* Contexts */}
           {agent.contexts && agent.contexts.length > 0 && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">
                 Contexts ({agent.contexts.length})
               </h3>
               <div className="space-y-2">
