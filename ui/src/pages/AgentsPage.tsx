@@ -8,7 +8,7 @@ import ResourceFilter from '../components/ResourceFilter';
 import MultiSelect from '../components/MultiSelect';
 import { useFilterState } from '../hooks/useFilterState';
 import { useNamespace } from '../contexts/NamespaceContext';
-import { LABEL_AGENT_TEMPLATE, FILTER_HAS_TEMPLATE, FILTER_NO_TEMPLATE, appendLabelSelector } from '../utils/labels';
+import { LABEL_AGENT_TEMPLATE, appendLabelSelector } from '../utils/labels';
 
 const PAGE_SIZE = 12;
 
@@ -27,7 +27,7 @@ function getAgentStatus(agent: Agent): string {
 function AgentsPage() {
   const { namespace, isAllNamespaces } = useNamespace();
   const [currentPage, setCurrentPage] = useState(1);
-  const [templateFilter, setTemplateFilter] = useState('');
+  const [templateFilter, setTemplateFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [filters, setFilters] = useFilterState();
 
@@ -37,7 +37,7 @@ function AgentsPage() {
 
   // Reset filters when namespace changes
   useEffect(() => {
-    setTemplateFilter('');
+    setTemplateFilter([]);
     setStatusFilter([]);
   }, [namespace]);
 
@@ -55,16 +55,19 @@ function AgentsPage() {
     [templatesData]
   );
 
+  const templateOptions = useMemo(
+    () => uniqueTemplateNames.map((name) => ({ value: name, label: name })),
+    [uniqueTemplateNames]
+  );
+
   const { data: rawData, isLoading, error, refetch } = useQuery({
     queryKey: ['agents', namespace, currentPage, templateFilter, statusFilter, filters.name, filters.labelSelector],
     queryFn: () => {
       let labelSelector = filters.labelSelector || '';
-      if (templateFilter === FILTER_HAS_TEMPLATE) {
-        labelSelector = appendLabelSelector(labelSelector, LABEL_AGENT_TEMPLATE);
-      } else if (templateFilter === FILTER_NO_TEMPLATE) {
-        labelSelector = appendLabelSelector(labelSelector, `!${LABEL_AGENT_TEMPLATE}`);
-      } else if (templateFilter) {
-        labelSelector = appendLabelSelector(labelSelector, `${LABEL_AGENT_TEMPLATE}=${templateFilter}`);
+      if (templateFilter.length === 1) {
+        labelSelector = appendLabelSelector(labelSelector, `${LABEL_AGENT_TEMPLATE}=${templateFilter[0]}`);
+      } else if (templateFilter.length > 1) {
+        labelSelector = appendLabelSelector(labelSelector, `${LABEL_AGENT_TEMPLATE} in (${templateFilter.join(',')})`);
       }
       const params = {
         name: filters.name || undefined,
@@ -139,22 +142,13 @@ function AgentsPage() {
             onChange={setStatusFilter}
             label="Status"
           />
-          {uniqueTemplateNames.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-stone-400 font-medium">Template:</span>
-              <select
-                value={templateFilter}
-                onChange={(e) => setTemplateFilter(e.target.value)}
-                className="block w-40 rounded-md border border-stone-200 bg-stone-50 focus:bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-200 text-xs text-stone-600 py-1.5 transition-colors"
-              >
-                <option value="">All</option>
-                <option value={FILTER_HAS_TEMPLATE}>Has Template</option>
-                <option value={FILTER_NO_TEMPLATE}>No Template</option>
-                {uniqueTemplateNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            </div>
+          {templateOptions.length > 0 && (
+            <MultiSelect
+              options={templateOptions}
+              selected={templateFilter}
+              onChange={setTemplateFilter}
+              label="Template"
+            />
           )}
         </ResourceFilter>
       </div>

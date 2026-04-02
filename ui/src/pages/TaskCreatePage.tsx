@@ -5,6 +5,7 @@ import api, { CreateTaskRequest } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import { useNamespace } from '../contexts/NamespaceContext';
 import Breadcrumbs from '../components/Breadcrumbs';
+import SearchableSelect from '../components/SearchableSelect';
 
 type SourceType = 'agent' | 'template';
 
@@ -206,18 +207,13 @@ function TaskCreatePage() {
               >
                 Namespace
               </label>
-              <select
+              <SearchableSelect
                 id="namespace"
                 value={namespace}
-                onChange={(e) => handleNamespaceChange(e.target.value)}
-                className="block w-full rounded-lg border-stone-200 bg-white shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700"
-              >
-                {namespacesData?.namespaces.map((ns) => (
-                  <option key={ns} value={ns}>
-                    {ns}
-                  </option>
-                ))}
-              </select>
+                onChange={handleNamespaceChange}
+                options={namespacesData?.namespaces.map((ns) => ({ value: ns, label: ns })) || []}
+                placeholder="Select namespace..."
+              />
             </div>
 
             <div>
@@ -277,27 +273,17 @@ function TaskCreatePage() {
                 >
                   Agent
                 </label>
-                <select
+                <SearchableSelect
                   id="agent"
                   value={selectedAgent}
-                  onChange={(e) => setSelectedAgent(e.target.value)}
+                  onChange={setSelectedAgent}
                   required
-                  className="block w-full rounded-lg border-stone-200 bg-white shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700"
-                >
-                  <option value="">
-                    {availableAgents.length === 0
-                      ? 'No agents available'
-                      : 'Select an agent...'}
-                  </option>
-                  {availableAgents.map((agent) => (
-                    <option
-                      key={`${agent.namespace}/${agent.name}`}
-                      value={`${agent.namespace}/${agent.name}`}
-                    >
-                      {agent.namespace}/{agent.name}
-                    </option>
-                  ))}
-                </select>
+                  options={availableAgents.map((agent) => ({
+                    value: `${agent.namespace}/${agent.name}`,
+                    label: `${agent.namespace}/${agent.name}`,
+                  }))}
+                  placeholder={availableAgents.length === 0 ? 'No agents available' : 'Select an agent...'}
+                />
                 <p className="mt-1.5 text-xs text-stone-400">
                   {availableAgents.length === 0
                     ? 'No agents available for this namespace.'
@@ -323,27 +309,17 @@ function TaskCreatePage() {
                 >
                   Agent Template
                 </label>
-                <select
+                <SearchableSelect
                   id="template"
                   value={selectedTemplate}
-                  onChange={(e) => setSelectedTemplate(e.target.value)}
+                  onChange={setSelectedTemplate}
                   required
-                  className="block w-full rounded-lg border-stone-200 bg-white shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700"
-                >
-                  <option value="">
-                    {availableTemplates.length === 0
-                      ? 'No templates available'
-                      : 'Select a template...'}
-                  </option>
-                  {availableTemplates.map((tmpl) => (
-                    <option
-                      key={`${tmpl.namespace}/${tmpl.name}`}
-                      value={`${tmpl.namespace}/${tmpl.name}`}
-                    >
-                      {tmpl.namespace}/{tmpl.name}
-                    </option>
-                  ))}
-                </select>
+                  options={availableTemplates.map((tmpl) => ({
+                    value: `${tmpl.namespace}/${tmpl.name}`,
+                    label: `${tmpl.namespace}/${tmpl.name}`,
+                  }))}
+                  placeholder={availableTemplates.length === 0 ? 'No templates available' : 'Select a template...'}
+                />
                 <p className="mt-1.5 text-xs text-stone-400">
                   {availableTemplates.length === 0
                     ? 'No templates available for this namespace.'
@@ -369,7 +345,7 @@ function TaskCreatePage() {
               htmlFor="description"
               className="block text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-1.5"
             >
-              Task Prompt
+              Description
             </label>
             <textarea
               id="description"
