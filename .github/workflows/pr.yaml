@@ -62,8 +62,16 @@ jobs:
         run: make integration-test
 
   e2e-test:
-    name: E2E Tests
+    name: "E2E (${{ matrix.label }})"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        label:
+          - task
+          - agent
+          - server
+          - "crontask || agenttemplate"
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -92,5 +100,5 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-      - name: Run e2e tests
-        run: make e2e
+      - name: Run e2e tests (${{ matrix.label }})
+        run: make e2e-setup && make e2e-test-label LABEL="${{ matrix.label }}"

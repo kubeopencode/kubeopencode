@@ -805,7 +805,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 								corev1.ResourceCPU:    resource.MustParse("100m"),
 							},
 							Limits: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse("256Mi"),
+								corev1.ResourceMemory: resource.MustParse("512Mi"),
 								corev1.ResourceCPU:    resource.MustParse("500m"),
 							},
 						},
@@ -846,7 +846,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 			}
 			Expect(agentContainer).ShouldNot(BeNil())
 			Expect(agentContainer.Resources.Requests.Memory().String()).Should(Equal("128Mi"))
-			Expect(agentContainer.Resources.Limits.Memory().String()).Should(Equal("256Mi"))
+			Expect(agentContainer.Resources.Limits.Memory().String()).Should(Equal("512Mi"))
 
 			By("Waiting for Task to complete")
 			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
