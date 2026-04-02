@@ -266,7 +266,7 @@ function CronTaskDetailPage() {
 
           {cronTask.taskTemplate.description && (
             <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-2">Task Prompt</dt>
+              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-2">Description</dt>
               <dd className="bg-stone-50 rounded-lg p-4 border border-stone-100">
                 <pre className="text-sm text-stone-700 whitespace-pre-wrap font-body leading-relaxed">{cronTask.taskTemplate.description}</pre>
               </dd>

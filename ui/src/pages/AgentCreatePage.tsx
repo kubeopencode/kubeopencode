@@ -5,6 +5,7 @@ import api, { CreateAgentRequest } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import { useNamespace } from '../contexts/NamespaceContext';
 import Breadcrumbs from '../components/Breadcrumbs';
+import SearchableSelect from '../components/SearchableSelect';
 
 function AgentCreatePage() {
   const navigate = useNavigate();
@@ -179,19 +180,19 @@ function AgentCreatePage() {
             <label htmlFor="template" className={labelClass}>
               Template <span className="normal-case tracking-normal text-stone-300">(optional)</span>
             </label>
-            <select
+            <SearchableSelect
               id="template"
               value={selectedTemplate}
-              onChange={(e) => setSelectedTemplate(e.target.value)}
-              className={inputClass}
-            >
-              <option value="">No template</option>
-              {allTemplates.map((tmpl) => (
-                <option key={`${tmpl.namespace}/${tmpl.name}`} value={`${tmpl.namespace}/${tmpl.name}`}>
-                  {tmpl.namespace}/{tmpl.name}
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedTemplate}
+              options={[
+                { value: '', label: 'No template' },
+                ...allTemplates.map((tmpl) => ({
+                  value: `${tmpl.namespace}/${tmpl.name}`,
+                  label: `${tmpl.namespace}/${tmpl.name}`,
+                })),
+              ]}
+              placeholder="No template"
+            />
             <p className="mt-1.5 text-xs text-stone-400">
               {allTemplates.length === 0
                 ? 'No templates available.'
