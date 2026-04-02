@@ -128,19 +128,23 @@ function CronTaskDetailPage() {
         <div className="px-6 py-5 border-b border-stone-100">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-display text-xl font-bold text-stone-900">{cronTask.name}</h2>
+              <div className="flex items-center gap-2.5">
+                <h2 className="font-display text-xl font-bold text-stone-900">{cronTask.name}</h2>
+                {cronTask.suspend ? (
+                  <span className="inline-flex items-center text-xs font-medium text-stone-500">
+                    <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-stone-400" />
+                    Suspended
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center text-xs font-medium text-emerald-700">
+                    <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                    Enabled
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-stone-400 mt-0.5 font-mono text-xs">{cronTask.namespace}</p>
             </div>
             <div className="flex items-center space-x-2">
-              {cronTask.suspend ? (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-stone-100 text-stone-600 border border-stone-200">
-                  Suspended
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  Active
-                </span>
-              )}
               <button
                 onClick={() => triggerMutation.mutate()}
                 disabled={triggerMutation.isPending}
@@ -217,7 +221,7 @@ function CronTaskDetailPage() {
               <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{cronTask.totalExecutions}</dd>
             </div>
             <div>
-              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Active Tasks</dt>
+              <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Running Tasks</dt>
               <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{cronTask.active}</dd>
             </div>
             <div>

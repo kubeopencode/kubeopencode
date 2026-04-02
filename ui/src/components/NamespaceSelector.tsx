@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 interface NamespaceSelectorProps {
   value: string;
@@ -9,10 +9,17 @@ interface NamespaceSelectorProps {
 
 function NamespaceSelector({ value, onChange, namespaces, allNamespacesValue }: NamespaceSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setSearch('');
+      return;
+    }
+    // Focus search input when dropdown opens
+    setTimeout(() => searchInputRef.current?.focus(), 0);
     function handleClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
@@ -28,6 +35,14 @@ function NamespaceSelector({ value, onChange, namespaces, allNamespacesValue }: 
       document.removeEventListener('keydown', handleEscape);
     };
   }, [open]);
+
+  const filteredNamespaces = useMemo(() => {
+    if (!search.trim()) return namespaces;
+    const query = search.trim().toLowerCase();
+    return namespaces.filter((ns) => ns.toLowerCase().includes(query));
+  }, [namespaces, search]);
+
+  const showAllNamespaces = !search.trim() || 'all namespaces'.includes(search.trim().toLowerCase());
 
   const displayValue = value === allNamespacesValue ? 'All Namespaces' : value;
   const isAll = value === allNamespacesValue;
@@ -64,45 +79,64 @@ function NamespaceSelector({ value, onChange, namespaces, allNamespacesValue }: 
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 w-full min-w-[220px] bg-white border border-stone-200 rounded-lg shadow-lg z-50 py-1 max-h-72 overflow-y-auto animate-fade-in">
+        <div className="absolute top-full left-0 mt-1.5 min-w-[280px] bg-white border border-stone-200 rounded-lg shadow-lg z-[100] py-1 max-h-80 animate-fade-in">
           <div className="px-3 py-1.5 text-[10px] font-display font-medium text-stone-400 uppercase tracking-wider">
             Namespace
           </div>
-          <button
-            onClick={() => { onChange(allNamespacesValue); setOpen(false); }}
-            className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${
-              isAll
-                ? 'text-primary-700 bg-primary-50/60'
-                : 'text-stone-600 hover:bg-stone-50'
-            }`}
-          >
-            <svg className={`w-3.5 h-3.5 shrink-0 ${isAll ? 'text-primary-500' : 'text-transparent'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <span>All Namespaces</span>
-          </button>
-          {namespaces.length > 0 && (
-            <div className="mx-3 my-1 border-t border-stone-100" />
-          )}
-          {namespaces.map((ns) => {
-            const selected = value === ns;
-            return (
+          <div className="px-2 pb-1.5">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search namespaces..."
+              className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-stone-50 text-stone-700 placeholder-stone-400 focus:outline-none focus:border-primary-300 focus:ring-1 focus:ring-primary-100"
+            />
+          </div>
+          <div className="overflow-y-auto max-h-56">
+            {showAllNamespaces && (
               <button
-                key={ns}
-                onClick={() => { onChange(ns); setOpen(false); }}
+                onClick={() => { onChange(allNamespacesValue); setOpen(false); }}
                 className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${
-                  selected
+                  isAll
                     ? 'text-primary-700 bg-primary-50/60'
-                    : 'text-stone-700 hover:bg-stone-50'
+                    : 'text-stone-600 hover:bg-stone-50'
                 }`}
               >
-                <svg className={`w-3.5 h-3.5 shrink-0 ${selected ? 'text-primary-500' : 'text-transparent'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg className={`w-3.5 h-3.5 shrink-0 ${isAll ? 'text-primary-500' : 'text-transparent'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
-                <span className="font-mono text-xs">{ns}</span>
+                <span>All Namespaces</span>
               </button>
-            );
-          })}
+            )}
+            {(showAllNamespaces && filteredNamespaces.length > 0) && (
+              <div className="mx-3 my-1 border-t border-stone-100" />
+            )}
+            {filteredNamespaces.map((ns) => {
+              const selected = value === ns;
+              return (
+                <button
+                  key={ns}
+                  onClick={() => { onChange(ns); setOpen(false); }}
+                  className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${
+                    selected
+                      ? 'text-primary-700 bg-primary-50/60'
+                      : 'text-stone-700 hover:bg-stone-50'
+                  }`}
+                >
+                  <svg className={`w-3.5 h-3.5 shrink-0 ${selected ? 'text-primary-500' : 'text-transparent'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span className="font-mono text-xs">{ns}</span>
+                </button>
+              );
+            })}
+            {filteredNamespaces.length === 0 && !showAllNamespaces && (
+              <div className="px-3 py-3 text-sm text-stone-400 text-center">
+                No matching namespaces
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

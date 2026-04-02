@@ -28,6 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -137,7 +138,7 @@ var _ = BeforeSuite(func() {
 			Command:            []string{"sh", "-c", "echo 'test agent'"},
 		},
 	}
-	Expect(k8sClient.Create(ctx, testAgent)).Should(Succeed())
+	createReadyAgent(ctx, testAgent)
 })
 
 var _ = AfterSuite(func() {
@@ -155,4 +156,40 @@ func stringPtr(s string) *string {
 // int64Ptr returns a pointer to the given int64 value
 func int64Ptr(i int64) *int64 {
 	return &i
+}
+
+// createReadyAgent creates an Agent and simulates its Deployment being ready.
+// In envtest no real pods run, so we must fake Deployment readiness to let the
+// Agent controller set status.ready = true.
+func createReadyAgent(ctx context.Context, agent *kubeopenv1alpha1.Agent) {
+	ExpectWithOffset(1, k8sClient.Create(ctx, agent)).Should(Succeed())
+
+	// Wait for the Agent controller to create the Deployment
+	deployName := ServerDeploymentName(agent.Name)
+	deployKey := types.NamespacedName{Name: deployName, Namespace: agent.Namespace}
+	Eventually(func() error {
+		return k8sClient.Get(ctx, deployKey, &appsv1.Deployment{})
+	}, timeout, interval).Should(Succeed())
+
+	// Simulate the Deployment having ready replicas (envtest has no kubelet)
+	Eventually(func() error {
+		deploy := &appsv1.Deployment{}
+		if err := k8sClient.Get(ctx, deployKey, deploy); err != nil {
+			return err
+		}
+		deploy.Status.Replicas = 1
+		deploy.Status.ReadyReplicas = 1
+		deploy.Status.AvailableReplicas = 1
+		return k8sClient.Status().Update(ctx, deploy)
+	}, timeout, interval).Should(Succeed())
+
+	// Wait for Agent controller to pick up the ready Deployment and set status.ready
+	agentKey := types.NamespacedName{Name: agent.Name, Namespace: agent.Namespace}
+	Eventually(func() bool {
+		a := &kubeopenv1alpha1.Agent{}
+		if err := k8sClient.Get(ctx, agentKey, a); err != nil {
+			return false
+		}
+		return a.Status.Ready
+	}, timeout, interval).Should(BeTrue())
 }

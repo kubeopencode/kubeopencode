@@ -17,6 +17,10 @@ module.exports = {
     extensions: ['.ts', '.tsx', '.js', '.jsx'],
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      react: path.resolve(__dirname, 'node_modules/react'),
+      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+      '@codemirror/state': path.resolve(__dirname, 'node_modules/@codemirror/state'),
+      '@codemirror/view': path.resolve(__dirname, 'node_modules/@codemirror/view'),
     },
   },
   module: {

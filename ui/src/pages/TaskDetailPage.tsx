@@ -97,11 +97,13 @@ function TaskDetailPage() {
         <div className="px-6 py-5 border-b border-stone-100">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-display text-xl font-bold text-stone-900">{task.name}</h2>
+              <div className="flex items-center gap-2.5">
+                <h2 className="font-display text-xl font-bold text-stone-900">{task.name}</h2>
+                <StatusBadge phase={task.phase || 'Pending'} />
+              </div>
               <p className="text-sm text-stone-400 mt-0.5 font-mono text-xs">{task.namespace}</p>
             </div>
             <div className="flex items-center space-x-2">
-              <StatusBadge phase={task.phase || 'Pending'} />
               {task.phase === 'Running' && (
                 <button
                   onClick={() => stopMutation.mutate()}

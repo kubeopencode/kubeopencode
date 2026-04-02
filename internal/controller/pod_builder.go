@@ -37,6 +37,7 @@ type agentConfig struct {
 	port               int32                               // Server port (default 4096)
 	persistence        *kubeopenv1alpha1.PersistenceConfig // Persistence configuration
 	suspend            bool                                // Whether Agent is suspended
+	serverReady        bool                                // Whether Agent server is ready (from status)
 }
 
 // ResolveAgentConfig extracts configuration from the Agent spec.
@@ -60,6 +61,7 @@ func ResolveAgentConfig(agent *kubeopenv1alpha1.Agent) agentConfig {
 		port:               agent.Spec.Port,
 		persistence:        agent.Spec.Persistence,
 		suspend:            agent.Spec.Suspend,
+		serverReady:        agent.Status.Ready,
 	}
 }
 

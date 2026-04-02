@@ -125,9 +125,6 @@ function AgentTemplateDetailPage() {
               <p className="text-xs text-stone-400 mt-0.5 font-mono">{tmpl.namespace}</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border bg-teal-50 text-teal-600 border-teal-200">
-                {tmpl.agentCount} {tmpl.agentCount === 1 ? 'Agent' : 'Agents'}
-              </span>
               <Link
                 to={`/agents/create?template=${tmpl.namespace}/${tmpl.name}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
@@ -213,11 +210,23 @@ function AgentTemplateDetailPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${
-                        agent.serverStatus?.ready
-                          ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                          : 'bg-stone-50 text-stone-400 border-stone-200'
+                      <span className={`inline-flex items-center text-[11px] font-medium ${
+                        agent.serverStatus?.suspended
+                          ? 'text-amber-600'
+                          : agent.serverStatus?.ready
+                            ? 'text-emerald-600'
+                            : 'text-violet-600'
                       }`}>
+                        {agent.serverStatus?.suspended ? (
+                          <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-amber-400" />
+                        ) : agent.serverStatus?.ready ? (
+                          <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                        ) : (
+                          <span className="relative mr-1.5 flex h-1.5 w-1.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-violet-400" />
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-violet-400" />
+                          </span>
+                        )}
                         {agent.serverStatus?.suspended ? 'Suspended' : agent.serverStatus?.ready ? 'Live' : 'Starting'}
                       </span>
                       <svg className="w-4 h-4 text-stone-300 group-hover:text-stone-500 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

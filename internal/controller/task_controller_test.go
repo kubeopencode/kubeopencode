@@ -132,7 +132,7 @@ var _ = Describe("TaskController", func() {
 					WorkspaceDir:       "/workspace",
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task with Agent reference")
 			task := &kubeopenv1alpha1.Task{
@@ -223,7 +223,7 @@ var _ = Describe("TaskController", func() {
 					WorkspaceDir: "/workspace",
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -301,7 +301,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -371,7 +371,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -612,7 +612,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task with inline context")
 			task := &kubeopenv1alpha1.Task{
@@ -774,7 +774,7 @@ var _ = Describe("TaskController", func() {
 					MaxConcurrentTasks: &maxConcurrent,
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating first Task")
 			task1 := &kubeopenv1alpha1.Task{
@@ -894,7 +894,7 @@ var _ = Describe("TaskController", func() {
 					MaxConcurrentTasks: &maxConcurrent,
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating first Task")
 			task1 := &kubeopenv1alpha1.Task{
@@ -965,7 +965,7 @@ var _ = Describe("TaskController", func() {
 					// MaxConcurrentTasks not set (nil)
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating first Task")
 			task1 := &kubeopenv1alpha1.Task{
@@ -1037,7 +1037,7 @@ var _ = Describe("TaskController", func() {
 					WorkspaceDir:       "/workspace",
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -1140,7 +1140,7 @@ var _ = Describe("TaskController", func() {
 					MaxConcurrentTasks: &maxConcurrent,
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating first Task to occupy the slot")
 			task1 := &kubeopenv1alpha1.Task{
@@ -1287,7 +1287,7 @@ var _ = Describe("TaskController", func() {
 					ServiceAccountName: "default",
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task with two inline contexts with same mountPath")
 			task := &kubeopenv1alpha1.Task{
@@ -1356,7 +1356,7 @@ var _ = Describe("TaskController", func() {
 					ServiceAccountName: "default",
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task with inline Git context with mountPath")
 			task := &kubeopenv1alpha1.Task{
@@ -1416,7 +1416,7 @@ var _ = Describe("TaskController", func() {
 					ServiceAccountName: "default",
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task with inline Runtime context")
 			task := &kubeopenv1alpha1.Task{
@@ -1495,7 +1495,7 @@ var _ = Describe("TaskController", func() {
 					Config:             &configJSON,
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			// Create Task referencing the Agent
 			task := &kubeopenv1alpha1.Task{
@@ -1586,7 +1586,7 @@ var _ = Describe("TaskController", func() {
 					Config:             &invalidConfigJSON,
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			// Create Task referencing the Agent
 			task := &kubeopenv1alpha1.Task{
@@ -1645,7 +1645,7 @@ var _ = Describe("TaskController", func() {
 					WorkspaceDir:       "/workspace",
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating cluster-scoped KubeOpenCodeConfig with TTL cleanup")
 			ttlSeconds := int32(2) // 2 seconds for quick test
@@ -1740,7 +1740,7 @@ var _ = Describe("TaskController", func() {
 					WorkspaceDir:       "/workspace",
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task without KubeOpenCodeConfig")
 			task := &kubeopenv1alpha1.Task{
@@ -1826,7 +1826,7 @@ var _ = Describe("TaskController", func() {
 					WorkspaceDir:       "/workspace",
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating cluster-scoped KubeOpenCodeConfig with retention limit of 2")
 			maxRetained := int32(2)
@@ -1970,7 +1970,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating first Task")
 			task1 := &kubeopenv1alpha1.Task{
@@ -2093,7 +2093,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating first Task")
 			task1 := &kubeopenv1alpha1.Task{
@@ -2184,7 +2184,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -2258,7 +2258,7 @@ var _ = Describe("TaskController", func() {
 					Command:            customCmd,
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -2305,7 +2305,7 @@ var _ = Describe("TaskController", func() {
 					// Command is not specified
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -2368,7 +2368,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -2444,7 +2444,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -2526,7 +2526,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -2820,7 +2820,7 @@ var _ = Describe("TaskController", func() {
 					Port: 4096,
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Waiting for Agent Deployment to be created")
 			deploymentName := ServerDeploymentName(agentName)
@@ -2915,7 +2915,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task referencing Agent with CABundle")
 			task := &kubeopenv1alpha1.Task{
@@ -3037,7 +3037,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task referencing Agent with CABundle Secret")
 			task := &kubeopenv1alpha1.Task{
@@ -3170,7 +3170,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task referencing Agent with CABundle + Git context")
 			task := &kubeopenv1alpha1.Task{
@@ -3264,7 +3264,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task")
 			task := &kubeopenv1alpha1.Task{
@@ -3331,7 +3331,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task referencing Agent with proxy")
 			task := &kubeopenv1alpha1.Task{
@@ -3418,7 +3418,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task referencing Agent with imagePullSecrets")
 			task := &kubeopenv1alpha1.Task{
@@ -3540,7 +3540,7 @@ var _ = Describe("TaskController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			createReadyAgent(ctx, agent)
 
 			By("Creating Task referencing Agent with custom security context")
 			task := &kubeopenv1alpha1.Task{
@@ -3588,6 +3588,161 @@ var _ = Describe("TaskController", func() {
 				Expect(*initC.SecurityContext.AllowPrivilegeEscalation).Should(BeFalse(),
 					"Expected init container %q AllowPrivilegeEscalation=false", initC.Name)
 			}
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
+
+	Context("When Agent server is not ready", func() {
+		It("Should queue Task when agent server is not ready and run when it becomes ready", func() {
+			agentName := "test-agent-server-not-ready"
+			description := "# Test server readiness"
+
+			By("Creating Agent without marking it ready")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent-sa",
+					WorkspaceDir:       "/workspace",
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating a Task targeting the not-ready Agent")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-server-not-ready",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task is Queued due to server not ready")
+			taskKey := types.NamespacedName{Name: task.Name, Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseQueued))
+
+			By("Verifying Queued condition has AgentServerNotReady reason")
+			updatedTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskKey, updatedTask)).Should(Succeed())
+			var queuedCondition *metav1.Condition
+			for i := range updatedTask.Status.Conditions {
+				if updatedTask.Status.Conditions[i].Type == kubeopenv1alpha1.ConditionTypeQueued {
+					queuedCondition = &updatedTask.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(queuedCondition).ShouldNot(BeNil())
+			Expect(queuedCondition.Status).Should(Equal(metav1.ConditionTrue))
+			Expect(queuedCondition.Reason).Should(Equal(kubeopenv1alpha1.ReasonAgentServerNotReady))
+
+			By("Simulating Deployment becoming ready")
+			deployName := ServerDeploymentName(agentName)
+			deployKey := types.NamespacedName{Name: deployName, Namespace: taskNamespace}
+			Eventually(func() error {
+				deploy := &appsv1.Deployment{}
+				if err := k8sClient.Get(ctx, deployKey, deploy); err != nil {
+					return err
+				}
+				deploy.Status.Replicas = 1
+				deploy.Status.ReadyReplicas = 1
+				deploy.Status.AvailableReplicas = 1
+				return k8sClient.Status().Update(ctx, deploy)
+			}, timeout, interval).Should(Succeed())
+
+			By("Waiting for Agent to become ready")
+			agentKey := types.NamespacedName{Name: agentName, Namespace: taskNamespace}
+			Eventually(func() bool {
+				a := &kubeopenv1alpha1.Agent{}
+				if err := k8sClient.Get(ctx, agentKey, a); err != nil {
+					return false
+				}
+				return a.Status.Ready
+			}, timeout, interval).Should(BeTrue())
+
+			By("Checking Task transitions to Running")
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				t := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
+					return ""
+				}
+				return t.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should queue Task when agent server is not ready even with capacity available", func() {
+			agentName := "test-agent-notready-with-capacity"
+			description := "# Test server readiness with capacity"
+			maxConcurrent := int32(5)
+
+			By("Creating Agent with capacity but not ready")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ServiceAccountName: "test-agent-sa",
+					WorkspaceDir:       "/workspace",
+					MaxConcurrentTasks: &maxConcurrent,
+				},
+			}
+			// Intentionally NOT using createReadyAgent — agent should remain not-ready
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Creating a Task")
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-task-notready-capacity",
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &description,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Checking Task is Queued (server readiness checked before capacity)")
+			taskKey := types.NamespacedName{Name: task.Name, Namespace: taskNamespace}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				updatedTask := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, updatedTask); err != nil {
+					return ""
+				}
+				return updatedTask.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseQueued))
+
+			By("Verifying reason is AgentServerNotReady, not AgentAtCapacity")
+			updatedTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskKey, updatedTask)).Should(Succeed())
+			var queuedCondition *metav1.Condition
+			for i := range updatedTask.Status.Conditions {
+				if updatedTask.Status.Conditions[i].Type == kubeopenv1alpha1.ConditionTypeQueued {
+					queuedCondition = &updatedTask.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(queuedCondition).ShouldNot(BeNil())
+			Expect(queuedCondition.Reason).Should(Equal(kubeopenv1alpha1.ReasonAgentServerNotReady))
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())

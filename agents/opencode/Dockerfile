@@ -31,15 +31,17 @@
 # The init container uses Debian to ensure binary compatibility with glibc-based work containers.
 #
 # Version Management:
-#   Set OPENCODE_VERSION build arg to pin to a specific version.
-#   Example: docker build --build-arg OPENCODE_VERSION=1.1.60 -t opencode .
+#   OPENCODE_VERSION is defined in agents/Makefile (single source of truth).
+#   When building via make, it is passed automatically as --build-arg.
+#   For standalone docker build, you must pass it explicitly:
+#     docker build --build-arg OPENCODE_VERSION=1.3.13 -t opencode .
 #
 
 FROM debian:bookworm-20260316-slim
 
-# OpenCode version to download (use specific version to avoid cache issues)
-# Override with: --build-arg OPENCODE_VERSION=x.y.z
-ARG OPENCODE_VERSION=1.3.13
+# OpenCode version to download — must be passed via --build-arg (no default).
+# Single source of truth: agents/Makefile (OPENCODE_VERSION variable).
+ARG OPENCODE_VERSION
 
 # Install curl for downloading
 RUN apt-get update && apt-get install -y --no-install-recommends \

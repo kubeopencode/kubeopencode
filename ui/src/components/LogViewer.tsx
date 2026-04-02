@@ -54,6 +54,9 @@ function LogViewer({ namespace, taskName, podName, isRunning }: LogViewerProps) 
               setLogs((prev) => [...prev, data.content!]);
             }
             break;
+          case 'info':
+            setStatus(data.message || 'Initializing...');
+            break;
           case 'error':
             setError(data.message || 'Unknown error');
             break;

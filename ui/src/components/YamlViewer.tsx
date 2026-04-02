@@ -44,21 +44,21 @@ function formatYaml(value: string): { formatted: string; error: string | null } 
 
 const darkTheme = EditorView.theme({
   '&': {
-    backgroundColor: '#0c0a09',
+    backgroundColor: '#1c1917',
     color: '#d6d3d1',
     fontSize: '12px',
   },
   '.cm-gutters': {
-    backgroundColor: '#1c1917',
+    backgroundColor: '#292524',
     color: '#78716c',
     border: 'none',
-    borderRight: '1px solid #292524',
+    borderRight: '1px solid #44403c',
   },
   '.cm-activeLineGutter': {
-    backgroundColor: '#292524',
+    backgroundColor: '#44403c',
   },
   '.cm-activeLine': {
-    backgroundColor: '#1c191780',
+    backgroundColor: '#29252480',
   },
   '.cm-cursor': {
     borderLeftColor: '#e7e5e4',
@@ -179,8 +179,8 @@ function YamlViewer({ queryKey, fetchYaml, onSave }: YamlViewerProps) {
         <span>YAML</span>
       </button>
       {isOpen && (
-        <div className="mt-2 bg-stone-900 rounded-xl overflow-hidden border border-stone-800 animate-fade-in">
-          <div className="px-4 py-2.5 bg-stone-800/50 flex items-center justify-between border-b border-stone-700/50">
+        <div className="mt-2 bg-stone-800 rounded-xl overflow-hidden border border-stone-700 animate-fade-in">
+          <div className="px-4 py-2.5 bg-stone-700/50 flex items-center justify-between border-b border-stone-600/50">
             <span className="text-xs text-stone-400 font-display">Resource Definition</span>
             <div className="flex items-center gap-2">
               {(yaml || editing) && (
@@ -225,6 +225,7 @@ function YamlViewer({ queryKey, fetchYaml, onSave }: YamlViewerProps) {
                   value={editValue}
                   onChange={setEditValue}
                   extensions={extensions}
+                  theme="dark"
                   height="384px"
                   basicSetup={{
                     lineNumbers: true,
@@ -273,6 +274,7 @@ function YamlViewer({ queryKey, fetchYaml, onSave }: YamlViewerProps) {
               <CodeMirror
                 value={yaml || ''}
                 extensions={readOnlyExtensions}
+                theme="dark"
                 height="auto"
                 maxHeight="384px"
                 basicSetup={{

@@ -16,8 +16,29 @@ export function formatRelativeTime(date: string | Date): string {
   const now = new Date();
   const diffSeconds = Math.floor((now.getTime() - d.getTime()) / 1000);
 
+  // Handle future dates (e.g., Next Run for CronTasks)
   if (diffSeconds < 0) {
-    return 'just now';
+    const absDiff = Math.abs(diffSeconds);
+
+    if (absDiff < MINUTE) {
+      return absDiff <= 5 ? 'just now' : `in ${absDiff}s`;
+    }
+    if (absDiff < HOUR) {
+      return `in ${Math.floor(absDiff / MINUTE)}m`;
+    }
+    if (absDiff < DAY) {
+      return `in ${Math.floor(absDiff / HOUR)}h`;
+    }
+    if (absDiff < WEEK) {
+      return `in ${Math.floor(absDiff / DAY)}d`;
+    }
+    if (absDiff < MONTH) {
+      return `in ${Math.floor(absDiff / WEEK)}w`;
+    }
+    if (absDiff < YEAR) {
+      return `in ${Math.floor(absDiff / MONTH)}mo`;
+    }
+    return `in ${Math.floor(absDiff / YEAR)}y`;
   }
 
   if (diffSeconds < MINUTE) {

@@ -71,6 +71,7 @@ func MergeAgentWithTemplate(agent *kubeopenv1alpha1.Agent, tmpl *kubeopenv1alpha
 		port:             agent.Spec.Port,
 		persistence:      agent.Spec.Persistence,
 		suspend:          agent.Spec.Suspend,
+		serverReady:      agent.Status.Ready,
 	}
 
 	return merged

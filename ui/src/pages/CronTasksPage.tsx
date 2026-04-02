@@ -1,25 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import TimeAgo from '../components/TimeAgo';
 import ResourceFilter from '../components/ResourceFilter';
 import { TableSkeleton } from '../components/Skeleton';
-import ConfirmDialog from '../components/ConfirmDialog';
 import { useFilterState } from '../hooks/useFilterState';
 import { useNamespace } from '../contexts/NamespaceContext';
-import { useToast } from '../contexts/ToastContext';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 function CronTasksPage() {
   const { namespace, isAllNamespaces } = useNamespace();
-  const queryClient = useQueryClient();
-  const { addToast } = useToast();
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [filters, setFilters] = useFilterState();
-  const [deleteTarget, setDeleteTarget] = useState<{ namespace: string; name: string } | null>(null);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -40,50 +35,6 @@ function CronTasksPage() {
         : api.listCronTasks(namespace, params);
     },
     refetchInterval: 5000,
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: ({ ns, n }: { ns: string; n: string }) => api.deleteCronTask(ns, n),
-    onSuccess: (_, { n }) => {
-      addToast(`CronTask "${n}" deleted successfully`, 'success');
-      queryClient.invalidateQueries({ queryKey: ['crontasks'] });
-    },
-    onError: (err: Error) => {
-      addToast(`Failed to delete CronTask: ${err.message}`, 'error');
-    },
-  });
-
-  const triggerMutation = useMutation({
-    mutationFn: ({ ns, n }: { ns: string; n: string }) => api.triggerCronTask(ns, n),
-    onSuccess: (_, { n }) => {
-      addToast(`CronTask "${n}" triggered successfully`, 'success');
-      queryClient.invalidateQueries({ queryKey: ['crontasks'] });
-    },
-    onError: (err: Error) => {
-      addToast(`Failed to trigger CronTask: ${err.message}`, 'error');
-    },
-  });
-
-  const suspendMutation = useMutation({
-    mutationFn: ({ ns, n }: { ns: string; n: string }) => api.suspendCronTask(ns, n),
-    onSuccess: (_, { n }) => {
-      addToast(`CronTask "${n}" suspended`, 'success');
-      queryClient.invalidateQueries({ queryKey: ['crontasks'] });
-    },
-    onError: (err: Error) => {
-      addToast(`Failed to suspend CronTask: ${err.message}`, 'error');
-    },
-  });
-
-  const resumeMutation = useMutation({
-    mutationFn: ({ ns, n }: { ns: string; n: string }) => api.resumeCronTask(ns, n),
-    onSuccess: (_, { n }) => {
-      addToast(`CronTask "${n}" resumed`, 'success');
-      queryClient.invalidateQueries({ queryKey: ['crontasks'] });
-    },
-    onError: (err: Error) => {
-      addToast(`Failed to resume CronTask: ${err.message}`, 'error');
-    },
   });
 
   return (
@@ -119,7 +70,7 @@ function CronTasksPage() {
 
       {isLoading ? (
         <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
-          <TableSkeleton rows={5} cols={isAllNamespaces ? 9 : 8} />
+          <TableSkeleton rows={5} cols={isAllNamespaces ? 7 : 6} />
         </div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 rounded-xl p-5">
@@ -153,9 +104,6 @@ function CronTasksPage() {
                 <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider hidden sm:table-cell">
-                  Active
-                </th>
                 <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider hidden lg:table-cell">
                   Last Run
                 </th>
@@ -165,15 +113,12 @@ function CronTasksPage() {
                 <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">
                   Age
                 </th>
-                <th className="px-5 py-3 text-right text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">
-                  Actions
-                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-stone-100">
               {data?.cronTasks.length === 0 ? (
                 <tr>
-                  <td colSpan={isAllNamespaces ? 10 : 9} className="px-5 py-12 text-center text-stone-400 text-sm">
+                  <td colSpan={isAllNamespaces ? 7 : 6} className="px-5 py-12 text-center text-stone-400 text-sm">
                     No CronTasks found.{' '}
                     {!isAllNamespaces && (
                       <Link to="/crontasks/create" className="text-primary-600 hover:text-primary-700 font-medium">
@@ -216,17 +161,16 @@ function CronTasksPage() {
                     </td>
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       {ct.suspend ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-stone-100 text-stone-600 border border-stone-200">
+                        <span className="inline-flex items-center text-xs font-medium text-stone-500">
+                          <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-stone-400" />
                           Suspended
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          Active
+                        <span className="inline-flex items-center text-xs font-medium text-emerald-700">
+                          <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                          Enabled
                         </span>
                       )}
-                    </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap text-sm text-stone-600 hidden sm:table-cell font-mono text-xs">
-                      {ct.active}
                     </td>
                     <td className="px-5 py-3.5 whitespace-nowrap text-xs text-stone-400 hidden lg:table-cell">
                       {ct.lastScheduleTime ? <TimeAgo date={ct.lastScheduleTime} /> : '-'}
@@ -236,44 +180,6 @@ function CronTasksPage() {
                     </td>
                     <td className="px-5 py-3.5 whitespace-nowrap text-xs text-stone-400">
                       <TimeAgo date={ct.createdAt} />
-                    </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => triggerMutation.mutate({ ns: ct.namespace, n: ct.name })}
-                          disabled={triggerMutation.isPending}
-                          className="px-2.5 py-1 text-[11px] font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-md hover:bg-primary-100 transition-colors"
-                          title="Run Now"
-                        >
-                          Run
-                        </button>
-                        {ct.suspend ? (
-                          <button
-                            onClick={() => resumeMutation.mutate({ ns: ct.namespace, n: ct.name })}
-                            disabled={resumeMutation.isPending}
-                            className="px-2.5 py-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md hover:bg-emerald-100 transition-colors"
-                            title="Resume"
-                          >
-                            Resume
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => suspendMutation.mutate({ ns: ct.namespace, n: ct.name })}
-                            disabled={suspendMutation.isPending}
-                            className="px-2.5 py-1 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors"
-                            title="Suspend"
-                          >
-                            Suspend
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setDeleteTarget({ namespace: ct.namespace, name: ct.name })}
-                          className="px-2.5 py-1 text-[11px] font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors"
-                          title="Delete"
-                        >
-                          Delete
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 ))
@@ -349,20 +255,6 @@ function CronTasksPage() {
         </div>
       )}
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        title="Delete CronTask"
-        message={`Are you sure you want to delete CronTask "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        onConfirm={() => {
-          if (deleteTarget) {
-            deleteMutation.mutate({ ns: deleteTarget.namespace, n: deleteTarget.name });
-          }
-          setDeleteTarget(null);
-        }}
-        onCancel={() => setDeleteTarget(null)}
-      />
     </div>
   );
 }

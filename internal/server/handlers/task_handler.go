@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -347,7 +348,12 @@ func (h *TaskHandler) streamPodLogs(ctx context.Context, w http.ResponseWriter, 
 		req = clientset.CoreV1().Pods(podNamespace).GetLogs(podName, logOptions)
 		stream, err = req.Stream(ctx)
 		if err != nil {
-			writeSSEEvent(w, flusher, types.LogEvent{Type: "error", Message: fmt.Sprintf("Failed to get logs: %s", err.Error())})
+			// PodInitializing is expected during init container execution, not a real error
+			if strings.Contains(err.Error(), "PodInitializing") || strings.Contains(err.Error(), "is waiting to start") {
+				writeSSEEvent(w, flusher, types.LogEvent{Type: "info", Message: "Pod is initializing, logs will be available shortly..."})
+			} else {
+				writeSSEEvent(w, flusher, types.LogEvent{Type: "error", Message: fmt.Sprintf("Failed to get logs: %s", err.Error())})
+			}
 			return
 		}
 	}

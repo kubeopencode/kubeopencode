@@ -29,7 +29,7 @@ When updating base images:
 
 | Component | Version | Location | Purpose |
 |-----------|---------|----------|---------|
-| OpenCode CLI | `1.3.0` | `agents/opencode/Dockerfile` (`OPENCODE_VERSION` ARG) | AI agent binary |
+| OpenCode CLI | `1.3.13` | `agents/opencode/Dockerfile` (`OPENCODE_VERSION` ARG) & `agents/Makefile` | AI agent binary |
 | OpenCode Web UI | `v1.3.2` | `Makefile` (`OPENCODE_APP_VERSION`) | Self-hosted Web UI (built from source) |
 
 ## Go Toolchain

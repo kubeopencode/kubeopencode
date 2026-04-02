@@ -254,7 +254,7 @@ export interface NamespaceList {
 
 // Log streaming event types
 export interface LogEvent {
-  type: 'status' | 'log' | 'error' | 'complete';
+  type: 'status' | 'log' | 'error' | 'info' | 'complete';
   phase?: string;
   podPhase?: string;
   content?: string;

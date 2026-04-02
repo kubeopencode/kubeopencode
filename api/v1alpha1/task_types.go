@@ -59,6 +59,8 @@ const (
 	ReasonQuestionAsked = "QuestionAsked"
 	// ReasonAgentSuspended is the reason when agent is suspended (scaled to 0)
 	ReasonAgentSuspended = "AgentSuspended"
+	// ReasonAgentServerNotReady is the reason when agent server is not yet ready
+	ReasonAgentServerNotReady = "AgentServerNotReady"
 )
 
 // +genclient
