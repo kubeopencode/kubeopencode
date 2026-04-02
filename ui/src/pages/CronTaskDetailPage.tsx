@@ -181,6 +181,14 @@ function CronTaskDetailPage() {
         </div>
 
         <div className="px-6 py-5 space-y-5">
+          {/* Labels */}
+          {cronTask.labels && Object.keys(cronTask.labels).length > 0 && (
+            <div>
+              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
+              <Labels labels={cronTask.labels} />
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-x-6 gap-y-4">
             <div>
               <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Schedule</dt>
@@ -252,14 +260,6 @@ function CronTaskDetailPage() {
               <div>
                 <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Starting Deadline</dt>
                 <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{cronTask.startingDeadlineSeconds}s</dd>
-              </div>
-            )}
-            {cronTask.labels && Object.keys(cronTask.labels).length > 0 && (
-              <div className="col-span-2">
-                <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Labels</dt>
-                <dd className="mt-1.5">
-                  <Labels labels={cronTask.labels} />
-                </dd>
               </div>
             )}
           </div>

@@ -140,6 +140,14 @@ function AgentTemplateDetailPage() {
         </div>
 
         <div className="px-6 py-5 space-y-6">
+          {/* Labels */}
+          {tmpl.labels && Object.keys(tmpl.labels).length > 0 && (
+            <div>
+              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
+              <Labels labels={tmpl.labels} />
+            </div>
+          )}
+
           {/* Configuration */}
           <div>
             <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">Configuration</h3>
@@ -174,14 +182,6 @@ function AgentTemplateDetailPage() {
               )}
             </div>
           </div>
-
-          {/* Labels */}
-          {tmpl.labels && Object.keys(tmpl.labels).length > 0 && (
-            <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
-              <Labels labels={tmpl.labels} />
-            </div>
-          )}
 
           {/* Referencing Agents */}
           <div>

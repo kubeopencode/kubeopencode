@@ -131,6 +131,14 @@ function TaskDetailPage() {
         </div>
 
         <div className="px-6 py-5 space-y-5">
+          {/* Labels */}
+          {task.labels && Object.keys(task.labels).length > 0 && (
+            <div>
+              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
+              <Labels labels={task.labels} />
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-x-6 gap-y-4">
             <div>
               <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Agent</dt>
@@ -168,14 +176,6 @@ function TaskDetailPage() {
                 <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Pod</dt>
                 <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">
                   {task.namespace}/{task.podName}
-                </dd>
-              </div>
-            )}
-            {task.labels && Object.keys(task.labels).length > 0 && (
-              <div className="col-span-2">
-                <dt className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Labels</dt>
-                <dd className="mt-1.5">
-                  <Labels labels={task.labels} />
                 </dd>
               </div>
             )}

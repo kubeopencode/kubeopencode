@@ -1,6 +1,7 @@
 // Kubernetes label keys used for filtering
 export const LABEL_AGENT = 'kubeopencode.io/agent';
 export const LABEL_AGENT_TEMPLATE = 'kubeopencode.io/agent-template';
+export const LABEL_CRONTASK = 'kubeopencode.io/crontask';
 
 // Template filter sentinel values
 export const FILTER_HAS_TEMPLATE = 'has-template';
