@@ -375,7 +375,7 @@ e2e-reload: e2e-docker-build e2e-kind-load e2e-verify-image ## Rebuild and reloa
 # Build agent images for e2e testing
 e2e-agent-build: ## Build agent images for e2e testing (echo + opencode)
 	docker build -t quay.io/kubeopencode/kubeopencode-agent-echo:latest agents/echo/
-	docker build -t quay.io/kubeopencode/kubeopencode-agent-opencode:latest agents/opencode/
+	$(MAKE) -C agents AGENT=opencode build IMG=quay.io/kubeopencode/kubeopencode-agent-opencode:latest
 .PHONY: e2e-agent-build
 
 # Load agent images into kind cluster
