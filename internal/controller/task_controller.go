@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -782,6 +783,14 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 		contextContent := strings.Join(contextParts, "\n\n")
 		configMapData[sanitizeConfigMapKey(contextFilePath)] = contextContent
 		fileMounts = append(fileMounts, fileMount{filePath: contextFilePath})
+	}
+
+	// Validate JSON syntax of user-provided config before processing
+	if cfg.config != nil && *cfg.config != "" {
+		var jsonCheck interface{}
+		if err := json.Unmarshal([]byte(*cfg.config), &jsonCheck); err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("invalid JSON in Agent config: %w", err)
+		}
 	}
 
 	// Process skills and inject config (skills.paths + user config → opencode.json)

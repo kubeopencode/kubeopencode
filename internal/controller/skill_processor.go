@@ -76,7 +76,12 @@ func processSkills(skills []kubeopenv1alpha1.SkillSource) ([]gitMount, []string)
 
 // processSkillsAndInjectConfig handles the full skill processing pipeline:
 // converts SkillSources to git mounts, injects skills.paths into the OpenCode config,
-// validates the resulting JSON, and adds the config to the ConfigMap data.
+// and adds the config to the ConfigMap data.
+//
+// Note: This function does NOT validate JSON syntax. The caller (Task controller)
+// is responsible for JSON validation when needed. The Agent controller intentionally
+// skips validation to allow Deployment creation even with invalid config (the error
+// surfaces at Task execution time instead).
 func processSkillsAndInjectConfig(skills []kubeopenv1alpha1.SkillSource, config *string, configMapData map[string]string, fileMounts []fileMount) ([]gitMount, []fileMount, error) {
 	skillGitMounts, skillPaths := processSkills(skills)
 
@@ -90,10 +95,6 @@ func processSkillsAndInjectConfig(skills []kubeopenv1alpha1.SkillSource, config 
 	}
 
 	if effectiveConfig != nil && *effectiveConfig != "" {
-		var jsonCheck interface{}
-		if err := json.Unmarshal([]byte(*effectiveConfig), &jsonCheck); err != nil {
-			return nil, fileMounts, fmt.Errorf("invalid JSON in config: %w", err)
-		}
 		configMapKey := sanitizeConfigMapKey(OpenCodeConfigPath)
 		configMapData[configMapKey] = *effectiveConfig
 		fileMounts = append(fileMounts, fileMount{filePath: OpenCodeConfigPath})
