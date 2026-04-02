@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -383,24 +382,16 @@ func (r *CronTaskReconciler) stopTask(ctx context.Context, task *kubeopenv1alpha
 
 // updateLastSuccessfulTime updates lastSuccessfulTime from completed child Tasks.
 func (r *CronTaskReconciler) updateLastSuccessfulTime(cronTask *kubeopenv1alpha1.CronTask, finishedTasks []*kubeopenv1alpha1.Task) {
-	// Sort by completion time descending
-	sort.Slice(finishedTasks, func(i, j int) bool {
-		ti := finishedTasks[i].Status.CompletionTime
-		tj := finishedTasks[j].Status.CompletionTime
-		if ti == nil {
-			return false
-		}
-		if tj == nil {
-			return true
-		}
-		return ti.After(tj.Time)
-	})
-
+	var latest *metav1.Time
 	for _, t := range finishedTasks {
 		if t.Status.Phase == kubeopenv1alpha1.TaskPhaseCompleted && t.Status.CompletionTime != nil {
-			cronTask.Status.LastSuccessfulTime = t.Status.CompletionTime
-			break
+			if latest == nil || t.Status.CompletionTime.After(latest.Time) {
+				latest = t.Status.CompletionTime
+			}
 		}
+	}
+	if latest != nil {
+		cronTask.Status.LastSuccessfulTime = latest
 	}
 }
 
