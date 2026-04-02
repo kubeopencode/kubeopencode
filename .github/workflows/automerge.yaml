@@ -33,11 +33,6 @@ jobs:
 
             echo "Processing PR #$pr_number: $pr_title"
 
-            # Update branch if behind main
-            if gh pr update-branch "$pr_number" 2>/dev/null; then
-              echo "Branch updated for PR #$pr_number"
-            fi
-
             # Direct merge - squash commits and delete branch
             if gh pr merge "$pr_number" --squash --delete-branch; then
               echo "Successfully merged PR #$pr_number"
