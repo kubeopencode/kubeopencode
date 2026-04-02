@@ -143,14 +143,14 @@ function AgentTemplateDetailPage() {
           {/* Labels */}
           {tmpl.labels && Object.keys(tmpl.labels).length > 0 && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Labels</h3>
               <Labels labels={tmpl.labels} />
             </div>
           )}
 
           {/* Configuration */}
           <div>
-            <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">Configuration</h3>
+            <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-4">Configuration</h3>
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               {tmpl.executorImage && (
                 <div>
@@ -185,7 +185,7 @@ function AgentTemplateDetailPage() {
 
           {/* Referencing Agents */}
           <div>
-            <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">
+            <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">
               Referencing Agents ({referencingAgents.length})
             </h3>
             {referencingAgents.length === 0 ? (
@@ -242,7 +242,7 @@ function AgentTemplateDetailPage() {
           {/* Conditions */}
           {tmpl.conditions && tmpl.conditions.length > 0 && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Conditions</h3>
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">Conditions</h3>
               <div className="space-y-2">
                 {tmpl.conditions.map((condition, idx) => (
                   <div key={idx} className="bg-stone-50 rounded-lg p-3 border border-stone-100">
@@ -271,7 +271,7 @@ function AgentTemplateDetailPage() {
           {/* Credentials */}
           {tmpl.credentials && tmpl.credentials.length > 0 && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">
                 Credentials ({tmpl.credentials.length})
               </h3>
               <div className="space-y-2">
@@ -296,7 +296,7 @@ function AgentTemplateDetailPage() {
           {/* Contexts */}
           {tmpl.contexts && tmpl.contexts.length > 0 && (
             <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">
+              <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">
                 Contexts ({tmpl.contexts.length})
               </h3>
               <div className="space-y-2">

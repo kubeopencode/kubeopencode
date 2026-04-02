@@ -130,6 +130,7 @@ export interface Agent {
   executorImage?: string;
   agentImage?: string;
   workspaceDir?: string;
+  serviceAccountName?: string;
   contextsCount: number;
   credentialsCount: number;
   maxConcurrentTasks?: number;

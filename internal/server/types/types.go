@@ -142,6 +142,7 @@ type AgentResponse struct {
 	ExecutorImage      string            `json:"executorImage,omitempty"`
 	AgentImage         string            `json:"agentImage,omitempty"`
 	WorkspaceDir       string            `json:"workspaceDir,omitempty"`
+	ServiceAccountName string            `json:"serviceAccountName,omitempty"`
 	ContextsCount      int               `json:"contextsCount"`
 	CredentialsCount   int               `json:"credentialsCount"`
 	MaxConcurrentTasks *int32            `json:"maxConcurrentTasks,omitempty"`
