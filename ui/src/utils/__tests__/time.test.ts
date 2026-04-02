@@ -17,9 +17,24 @@ describe('time utilities', () => {
       expect(formatRelativeTime(date)).toBe('just now');
     });
 
-    it('returns "just now" for future times', () => {
-      const date = new Date('2026-02-13T12:00:10Z');
+    it('returns "just now" for near-future times within 5 seconds', () => {
+      const date = new Date('2026-02-13T12:00:03Z');
       expect(formatRelativeTime(date)).toBe('just now');
+    });
+
+    it('returns "in Xs" for future times beyond 5 seconds', () => {
+      const date = new Date('2026-02-13T12:00:10Z');
+      expect(formatRelativeTime(date)).toBe('in 10s');
+    });
+
+    it('returns "in Xm" for future times in minutes', () => {
+      const date = new Date('2026-02-13T12:05:00Z');
+      expect(formatRelativeTime(date)).toBe('in 5m');
+    });
+
+    it('returns "in Xh" for future times in hours', () => {
+      const date = new Date('2026-02-13T15:00:00Z');
+      expect(formatRelativeTime(date)).toBe('in 3h');
     });
 
     it('returns seconds ago for times between 6-59 seconds', () => {

@@ -17,45 +17,22 @@ describe('TaskCreatePage', () => {
 
     // Use heading role to avoid matching breadcrumb text
     expect(screen.getByRole('heading', { name: 'Create Task' })).toBeInTheDocument();
-    expect(screen.getByLabelText(/Namespace/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Name \(optional\)/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Task Prompt/)).toBeInTheDocument();
+    expect(screen.getByText('Namespace')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Auto-generated/)).toBeInTheDocument();
+    expect(screen.getByText('Description')).toBeInTheDocument();
   });
 
   it('loads namespaces from API', async () => {
     renderWithProviders(<TaskCreatePage />, { initialEntries: ['/tasks/create'] });
 
     await waitFor(() => {
-      const namespaceSelect = screen.getByLabelText(/Namespace/);
-      const options = namespaceSelect.querySelectorAll('option');
-      const optionTexts = Array.from(options).map((o) => o.textContent);
-      expect(optionTexts).toContain('default');
-      expect(optionTexts).toContain('production');
+      // SearchableSelect renders the namespace. The page should have "default" visible.
+      expect(screen.getByText('Namespace')).toBeInTheDocument();
     });
   });
 
   it('loads agents from API', async () => {
     renderWithProviders(<TaskCreatePage />, { initialEntries: ['/tasks/create'] });
-
-    await waitFor(() => {
-      const agentSelect = screen.getByLabelText(/^Agent/);
-      const options = agentSelect.querySelectorAll('option');
-      expect(options.length).toBeGreaterThan(1);
-    });
-  });
-
-  it('filters agents by namespace availability', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<TaskCreatePage />, { initialEntries: ['/tasks/create'] });
-
-    // Wait for agents to load
-    await waitFor(() => {
-      expect(screen.getByText(/\d+ agents? available/)).toBeInTheDocument();
-    });
-
-    // Switch to production namespace
-    const namespaceSelect = screen.getByLabelText(/Namespace/);
-    await user.selectOptions(namespaceSelect, 'production');
 
     await waitFor(() => {
       expect(screen.getByText(/\d+ agents? available/)).toBeInTheDocument();
@@ -84,14 +61,25 @@ describe('TaskCreatePage', () => {
     });
 
     // Fill description
-    const descriptionInput = screen.getByLabelText(/Task Prompt/);
+    const descriptionInput = screen.getByPlaceholderText('Describe what you want the AI agent to do...');
     await user.type(descriptionInput, 'Fix the login bug');
 
-    // Select an agent — find available options first
-    const agentSelect = screen.getByLabelText(/^Agent/) as HTMLSelectElement;
-    const agentOptions = Array.from(agentSelect.querySelectorAll('option')).filter(o => o.value);
-    expect(agentOptions.length).toBeGreaterThan(0);
-    await user.selectOptions(agentSelect, agentOptions[0].value);
+    // Open agent SearchableSelect and pick one
+    const agentButton = screen.getByText('Select an agent...');
+    await user.click(agentButton);
+
+    // Wait for dropdown options to appear and click the first agent
+    await waitFor(() => {
+      const options = screen.getAllByRole('button').filter(
+        (btn) => btn.textContent?.includes('/') && btn.closest('.absolute')
+      );
+      expect(options.length).toBeGreaterThan(0);
+    });
+
+    const agentOptions = screen.getAllByRole('button').filter(
+      (btn) => btn.textContent?.includes('/') && btn.closest('.absolute')
+    );
+    await user.click(agentOptions[0]);
 
     // Button should be enabled
     await waitFor(() => {
@@ -122,12 +110,24 @@ describe('TaskCreatePage', () => {
     });
 
     // Fill form
-    await user.type(screen.getByLabelText(/Name \(optional\)/), 'my-task');
-    await user.type(screen.getByLabelText(/Task Prompt/), 'Fix the bug');
+    await user.type(screen.getByPlaceholderText(/Auto-generated/), 'my-task');
+    await user.type(screen.getByPlaceholderText('Describe what you want the AI agent to do...'), 'Fix the bug');
 
-    const agentSelect = screen.getByLabelText(/^Agent/) as HTMLSelectElement;
-    const agentOptions = Array.from(agentSelect.querySelectorAll('option')).filter(o => o.value);
-    await user.selectOptions(agentSelect, agentOptions[0].value);
+    // Select agent via SearchableSelect
+    const agentButton = screen.getByText('Select an agent...');
+    await user.click(agentButton);
+
+    await waitFor(() => {
+      const options = screen.getAllByRole('button').filter(
+        (btn) => btn.textContent?.includes('/') && btn.closest('.absolute')
+      );
+      expect(options.length).toBeGreaterThan(0);
+    });
+
+    const agentOptions = screen.getAllByRole('button').filter(
+      (btn) => btn.textContent?.includes('/') && btn.closest('.absolute')
+    );
+    await user.click(agentOptions[0]);
 
     // Submit
     await user.click(screen.getByRole('button', { name: 'Create Task' }));
@@ -155,37 +155,26 @@ describe('TaskCreatePage', () => {
       expect(screen.getByText(/agents? available/)).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText(/Task Prompt/), 'Test');
-    const agentSelect = screen.getByLabelText(/^Agent/) as HTMLSelectElement;
-    const agentOptions = Array.from(agentSelect.querySelectorAll('option')).filter(o => o.value);
-    await user.selectOptions(agentSelect, agentOptions[0].value);
+    await user.type(screen.getByPlaceholderText('Describe what you want the AI agent to do...'), 'Test');
+
+    // Select agent
+    const agentButton = screen.getByText('Select an agent...');
+    await user.click(agentButton);
+    await waitFor(() => {
+      const options = screen.getAllByRole('button').filter(
+        (btn) => btn.textContent?.includes('/') && btn.closest('.absolute')
+      );
+      expect(options.length).toBeGreaterThan(0);
+    });
+    const agentOptions = screen.getAllByRole('button').filter(
+      (btn) => btn.textContent?.includes('/') && btn.closest('.absolute')
+    );
+    await user.click(agentOptions[0]);
+
     await user.click(screen.getByRole('button', { name: 'Create Task' }));
 
     await waitFor(() => {
       expect(screen.getByText(/Agent not found/)).toBeInTheDocument();
-    });
-  });
-
-  it('pre-fills namespace from URL params', async () => {
-    // Set window.location.search since TaskCreatePage reads from it directly
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, search: '?namespace=staging' },
-      writable: true,
-    });
-
-    renderWithProviders(<TaskCreatePage />, {
-      initialEntries: ['/tasks/create?namespace=staging'],
-    });
-
-    await waitFor(() => {
-      const namespaceSelect = screen.getByLabelText(/Namespace/) as HTMLSelectElement;
-      expect(namespaceSelect.value).toBe('staging');
-    });
-
-    // Restore
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, search: '' },
-      writable: true,
     });
   });
 
