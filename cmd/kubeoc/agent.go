@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -300,6 +301,10 @@ func runAgentAttachServiceProxy(ctx context.Context, namespace, agentName string
 	fmt.Printf("Local proxy ready: %s\n", localURL)
 	fmt.Printf("Launching opencode attach...\n\n")
 
+	// Start connection heartbeat to prevent standby auto-suspend
+	heartbeatCancel := startConnectionHeartbeat(ctx, k8sClient, namespace, agentName)
+	defer heartbeatCancel()
+
 	// Launch opencode attach
 	attachCmd := exec.CommandContext(ctx, "opencode", "attach", localURL) //nolint:gosec // args are not user-controlled
 	attachCmd.Stdin = os.Stdin
@@ -402,6 +407,10 @@ func runAgentAttachPortForward(ctx context.Context, namespace, agentName string,
 	fmt.Printf("Port-forward ready: %s\n", localURL)
 	fmt.Printf("Launching opencode attach...\n\n")
 
+	// Start connection heartbeat to prevent standby auto-suspend
+	heartbeatCancel := startConnectionHeartbeat(ctx, k8sClient, namespace, agentName)
+	defer heartbeatCancel()
+
 	attachCmd := exec.CommandContext(ctx, "opencode", "attach", localURL) //nolint:gosec // args are not user-controlled
 	attachCmd.Stdin = os.Stdin
 	attachCmd.Stdout = os.Stdout
@@ -445,6 +454,24 @@ func isPortAvailable(port int) bool {
 	}
 	_ = ln.Close()
 	return true
+}
+
+// startConnectionHeartbeat starts a background goroutine that periodically updates
+// the connection heartbeat annotation on the Agent to prevent standby auto-suspend.
+// Returns a cancel function that stops the heartbeat.
+func startConnectionHeartbeat(ctx context.Context, k8sClient client.Client, namespace, agentName string) context.CancelFunc {
+	heartbeatCtx, cancel := context.WithCancel(ctx)
+
+	// Warn once on first error so users know heartbeat is failing (e.g., missing RBAC)
+	var warnOnce sync.Once
+
+	go controller.RunConnectionHeartbeat(heartbeatCtx, k8sClient, namespace, agentName, func(err error) {
+		warnOnce.Do(func() {
+			fmt.Fprintf(os.Stderr, "Warning: connection heartbeat failed: %v\n", err)
+		})
+	})
+
+	return cancel
 }
 
 // waitForPort waits for a TCP port to become available.

@@ -39,6 +39,21 @@ const (
 	// for active Tasks to complete before triggering a Deployment update.
 	AgentConditionGitSyncPending = "GitSyncPending"
 
+	// AgentConditionStandbyConfigWarning indicates a warning about standby configuration.
+	AgentConditionStandbyConfigWarning = "StandbyConfigWarning"
+
+	// AnnotationLastConnectionActive tracks the last time an active user connection
+	// (web terminal or CLI attach) was observed. Value is an RFC3339 timestamp.
+	// Used by reconcileStandby to prevent auto-suspend while users are connected.
+	AnnotationLastConnectionActive = "kubeopencode.io/last-connection-active"
+
+	// ConnectionHeartbeatInterval is how often clients update the connection annotation.
+	ConnectionHeartbeatInterval = 60 * time.Second
+
+	// ConnectionHeartbeatStaleness is how long after the last heartbeat update
+	// the connection is considered stale (no longer active).
+	ConnectionHeartbeatStaleness = 2 * time.Minute
+
 	// DefaultServerReconcileInterval is how often to reconcile Agents.
 	DefaultServerReconcileInterval = 30 * time.Second
 )
@@ -485,9 +500,56 @@ func (r *AgentReconciler) countActiveTasks(ctx context.Context, agentName, names
 	return count, nil
 }
 
+// hasActiveConnection checks whether the Agent has a recent connection heartbeat annotation.
+// Returns true if the annotation exists and is within the given staleness threshold.
+func hasActiveConnection(agent *kubeopenv1alpha1.Agent, staleness time.Duration) bool {
+	if agent.Annotations == nil {
+		return false
+	}
+	val, ok := agent.Annotations[AnnotationLastConnectionActive]
+	if !ok || val == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, val)
+	if err != nil {
+		return false
+	}
+	return time.Since(t) < staleness
+}
+
+// reconcileHeartbeatStaleness returns the effective staleness threshold for the Agent
+// and reconciles the StandbyConfigWarning condition as a side effect.
+// If idleTimeout < ConnectionHeartbeatStaleness, it degrades to idleTimeout/2 and sets
+// a warning condition. Enforces a minimum floor of ConnectionHeartbeatInterval to ensure
+// the heartbeat has a chance to update before staleness expires.
+func reconcileHeartbeatStaleness(agent *kubeopenv1alpha1.Agent) time.Duration {
+	if agent.Spec.Standby == nil {
+		return ConnectionHeartbeatStaleness
+	}
+
+	staleness := ConnectionHeartbeatStaleness
+	if agent.Spec.Standby.IdleTimeout.Duration < staleness {
+		staleness = agent.Spec.Standby.IdleTimeout.Duration / 2
+		// Enforce minimum floor: staleness must be at least the heartbeat interval,
+		// otherwise the heartbeat will always be stale by the time the controller checks.
+		if staleness < ConnectionHeartbeatInterval {
+			staleness = ConnectionHeartbeatInterval
+		}
+		setAgentCondition(agent, AgentConditionStandbyConfigWarning, metav1.ConditionTrue,
+			"IdleTimeoutTooShort",
+			fmt.Sprintf("idleTimeout (%s) is less than connection heartbeat staleness (%s); "+
+				"connection-aware detection may be degraded",
+				agent.Spec.Standby.IdleTimeout.Duration, ConnectionHeartbeatStaleness))
+	} else {
+		// Clear warning if previously set
+		meta.RemoveStatusCondition(&agent.Status.Conditions, AgentConditionStandbyConfigWarning)
+	}
+	return staleness
+}
+
 // reconcileStandby manages the standby lifecycle (auto-suspend/auto-resume).
 // When standby is configured, the controller patches spec.suspend:
-//   - Sets spec.suspend=true when idle timeout expires (no active Tasks)
+//   - Sets spec.suspend=true when idle timeout expires (no active Tasks and no active connections)
 //   - Sets spec.suspend=false when a new Task arrives on a suspended Agent
 //
 // Returns true if spec.suspend was patched (caller should return early since
@@ -501,6 +563,9 @@ func (r *AgentReconciler) reconcileStandby(ctx context.Context, agent *kubeopenv
 		return false, nil
 	}
 
+	// Compute effective staleness threshold (may degrade if idleTimeout is too short)
+	staleness := reconcileHeartbeatStaleness(agent)
+
 	// Detect resume transition: spec says active but status still shows suspended.
 	// Reset idle timer so the agent gets a full idle timeout period after resume.
 	if !agent.Spec.Suspend && agent.Status.Suspended && agent.Status.IdleSince != nil {
@@ -508,10 +573,12 @@ func (r *AgentReconciler) reconcileStandby(ctx context.Context, agent *kubeopenv
 		agent.Status.IdleSince = nil
 	}
 
-	activeTasks, err := r.countActiveTasks(ctx, agent.Name, agent.Namespace)
+	activeTasks, err := r.CountActiveTasksFn(ctx, agent.Name, agent.Namespace)
 	if err != nil {
 		return false, err
 	}
+
+	activeConnection := hasActiveConnection(agent, staleness)
 
 	if activeTasks > 0 {
 		// Tasks are active — clear idle timer
@@ -530,12 +597,18 @@ func (r *AgentReconciler) reconcileStandby(ctx context.Context, agent *kubeopenv
 			}
 			return true, nil
 		}
+	} else if activeConnection {
+		// No active tasks but active connection — defer idle timer
+		if agent.Status.IdleSince != nil {
+			logger.Info("Active connection detected, clearing idle timer", "agent", agent.Name)
+			agent.Status.IdleSince = nil
+		}
 	} else {
-		// No active tasks
+		// No active tasks and no active connection
 		if agent.Status.IdleSince == nil {
 			now := metav1.Now()
 			agent.Status.IdleSince = &now
-			logger.Info("No active tasks, starting idle timer", "agent", agent.Name)
+			logger.Info("No active tasks or connections, starting idle timer", "agent", agent.Name)
 		} else if !agent.Spec.Suspend && time.Since(agent.Status.IdleSince.Time) >= agent.Spec.Standby.IdleTimeout.Duration {
 			// Idle timeout expired — auto-suspend
 			logger.Info("Standby auto-suspend: idle timeout expired", "agent", agent.Name, "idleTimeout", agent.Spec.Standby.IdleTimeout.Duration)
@@ -660,6 +733,9 @@ func (r *AgentReconciler) findAgentsForTemplate(ctx context.Context, obj client.
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.CountActiveTasksFn == nil {
+		r.CountActiveTasksFn = r.countActiveTasks
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubeopenv1alpha1.Agent{}).
 		Owns(&appsv1.Deployment{}).

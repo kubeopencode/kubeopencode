@@ -485,6 +485,144 @@ var _ = Describe("AgentController", func() {
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
+
+		It("Should not auto-suspend when connection heartbeat annotation is fresh", func() {
+			agentName := "test-standby-heartbeat-agent"
+
+			By("Creating an Agent with standby (idle timeout longer than heartbeat staleness)")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: agentNamespace,
+					Annotations: map[string]string{
+						AnnotationLastConnectionActive: time.Now().UTC().Format(time.RFC3339),
+					},
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      "quay.io/kubeopencode/kubeopencode-agent-devbox:latest",
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "test-agent",
+					Port:               4096,
+					Standby: &kubeopenv1alpha1.StandbyConfig{
+						// Use 5 minutes so staleness stays at default (2 minutes),
+						// avoiding the degradation path. The test only runs for a few seconds,
+						// so the annotation stays well within the staleness window.
+						IdleTimeout: metav1.Duration{Duration: 5 * time.Minute},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Waiting for Deployment to be created")
+			deploymentName := ServerDeploymentName(agentName)
+			Eventually(func() error {
+				var deployment appsv1.Deployment
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      deploymentName,
+					Namespace: agentNamespace,
+				}, &deployment)
+			}, timeout, interval).Should(Succeed())
+
+			By("Keeping the heartbeat fresh by updating annotation periodically")
+			// Update the annotation to ensure it stays fresh during the test
+			Eventually(func() error {
+				var a kubeopenv1alpha1.Agent
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				}, &a); err != nil {
+					return err
+				}
+				if a.Annotations == nil {
+					a.Annotations = make(map[string]string)
+				}
+				a.Annotations[AnnotationLastConnectionActive] = time.Now().UTC().Format(time.RFC3339)
+				return k8sClient.Update(ctx, &a)
+			}, timeout, interval).Should(Succeed())
+
+			By("Expecting Agent to NOT be suspended despite idle timeout expiring")
+			// Wait longer than idle timeout to confirm no suspension
+			Consistently(func() bool {
+				var a kubeopenv1alpha1.Agent
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				}, &a); err != nil {
+					return false
+				}
+				return a.Spec.Suspend
+			}, 3*time.Second, interval).Should(BeFalse(), "spec.suspend should remain false while connection heartbeat is fresh")
+
+			By("Removing the heartbeat annotation to allow suspension")
+			Eventually(func() error {
+				var a kubeopenv1alpha1.Agent
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				}, &a); err != nil {
+					return err
+				}
+				delete(a.Annotations, AnnotationLastConnectionActive)
+				return k8sClient.Update(ctx, &a)
+			}, timeout, interval).Should(Succeed())
+
+			By("Expecting controller to auto-suspend after heartbeat removed")
+			Eventually(func() bool {
+				var a kubeopenv1alpha1.Agent
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				}, &a); err != nil {
+					return false
+				}
+				return a.Spec.Suspend
+			}, timeout, interval).Should(BeTrue(), "spec.suspend should be true after heartbeat removed")
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+
+		It("Should set warning condition when idleTimeout is less than heartbeat staleness", func() {
+			agentName := "test-standby-short-timeout-agent"
+
+			By("Creating an Agent with very short idle timeout")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      "quay.io/kubeopencode/kubeopencode-agent-devbox:latest",
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "test-agent",
+					Port:               4096,
+					Standby: &kubeopenv1alpha1.StandbyConfig{
+						IdleTimeout: metav1.Duration{Duration: 30 * time.Second},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Expecting StandbyConfigWarning condition to be set")
+			Eventually(func() bool {
+				var a kubeopenv1alpha1.Agent
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				}, &a); err != nil {
+					return false
+				}
+				for _, c := range a.Status.Conditions {
+					if c.Type == AgentConditionStandbyConfigWarning && c.Status == metav1.ConditionTrue {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue(), "StandbyConfigWarning condition should be set when idleTimeout < heartbeat staleness")
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
 	})
 
 	Context("When creating an Agent with workspace persistence", func() {

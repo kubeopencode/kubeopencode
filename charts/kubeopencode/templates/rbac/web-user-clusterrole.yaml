@@ -37,10 +37,10 @@ rules:
 - apiGroups: ["kubeopencode.io"]
   resources: ["crontasks"]
   verbs: ["create", "update", "delete", "patch"]
-# Manage agents (create, delete, suspend/resume)
+# Manage agents (create, delete, suspend/resume, connection heartbeat)
 - apiGroups: ["kubeopencode.io"]
   resources: ["agents"]
-  verbs: ["create", "update", "delete"]
+  verbs: ["create", "update", "patch", "delete"]
 # Delete agent templates
 - apiGroups: ["kubeopencode.io"]
   resources: ["agenttemplates"]

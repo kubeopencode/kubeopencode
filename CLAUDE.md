@@ -67,7 +67,7 @@ Reusable blueprint serving two roles: (1) base configuration for Agents via `spe
 
 ### Agent Lifecycle
 
-Agent always creates a Deployment + Service running `opencode serve`. Supports persistence (sessions/workspace PVCs), manual suspend/resume (`suspend`), and standby mode (`standby` auto-suspends after idle, auto-resumes when new task arrives).
+Agent always creates a Deployment + Service running `opencode serve`. Supports persistence (sessions/workspace PVCs), manual suspend/resume (`suspend`), and standby mode (`standby` auto-suspends after idle, auto-resumes when new task arrives). Standby is connection-aware: active web terminal or CLI attach sessions prevent auto-suspend via annotation heartbeat (`kubeopencode.io/last-connection-active`). See ADR 0028.
 
 > See `docs/features.md` for Agent setup, persistence, suspend/resume, and comparison table.
 

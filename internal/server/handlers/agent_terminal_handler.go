@@ -131,6 +131,14 @@ func (h *AgentTerminalHandler) ServeTerminal(w http.ResponseWriter, r *http.Requ
 	// Detach from chi's 60s timeout for long-lived connection
 	ctx := context.WithoutCancel(r.Context())
 
+	// Start connection heartbeat to prevent standby auto-suspend while terminal is active.
+	// Uses the server's service account (defaultClient), not the impersonated user client.
+	heartbeatCtx, heartbeatCancel := context.WithCancel(ctx)
+	defer heartbeatCancel()
+	go controller.RunConnectionHeartbeat(heartbeatCtx, h.defaultClient, namespace, agentName, func(err error) {
+		termLog.Error(err, "heartbeat: failed to patch annotation", "agent", agentName)
+	})
+
 	// Build the exec request using impersonated config
 	execClientset, err := kubernetes.NewForConfig(execConfig)
 	if err != nil {

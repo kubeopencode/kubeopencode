@@ -18,10 +18,10 @@ rules:
 - apiGroups: ["kubeopencode.io"]
   resources: ["crontasks"]
   verbs: ["create", "update", "delete", "patch"]
-# Write access to Agents (create, delete via UI, update for suspend/resume)
+# Write access to Agents (create, delete via UI, update for suspend/resume, patch for connection heartbeat)
 - apiGroups: ["kubeopencode.io"]
   resources: ["agents"]
-  verbs: ["create", "update", "delete"]
+  verbs: ["create", "update", "patch", "delete"]
 # Write access to AgentTemplates (update, delete via UI)
 - apiGroups: ["kubeopencode.io"]
   resources: ["agenttemplates"]

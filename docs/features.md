@@ -1045,10 +1045,12 @@ spec:
 **How it works:**
 
 1. Agent starts running normally
-2. All Tasks complete → idle timer starts (`status.idleSince` is set)
-3. After 30 minutes with no new Tasks → controller sets `spec.suspend = true` → Deployment scales to 0
+2. All Tasks complete and no active connections → idle timer starts (`status.idleSince` is set)
+3. After 30 minutes with no new Tasks and no active connections → controller sets `spec.suspend = true` → Deployment scales to 0
 4. New Task arrives → controller sets `spec.suspend = false` → Deployment scales back to 1
 5. Agent becomes ready (~30-60s cold start) → queued Task executes
+
+**Connection-aware idle detection:** The standby system considers both active Tasks and active user connections (web terminal, `kubeoc agent attach`). While a user is connected, the idle timer is deferred — your interactive session won't be interrupted by auto-suspend. Connection activity is tracked via the `kubeopencode.io/last-connection-active` annotation, updated every 60 seconds by the web terminal handler and CLI. See [ADR 0028](adr/0028-connection-aware-standby.md) for details.
 
 **Manual override:** Even with standby configured, you can still manually suspend/resume. The controller will resume automatically when new Tasks arrive.
 
@@ -1056,6 +1058,7 @@ spec:
 - `Suspended: True, reason: UserRequested` — suspended (no standby configured)
 - `Suspended: True, reason: Standby` — suspended with standby configured
 - `Suspended: False, reason: Active` — running normally
+- `StandbyConfigWarning: True, reason: IdleTimeoutTooShort` — `idleTimeout` is less than 2 minutes (connection heartbeat staleness is automatically degraded)
 
 **Best used with `persistence`**: PVCs survive restarts, so session history and workspace files don't need to be re-initialized on resume.
 
