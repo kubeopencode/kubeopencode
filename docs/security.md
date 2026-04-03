@@ -62,6 +62,62 @@ rules:
 
 > **Note:** The web UI server enforces RBAC by impersonating the authenticated user for all Kubernetes API calls. Users will only see resources and actions they have permission for.
 
+### CLI (`kubeoc`) Permissions
+
+The `kubeoc` CLI communicates directly with the Kubernetes API using your kubeconfig credentials. The following table shows the minimum RBAC permissions required for each command:
+
+| Command | Resource | Verbs | Notes |
+|---------|----------|-------|-------|
+| `kubeoc get agents` | `kubeopencode.io` agents | get, list | |
+| `kubeoc get tasks` | `kubeopencode.io` tasks | get, list | |
+| `kubeoc get crontasks` | `kubeopencode.io` crontasks | get, list | |
+| `kubeoc get agenttemplates` | `kubeopencode.io` agenttemplates, agents | get, list | Lists agents to count template references |
+| `kubeoc agent attach` | `kubeopencode.io` agents | get, **patch** | `patch` needed for connection heartbeat annotation |
+| `kubeoc agent attach` | `""` services/proxy | get | Service proxy to kubeopencode-server (in `kubeopencode-system` namespace) |
+| `kubeoc agent suspend/resume` | `kubeopencode.io` agents | get, update | |
+| `kubeoc task stop` | `kubeopencode.io` tasks | get, update | Adds `kubeopencode.io/stop` annotation |
+| `kubeoc task logs` | `kubeopencode.io` tasks, `""` pods, pods/log | get | |
+| `kubeoc crontask trigger` | `kubeopencode.io` crontasks | get, patch | Adds `kubeopencode.io/trigger` annotation |
+| `kubeoc crontask suspend/resume` | `kubeopencode.io` crontasks | get, update | |
+
+**Full CLI user ClusterRole:**
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeoc-user
+rules:
+# View all KubeOpenCode resources
+- apiGroups: ["kubeopencode.io"]
+  resources: ["agents", "agenttemplates", "tasks", "crontasks"]
+  verbs: ["get", "list"]
+# Manage agents (suspend/resume, connection heartbeat during attach)
+- apiGroups: ["kubeopencode.io"]
+  resources: ["agents"]
+  verbs: ["update", "patch"]
+# Manage tasks (stop)
+- apiGroups: ["kubeopencode.io"]
+  resources: ["tasks"]
+  verbs: ["update"]
+# Manage crontasks (trigger, suspend/resume)
+- apiGroups: ["kubeopencode.io"]
+  resources: ["crontasks"]
+  verbs: ["update", "patch"]
+# View pod status and logs
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get"]
+# Service proxy for agent attach (in kubeopencode-system namespace)
+- apiGroups: [""]
+  resources: ["services/proxy"]
+  verbs: ["get"]
+```
+
+> **Note:** The `kubeoc-user` ClusterRole must be bound with a **ClusterRoleBinding** (not a namespaced RoleBinding) if the user needs to access the `services/proxy` in the `kubeopencode-system` namespace for `kubeoc agent attach`. Alternatively, create separate RoleBindings for the agent namespace and the server namespace.
+
+> **Note:** The web-user ClusterRole (`kubeopencode-web-user`) included in the Helm chart already covers all CLI permissions. If a user already has the web-user role, no additional role is needed for `kubeoc`.
+
 ## Credential Management
 
 - Secrets mounted with restrictive file permissions (default `0600`)
