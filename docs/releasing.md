@@ -97,7 +97,7 @@ helm template kubeopencode charts/kubeopencode | grep 'image:'
 
 > **IMPORTANT**: `make lint` must report **0 issues** before proceeding to Step 4. The lint version is auto-detected from Go version (see `ci/lint/run-lint.sh`), so upgrading Go may surface new lint findings. Fix all issues on the release branch before creating the PR.
 
-### Step 4: Commit and Create PR
+### Step 4: Commit, Create PR, and Merge
 
 ```bash
 git add Makefile agents/Makefile charts/kubeopencode/Chart.yaml CLAUDE.md
@@ -110,7 +110,23 @@ git commit -s -m "chore: prepare vNEW_VERSION release
 git push origin release/vNEW_VERSION
 ```
 
-Create a PR targeting `main`, get it reviewed and merged.
+Create a PR targeting `main`:
+
+```bash
+gh pr create --title "chore: release vNEW_VERSION" --body "..."
+```
+
+Wait for all CI checks to pass, then merge:
+
+```bash
+# Poll until checks pass (or fail)
+gh pr checks <PR_NUMBER> --watch
+
+# If all checks pass, merge immediately
+gh pr merge <PR_NUMBER> --merge --delete-branch
+```
+
+> **IMPORTANT (for AI assistants)**: This step is fully automated. Do NOT stop to ask the user for merge approval. If CI checks pass, merge the PR and proceed to Step 5. Only escalate to the user if CI checks fail.
 
 ### Step 5: Tag and Push
 
@@ -132,7 +148,17 @@ This triggers the `.github/workflows/release.yaml` workflow, which:
 
 ### Step 6: Monitor the Release Workflow
 
-Go to the GitHub Actions tab and monitor the `Release` workflow. Ensure all jobs pass:
+Wait for the Release workflow to complete:
+
+```bash
+# Get the workflow run triggered by the tag
+gh run list --workflow=release.yaml --limit=1
+gh run watch <RUN_ID>
+```
+
+> **IMPORTANT (for AI assistants)**: Monitor the workflow automatically. If all jobs pass, proceed to Step 7. Only escalate to the user if any job fails.
+
+Expected jobs:
 
 - `verify-versions`
 - `unit-test`, `integration-test`, `e2e-test`
