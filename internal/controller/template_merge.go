@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -57,18 +56,18 @@ func MergeAgentWithTemplate(agent *kubeopenv1alpha1.Agent, tmpl *kubeopenv1alpha
 		workspaceDir:       defaultString(agent.Spec.WorkspaceDir, tmpl.Spec.WorkspaceDir),
 		serviceAccountName: defaultString(agent.Spec.ServiceAccountName, tmpl.Spec.ServiceAccountName),
 
-		maxConcurrentTasks: firstNonNilInt32(agent.Spec.MaxConcurrentTasks, tmpl.Spec.MaxConcurrentTasks),
-		quota:              firstNonNilQuota(agent.Spec.Quota, tmpl.Spec.Quota),
+		maxConcurrentTasks: firstNonNilPtr(agent.Spec.MaxConcurrentTasks, tmpl.Spec.MaxConcurrentTasks),
+		quota:              firstNonNilPtr(agent.Spec.Quota, tmpl.Spec.Quota),
 
-		command:          firstNonNilSlice(agent.Spec.Command, tmpl.Spec.Command),
-		contexts:         firstNonNilContexts(agent.Spec.Contexts, tmpl.Spec.Contexts),
-		skills:           firstNonNilSkills(agent.Spec.Skills, tmpl.Spec.Skills),
+		command:          firstNonEmptyStringSlice(agent.Spec.Command, tmpl.Spec.Command),
+		contexts:         firstNonNilSlice(agent.Spec.Contexts, tmpl.Spec.Contexts),
+		skills:           firstNonNilSlice(agent.Spec.Skills, tmpl.Spec.Skills),
 		config:           firstNonNilPtr(agent.Spec.Config, tmpl.Spec.Config),
-		credentials:      firstNonNilCreds(agent.Spec.Credentials, tmpl.Spec.Credentials),
-		podSpec:          firstNonNilPodSpec(agent.Spec.PodSpec, tmpl.Spec.PodSpec),
-		caBundle:         firstNonNilCABundle(agent.Spec.CABundle, tmpl.Spec.CABundle),
-		proxy:            firstNonNilProxy(agent.Spec.Proxy, tmpl.Spec.Proxy),
-		imagePullSecrets: firstNonNilIPS(agent.Spec.ImagePullSecrets, tmpl.Spec.ImagePullSecrets),
+		credentials:      firstNonNilSlice(agent.Spec.Credentials, tmpl.Spec.Credentials),
+		podSpec:          firstNonNilPtr(agent.Spec.PodSpec, tmpl.Spec.PodSpec),
+		caBundle:         firstNonNilPtr(agent.Spec.CABundle, tmpl.Spec.CABundle),
+		proxy:            firstNonNilPtr(agent.Spec.Proxy, tmpl.Spec.Proxy),
+		imagePullSecrets: firstNonNilSlice(agent.Spec.ImagePullSecrets, tmpl.Spec.ImagePullSecrets),
 		port:             agent.Spec.Port,
 		persistence:      agent.Spec.Persistence,
 		suspend:          agent.Spec.Suspend,
@@ -80,77 +79,21 @@ func MergeAgentWithTemplate(agent *kubeopenv1alpha1.Agent, tmpl *kubeopenv1alpha
 
 // Merge helpers: return agent value if non-nil/non-empty, else template value.
 
-func firstNonNilSlice(a, b []string) []string {
+func firstNonEmptyStringSlice(a, b []string) []string {
 	if len(a) > 0 {
 		return a
 	}
 	return b
 }
 
-func firstNonNilContexts(a, b []kubeopenv1alpha1.ContextItem) []kubeopenv1alpha1.ContextItem {
+func firstNonNilSlice[T any](a, b []T) []T {
 	if a != nil {
 		return a
 	}
 	return b
 }
 
-func firstNonNilPtr(a, b *string) *string {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-func firstNonNilCreds(a, b []kubeopenv1alpha1.Credential) []kubeopenv1alpha1.Credential {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-func firstNonNilPodSpec(a, b *kubeopenv1alpha1.AgentPodSpec) *kubeopenv1alpha1.AgentPodSpec {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-func firstNonNilCABundle(a, b *kubeopenv1alpha1.CABundleConfig) *kubeopenv1alpha1.CABundleConfig {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-func firstNonNilProxy(a, b *kubeopenv1alpha1.ProxyConfig) *kubeopenv1alpha1.ProxyConfig {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-func firstNonNilIPS(a, b []corev1.LocalObjectReference) []corev1.LocalObjectReference {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-func firstNonNilSkills(a, b []kubeopenv1alpha1.SkillSource) []kubeopenv1alpha1.SkillSource {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-func firstNonNilInt32(a, b *int32) *int32 {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-func firstNonNilQuota(a, b *kubeopenv1alpha1.QuotaConfig) *kubeopenv1alpha1.QuotaConfig {
+func firstNonNilPtr[T any](a, b *T) *T {
 	if a != nil {
 		return a
 	}
