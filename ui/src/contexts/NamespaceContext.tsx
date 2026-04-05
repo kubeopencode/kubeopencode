@@ -19,9 +19,7 @@ export function NamespaceProvider({ children }: { children: React.ReactNode }) {
 
   const setNamespace = useCallback((ns: string) => {
     setNamespaceState(ns);
-    if (ns !== ALL_NAMESPACES) {
-      setNamespaceCookie(ns);
-    }
+    setNamespaceCookie(ns);
   }, []);
 
   return (
