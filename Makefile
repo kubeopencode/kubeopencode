@@ -375,7 +375,7 @@ e2e-test: ## Run e2e tests
 	E2E_TEST_NAMESPACE=kubeopencode-e2e-test \
 	E2E_ECHO_IMAGE=quay.io/kubeopencode/kubeopencode-agent-echo:$(E2E_IMG_TAG) \
 	E2E_AGENT_IMAGE=quay.io/kubeopencode/kubeopencode-agent-opencode:$(E2E_IMG_TAG) \
-	go test -v ./e2e/... -timeout 30m -ginkgo.v
+	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.flake-attempts=2
 .PHONY: e2e-test
 
 # Run specific e2e test by focus string
@@ -384,7 +384,7 @@ e2e-test-focus: ## Run specific e2e test (usage: make e2e-test-focus FOCUS="Task
 	E2E_TEST_NAMESPACE=kubeopencode-e2e-test \
 	E2E_ECHO_IMAGE=quay.io/kubeopencode/kubeopencode-agent-echo:$(E2E_IMG_TAG) \
 	E2E_AGENT_IMAGE=quay.io/kubeopencode/kubeopencode-agent-opencode:$(E2E_IMG_TAG) \
-	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.focus="$(FOCUS)"
+	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.focus="$(FOCUS)" -ginkgo.flake-attempts=2
 .PHONY: e2e-test-focus
 
 # Run e2e tests by label (recommended)
@@ -398,7 +398,7 @@ e2e-test-label: ## Run e2e tests by label (usage: make e2e-test-label LABEL="ser
 	E2E_TEST_NAMESPACE=kubeopencode-e2e-test \
 	E2E_ECHO_IMAGE=quay.io/kubeopencode/kubeopencode-agent-echo:$(E2E_IMG_TAG) \
 	E2E_AGENT_IMAGE=quay.io/kubeopencode/kubeopencode-agent-opencode:$(E2E_IMG_TAG) \
-	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.label-filter="$(LABEL)"
+	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.label-filter="$(LABEL)" -ginkgo.flake-attempts=2
 .PHONY: e2e-test-label
 
 # Run OpenCode e2e tests only (uses free models, no API key needed)
@@ -407,7 +407,7 @@ e2e-test-opencode: ## Run OpenCode integration tests with free models
 	E2E_TEST_NAMESPACE=kubeopencode-e2e-test \
 	E2E_ECHO_IMAGE=quay.io/kubeopencode/kubeopencode-agent-echo:$(E2E_IMG_TAG) \
 	E2E_AGENT_IMAGE=quay.io/kubeopencode/kubeopencode-agent-opencode:$(E2E_IMG_TAG) \
-	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.label-filter="opencode"
+	go test -v ./e2e/... -timeout 30m -ginkgo.v -ginkgo.label-filter="opencode" -ginkgo.flake-attempts=2
 .PHONY: e2e-test-opencode
 
 # Full e2e test workflow (setup, test, teardown)

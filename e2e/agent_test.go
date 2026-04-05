@@ -607,14 +607,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
 
 			By("Waiting for Task to complete")
-			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
-			Eventually(func() kubeopenv1alpha1.TaskPhase {
-				t := &kubeopenv1alpha1.Task{}
-				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
-					return ""
-				}
-				return t.Status.Phase
-			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+			waitForTaskPhase(testNS, taskName, kubeopenv1alpha1.TaskPhaseCompleted)
 
 			By("Verifying config file path is set in OPENCODE_CONFIG env var")
 			logs := getPodLogs(ctx, testNS, fmt.Sprintf("%s-pod", taskName))
@@ -696,14 +689,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 			))
 
 			By("Waiting for Task to complete")
-			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
-			Eventually(func() kubeopenv1alpha1.TaskPhase {
-				t := &kubeopenv1alpha1.Task{}
-				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
-					return ""
-				}
-				return t.Status.Phase
-			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+			waitForTaskPhase(testNS, taskName, kubeopenv1alpha1.TaskPhaseCompleted)
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
@@ -781,14 +767,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 			Expect(pod.Spec.Affinity.NodeAffinity).ShouldNot(BeNil())
 
 			By("Waiting for Task to complete")
-			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
-			Eventually(func() kubeopenv1alpha1.TaskPhase {
-				t := &kubeopenv1alpha1.Task{}
-				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
-					return ""
-				}
-				return t.Status.Phase
-			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+			waitForTaskPhase(testNS, taskName, kubeopenv1alpha1.TaskPhaseCompleted)
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
@@ -865,14 +844,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 			Expect(agentContainer.Resources.Limits.Memory().String()).Should(Equal("512Mi"))
 
 			By("Waiting for Task to complete")
-			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
-			Eventually(func() kubeopenv1alpha1.TaskPhase {
-				t := &kubeopenv1alpha1.Task{}
-				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
-					return ""
-				}
-				return t.Status.Phase
-			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+			waitForTaskPhase(testNS, taskName, kubeopenv1alpha1.TaskPhaseCompleted)
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())

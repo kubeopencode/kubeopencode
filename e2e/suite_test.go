@@ -19,6 +19,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -295,4 +296,86 @@ func getPodForTask(testCtx context.Context, namespace, taskName string) (*corev1
 		return nil, nil
 	}
 	return &pods.Items[0], nil
+}
+
+// dumpTaskDiagnostics prints diagnostic information for a Task to help debug
+// flaky test failures (e.g., Pod startup timeouts in CI).
+func dumpTaskDiagnostics(testCtx context.Context, namespace, taskName string) {
+	GinkgoWriter.Printf("\n=== DIAGNOSTICS for Task %s/%s ===\n", namespace, taskName)
+
+	// Dump Task status
+	task := &kubeopenv1alpha1.Task{}
+	taskKey := types.NamespacedName{Name: taskName, Namespace: namespace}
+	if err := k8sClient.Get(testCtx, taskKey, task); err != nil {
+		GinkgoWriter.Printf("Failed to get Task: %v\n", err)
+	} else {
+		GinkgoWriter.Printf("Task Phase: %s\n", task.Status.Phase)
+		for _, c := range task.Status.Conditions {
+			GinkgoWriter.Printf("  Condition: %s=%s (reason=%s, message=%s)\n",
+				c.Type, c.Status, c.Reason, c.Message)
+		}
+	}
+
+	// Dump Pod status
+	pod, err := getPodForTask(testCtx, namespace, taskName)
+	switch {
+	case err != nil:
+		GinkgoWriter.Printf("Failed to get Pod: %v\n", err)
+	case pod == nil:
+		GinkgoWriter.Println("No Pod found for Task")
+	default:
+		GinkgoWriter.Printf("Pod %s Phase: %s\n", pod.Name, pod.Status.Phase)
+		for _, cs := range pod.Status.InitContainerStatuses {
+			GinkgoWriter.Printf("  Init Container %s: ready=%v", cs.Name, cs.Ready)
+			if cs.State.Waiting != nil {
+				GinkgoWriter.Printf(" waiting(reason=%s, message=%s)", cs.State.Waiting.Reason, cs.State.Waiting.Message)
+			}
+			if cs.State.Terminated != nil {
+				GinkgoWriter.Printf(" terminated(exitCode=%d, reason=%s)", cs.State.Terminated.ExitCode, cs.State.Terminated.Reason)
+			}
+			GinkgoWriter.Println()
+		}
+		for _, cs := range pod.Status.ContainerStatuses {
+			GinkgoWriter.Printf("  Container %s: ready=%v", cs.Name, cs.Ready)
+			if cs.State.Waiting != nil {
+				GinkgoWriter.Printf(" waiting(reason=%s, message=%s)", cs.State.Waiting.Reason, cs.State.Waiting.Message)
+			}
+			if cs.State.Terminated != nil {
+				GinkgoWriter.Printf(" terminated(exitCode=%d, reason=%s)", cs.State.Terminated.ExitCode, cs.State.Terminated.Reason)
+			}
+			GinkgoWriter.Println()
+		}
+
+		// Dump Pod Events
+		events, err := clientset.CoreV1().Events(namespace).List(testCtx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=Pod", pod.Name),
+		})
+		if err == nil && len(events.Items) > 0 {
+			GinkgoWriter.Println("  Events:")
+			for _, e := range events.Items {
+				GinkgoWriter.Printf("    %s %s: %s\n", e.Reason, e.Type, e.Message)
+			}
+		}
+	}
+	GinkgoWriter.Println("=== END DIAGNOSTICS ===")
+}
+
+// waitForTaskPhase waits for a Task to reach the expected phase, and dumps
+// diagnostics if it times out or the Task fails unexpectedly.
+func waitForTaskPhase(namespace, taskName string, expectedPhase kubeopenv1alpha1.TaskPhase) {
+	taskKey := types.NamespacedName{Name: taskName, Namespace: namespace}
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			dumpTaskDiagnostics(ctx, namespace, taskName)
+		}
+	}()
+	Eventually(func() kubeopenv1alpha1.TaskPhase {
+		t := &kubeopenv1alpha1.Task{}
+		if err := k8sClient.Get(ctx, taskKey, t); err != nil {
+			return ""
+		}
+		return t.Status.Phase
+	}, timeout, interval).Should(Equal(expectedPhase))
+	succeeded = true
 }
