@@ -24,11 +24,6 @@ spec:
   # Uses the free opencode/big-pickle model — no API key required.
   # To use a different model (e.g., Anthropic, Google), update the model fields
   # and create a Secret with your API key (see secrets.yaml.example).
-  # Proxy for Kind clusters behind a firewall (OrbStack: use host.internal)
-  proxy:
-    httpProxy: "http://host.internal:7897"
-    httpsProxy: "http://host.internal:7897"
-    noProxy: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   # Shared OpenCode configuration
   config: |
     {
