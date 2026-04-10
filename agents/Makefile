@@ -18,7 +18,7 @@ OPENCODE_VERSION ?= 1.3.17
 IMG_REGISTRY ?= ghcr.io
 IMG_ORG ?= kubeopencode
 IMG_NAME ?= kubeopencode-agent-$(AGENT)
-VERSION ?= 0.0.21
+VERSION ?= 0.0.22
 IMG ?= $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(VERSION)
 
 # Base image configuration
