@@ -37,7 +37,7 @@
 #     docker build --build-arg OPENCODE_VERSION=1.3.13 -t opencode .
 #
 
-FROM debian:bookworm-20260316-slim
+FROM debian:bookworm-20260406-slim
 
 # OpenCode version to download — must be passed via --build-arg (no default).
 # Single source of truth: agents/Makefile (OPENCODE_VERSION variable).
