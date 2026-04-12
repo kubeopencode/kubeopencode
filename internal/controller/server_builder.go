@@ -468,14 +468,14 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		// No context-init container — write config inline in the command
 		command = []string{
 			"sh", "-c",
-			fmt.Sprintf("cat > %s << 'KOCEOF'\n%s\nKOCEOF\n/tools/opencode serve --port %d --hostname 0.0.0.0",
-				OpenCodeConfigPath, *agentCfg.config, port),
+			fmt.Sprintf("%s; cat > %s << 'KOCEOF'\n%s\nKOCEOF\n/tools/opencode serve --port %d --hostname 0.0.0.0",
+				OpenCodeSymlinkCmd, OpenCodeConfigPath, *agentCfg.config, port),
 		}
 	} else {
 		// Config is written by context-init, or no config at all
 		command = []string{
 			"sh", "-c",
-			fmt.Sprintf("/tools/opencode serve --port %d --hostname 0.0.0.0", port),
+			fmt.Sprintf("%s; /tools/opencode serve --port %d --hostname 0.0.0.0", OpenCodeSymlinkCmd, port),
 		}
 	}
 

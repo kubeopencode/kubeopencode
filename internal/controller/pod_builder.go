@@ -247,6 +247,11 @@ const (
 	// ToolsMountPath is the mount path for the tools volume
 	ToolsMountPath = "/tools"
 
+	// OpenCodeSymlinkCmd creates a symlink so that the OpenCode binary is discoverable
+	// from interactive terminals (e.g. VS Code) without requiring /tools in PATH.
+	// Uses "|| true" to gracefully handle read-only root filesystems.
+	OpenCodeSymlinkCmd = "ln -sf /tools/opencode /usr/local/bin/opencode 2>/dev/null || true"
+
 	// OpenCodeConfigPath is the path where OpenCode config is written
 	OpenCodeConfigPath = "/tools/opencode.json"
 
@@ -1169,13 +1174,13 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 			// For interactive sessions, users use `opencode attach` directly.
 			agentCommand = []string{
 				"sh", "-c",
-				fmt.Sprintf(`/tools/opencode run --attach %s --title %s "$(cat %s/task.md)"`, serverURL, shellEscape(sessionTitle), cfg.workspaceDir),
+				fmt.Sprintf(`%s; /tools/opencode run --attach %s --title %s "$(cat %s/task.md)"`, OpenCodeSymlinkCmd, serverURL, shellEscape(sessionTitle), cfg.workspaceDir),
 			}
 		} else {
 			// templateRef path: run standalone OpenCode instance
 			agentCommand = []string{
 				"sh", "-c",
-				fmt.Sprintf(`/tools/opencode run --title %s "$(cat %s/task.md)"`, shellEscape(sessionTitle), cfg.workspaceDir),
+				fmt.Sprintf(`%s; /tools/opencode run --title %s "$(cat %s/task.md)"`, OpenCodeSymlinkCmd, shellEscape(sessionTitle), cfg.workspaceDir),
 			}
 		}
 	}
