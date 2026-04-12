@@ -1946,3 +1946,76 @@ func TestBuildServerDeployment_WithoutExtraPorts(t *testing.T) {
 		t.Errorf("expected main port http:4096, got %s:%d", container.Ports[0].Name, container.Ports[0].ContainerPort)
 	}
 }
+
+func TestBuildServerDeployment_WithLifecycle(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "vscode-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			Port: 4096,
+			PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+				Lifecycle: &corev1.Lifecycle{
+					PostStart: &corev1.LifecycleHandler{
+						Exec: &corev1.ExecAction{
+							Command: []string{"/usr/local/bin/start-code-server.sh"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		podSpec:       agent.Spec.PodSpec,
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	container := deployment.Spec.Template.Spec.Containers[0]
+
+	if container.Lifecycle == nil {
+		t.Fatal("expected Lifecycle to be set on server container")
+	}
+	if container.Lifecycle.PostStart == nil {
+		t.Fatal("expected PostStart to be set")
+	}
+	if container.Lifecycle.PostStart.Exec == nil {
+		t.Fatal("expected PostStart.Exec to be set")
+	}
+	if len(container.Lifecycle.PostStart.Exec.Command) != 1 || container.Lifecycle.PostStart.Exec.Command[0] != "/usr/local/bin/start-code-server.sh" {
+		t.Errorf("unexpected PostStart command: %v", container.Lifecycle.PostStart.Exec.Command)
+	}
+}
+
+func TestBuildServerDeployment_WithoutLifecycle(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "simple-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			Port: 4096,
+		},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+	container := deployment.Spec.Template.Spec.Containers[0]
+
+	if container.Lifecycle != nil {
+		t.Errorf("expected Lifecycle to be nil when not configured, got %v", container.Lifecycle)
+	}
+}

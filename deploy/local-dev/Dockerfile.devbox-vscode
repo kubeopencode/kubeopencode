@@ -22,6 +22,16 @@ fi
 EOF
 RUN chmod +x /usr/local/bin/start-code-server.sh
 
+# Ensure /tools is in PATH for all shell types:
+# - /etc/profile.d/ for login shells (bash --login, VS Code terminal)
+# - /etc/bash.bashrc for non-login interactive bash
+# - /etc/zsh/zshrc for zsh
+# /etc/profile hardcodes PATH and overrides container env vars,
+# so we must re-add /tools via profile.d (loaded after /etc/profile).
+RUN echo 'export PATH="/tools:$PATH"' > /etc/profile.d/tools-path.sh && \
+    echo 'export PATH="/tools:$PATH"' >> /etc/bash.bashrc && \
+    echo 'export PATH="/tools:$PATH"' >> /etc/zsh/zshrc
+
 # Auto-start code-server when interactive shells open
 RUN echo '/usr/local/bin/start-code-server.sh' >> /etc/bash.bashrc && \
     echo '/usr/local/bin/start-code-server.sh' >> /etc/zsh/zshrc

@@ -860,6 +860,8 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 	envVars = append(envVars,
 		corev1.EnvVar{Name: "HOME", Value: DefaultHomeDir},
 		corev1.EnvVar{Name: "SHELL", Value: DefaultShell},
+		// Prepend /tools to PATH so the OpenCode binary is discoverable from interactive terminals.
+		corev1.EnvVar{Name: "PATH", Value: ToolsMountPath + ":/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
 		corev1.EnvVar{Name: "TASK_NAME", Value: task.Name},
 		corev1.EnvVar{Name: "TASK_NAMESPACE", Value: task.Namespace},
 		corev1.EnvVar{Name: "WORKSPACE_DIR", Value: cfg.workspaceDir},
@@ -1219,6 +1221,11 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		agentContainer.SecurityContext = cfg.podSpec.SecurityContext
 	} else {
 		agentContainer.SecurityContext = defaultSecurityContext()
+	}
+
+	// Apply lifecycle hooks (e.g., postStart for starting code-server)
+	if cfg.podSpec != nil && cfg.podSpec.Lifecycle != nil {
+		agentContainer.Lifecycle = cfg.podSpec.Lifecycle
 	}
 
 	// Apply default security context to init containers

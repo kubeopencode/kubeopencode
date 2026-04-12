@@ -20,6 +20,11 @@ spec:
   extraPorts:
     - name: vscode
       port: 8080
+  podSpec:
+    lifecycle:
+      postStart:
+        exec:
+          command: ["/usr/local/bin/start-code-server.sh"]
   config: |
     {
       "$schema": "https://opencode.ai/config.json",

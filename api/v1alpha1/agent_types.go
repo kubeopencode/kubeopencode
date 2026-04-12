@@ -583,6 +583,26 @@ type AgentPodSpec struct {
 	//     fsGroup: 1000
 	// +optional
 	PodSecurityContext *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`
+
+	// Lifecycle describes actions that the management system should take in response
+	// to container lifecycle events. This is applied to the executor (worker) container.
+	//
+	// Common use case: start a sidecar process (e.g., code-server, language server)
+	// alongside the main OpenCode process using a postStart hook.
+	//
+	// Note: postStart runs in parallel with the container's entrypoint (not sequentially).
+	// If the postStart handler fails, the container is killed and restarted.
+	// The handler should complete quickly — use background processes (&) for long-running services.
+	//
+	// Example — start code-server alongside OpenCode:
+	//   lifecycle:
+	//     postStart:
+	//       exec:
+	//         command: ["/usr/local/bin/start-code-server.sh"]
+	//
+	// See: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/
+	// +optional
+	Lifecycle *corev1.Lifecycle `json:"lifecycle,omitempty"`
 }
 
 // PodScheduling defines scheduling configuration for agent pods.

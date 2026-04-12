@@ -2943,6 +2943,73 @@ func TestBuildPodSecurityContext(t *testing.T) {
 		}
 	})
 
+	t.Run("lifecycle hook is applied to agent container", func(t *testing.T) {
+		task := &kubeopenv1alpha1.Task{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-task",
+				Namespace: "default",
+				UID:       "test-uid",
+			},
+		}
+		task.APIVersion = "kubeopencode.io/v1alpha1"
+		task.Kind = "Task"
+
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+			podSpec: &kubeopenv1alpha1.AgentPodSpec{
+				Lifecycle: &corev1.Lifecycle{
+					PostStart: &corev1.LifecycleHandler{
+						Exec: &corev1.ExecAction{
+							Command: []string{"/usr/local/bin/start-code-server.sh"},
+						},
+					},
+				},
+			},
+		}
+
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+		container := pod.Spec.Containers[0]
+		if container.Lifecycle == nil {
+			t.Fatal("expected Lifecycle to be set on agent container")
+		}
+		if container.Lifecycle.PostStart == nil || container.Lifecycle.PostStart.Exec == nil {
+			t.Fatal("expected PostStart.Exec to be set")
+		}
+		if container.Lifecycle.PostStart.Exec.Command[0] != "/usr/local/bin/start-code-server.sh" {
+			t.Errorf("unexpected PostStart command: %v", container.Lifecycle.PostStart.Exec.Command)
+		}
+	})
+
+	t.Run("no lifecycle when podSpec has no lifecycle", func(t *testing.T) {
+		task := &kubeopenv1alpha1.Task{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-task",
+				Namespace: "default",
+				UID:       "test-uid",
+			},
+		}
+		task.APIVersion = "kubeopencode.io/v1alpha1"
+		task.Kind = "Task"
+
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+		}
+
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+		container := pod.Spec.Containers[0]
+		if container.Lifecycle != nil {
+			t.Errorf("expected Lifecycle to be nil when not configured, got %v", container.Lifecycle)
+		}
+	})
+
 	t.Run("podSpec PodSecurityContext is set on pod spec", func(t *testing.T) {
 		task := &kubeopenv1alpha1.Task{
 			ObjectMeta: metav1.ObjectMeta{

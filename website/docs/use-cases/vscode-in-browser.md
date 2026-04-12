@@ -53,6 +53,14 @@ fi
 EOF
 RUN chmod +x /usr/local/bin/start-code-server.sh
 
+# Ensure /tools is in PATH for all shell types so that the OpenCode binary
+# (copied by the init container) is discoverable from VS Code's terminal.
+# /etc/profile hardcodes PATH and overrides container env vars,
+# so we must re-add /tools via profile.d (loaded after /etc/profile).
+RUN echo 'export PATH="/tools:$PATH"' > /etc/profile.d/tools-path.sh && \
+    echo 'export PATH="/tools:$PATH"' >> /etc/bash.bashrc && \
+    echo 'export PATH="/tools:$PATH"' >> /etc/zsh/zshrc
+
 # Auto-start code-server when interactive shells open.
 # This covers shell subprocesses spawned by OpenCode tools.
 RUN echo '/usr/local/bin/start-code-server.sh' >> /etc/bash.bashrc && \
@@ -63,12 +71,7 @@ WORKDIR /workspace
 CMD ["/bin/zsh"]
 ```
 
-> **Important**: KubeOpenCode overrides the container's `ENTRYPOINT` with `sh -c "/tools/opencode serve ..."`, which is a non-interactive shell that does not read `bashrc`/`zshrc`. This means code-server starts when OpenCode first spawns an interactive shell subprocess (e.g., during the first Task), not immediately at Pod startup.
->
-> To start code-server immediately after the Pod is ready:
-> ```bash
-> kubectl exec deployment/<agent-name>-server -n <namespace> -- /usr/local/bin/start-code-server.sh
-> ```
+> **Note**: The `bashrc`/`zshrc` auto-start ensures code-server launches when OpenCode spawns an interactive shell (e.g., during the first Task). To start code-server immediately at Pod startup, use a `lifecycle.postStart` hook in the Agent configuration (see below).
 
 Build and push:
 
@@ -96,7 +99,16 @@ spec:
   extraPorts:
     - name: vscode
       port: 8080
+  podSpec:
+    lifecycle:
+      postStart:
+        exec:
+          command: ["/usr/local/bin/start-code-server.sh"]
 ```
+
+The `lifecycle.postStart` hook starts code-server automatically when the Pod starts, running in parallel with the OpenCode server. This eliminates the need to manually `kubectl exec` the startup script or wait for the first Task to trigger it via `bashrc`.
+
+> **Try it locally**: Ready-to-use examples are available in [`deploy/local-dev/`](https://github.com/kubeopencode/kubeopencode/tree/main/deploy/local-dev) — see [`Dockerfile.devbox-vscode`](https://github.com/kubeopencode/kubeopencode/blob/main/deploy/local-dev/Dockerfile.devbox-vscode) for the image and [`agent-vscode.yaml`](https://github.com/kubeopencode/kubeopencode/blob/main/deploy/local-dev/agent-vscode.yaml) for the Agent configuration. Follow the [Local Development Guide](https://github.com/kubeopencode/kubeopencode/blob/main/deploy/local-dev/local-development.md) to set up a Kind cluster.
 
 ## Accessing VS Code
 
@@ -129,54 +141,7 @@ kubectl port-forward svc/dev-agent 4096:4096 8080:8080 -n <namespace>
 
 ## Combining with Docker-in-Docker
 
-For the full development experience (VS Code + Docker), combine this with the [DinD setup](docker-in-docker.md):
-
-```dockerfile
-FROM ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest
-
-USER root
-
-# Install Docker daemon (for DinD)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    docker-ce \
-    containerd.io \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install code-server
-RUN curl -fsSL https://code-server.dev/install.sh | sh
-
-# Docker lazy-init wrapper (see DinD docs)
-RUN mv /usr/bin/docker /usr/bin/docker.real
-COPY --chmod=755 docker-lazy-init.sh /usr/bin/docker
-
-# code-server auto-start
-COPY --chmod=755 start-code-server.sh /usr/local/bin/
-RUN echo '/usr/local/bin/start-code-server.sh' >> /etc/bash.bashrc && \
-    echo '/usr/local/bin/start-code-server.sh' >> /etc/zsh/zshrc
-
-USER 0:0  # Root for Sysbox DinD
-WORKDIR /workspace
-CMD ["/bin/zsh"]
-```
-
-```yaml
-apiVersion: kubeopencode.io/v1alpha1
-kind: Agent
-metadata:
-  name: full-dev-agent
-spec:
-  profile: "Full dev environment with VS Code + Docker"
-  executorImage: your-registry/devbox-full:latest
-  workspaceDir: /workspace
-  serviceAccountName: kubeopencode-agent
-  extraPorts:
-    - name: vscode
-      port: 8080
-    - name: webapp
-      port: 3000
-  podSpec:
-    runtimeClassName: sysbox-runc
-```
+VS Code in Browser can be combined with [Docker-in-Docker](docker-in-docker.md) for the full development experience. Add code-server installation and the auto-start script to your DinD executor image, and expose both ports via `extraPorts`.
 
 ## Tips
 

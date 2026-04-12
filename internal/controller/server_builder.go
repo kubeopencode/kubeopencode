@@ -174,6 +174,11 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 	envVars := []corev1.EnvVar{
 		{Name: "HOME", Value: DefaultHomeDir},
 		{Name: "SHELL", Value: DefaultShell},
+		// Prepend /tools to PATH so the OpenCode binary (copied by the init container)
+		// is discoverable from interactive terminals (e.g., VS Code in browser).
+		// The symlink approach (ln -sf /tools/opencode /usr/local/bin/) fails silently
+		// when the container runs as non-root (UID 1000) because /usr/local/bin/ is root-owned.
+		{Name: "PATH", Value: ToolsMountPath + ":/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
 		{Name: "WORKSPACE_DIR", Value: agentCfg.workspaceDir},
 	}
 
@@ -543,6 +548,11 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		container.SecurityContext = agentCfg.podSpec.SecurityContext
 	} else {
 		container.SecurityContext = defaultSecurityContext()
+	}
+
+	// Apply lifecycle hooks (e.g., postStart for starting code-server)
+	if agentCfg.podSpec != nil && agentCfg.podSpec.Lifecycle != nil {
+		container.Lifecycle = agentCfg.podSpec.Lifecycle
 	}
 
 	// Apply default security context to init containers

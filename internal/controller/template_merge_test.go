@@ -384,6 +384,81 @@ func TestMergeAgentWithTemplate(t *testing.T) {
 			},
 		},
 		{
+			name: "agent podSpec with lifecycle wins over template",
+			agent: &kubeopenv1alpha1.Agent{
+				Spec: kubeopenv1alpha1.AgentSpec{
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "sa",
+					PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+						Lifecycle: &corev1.Lifecycle{
+							PostStart: &corev1.LifecycleHandler{
+								Exec: &corev1.ExecAction{
+									Command: []string{"/start-agent.sh"},
+								},
+							},
+						},
+					},
+				},
+			},
+			template: &kubeopenv1alpha1.AgentTemplate{
+				Spec: kubeopenv1alpha1.AgentTemplateSpec{
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "sa",
+					PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+						Lifecycle: &corev1.Lifecycle{
+							PostStart: &corev1.LifecycleHandler{
+								Exec: &corev1.ExecAction{
+									Command: []string{"/start-template.sh"},
+								},
+							},
+						},
+					},
+				},
+			},
+			check: func(t *testing.T, cfg agentConfig) {
+				if cfg.podSpec == nil || cfg.podSpec.Lifecycle == nil || cfg.podSpec.Lifecycle.PostStart == nil {
+					t.Fatal("expected agent podSpec lifecycle to be set")
+				}
+				cmd := cfg.podSpec.Lifecycle.PostStart.Exec.Command[0]
+				if cmd != "/start-agent.sh" {
+					t.Errorf("expected agent lifecycle to win, got command %s", cmd)
+				}
+			},
+		},
+		{
+			name: "nil agent podSpec inherits template lifecycle",
+			agent: &kubeopenv1alpha1.Agent{
+				Spec: kubeopenv1alpha1.AgentSpec{
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "sa",
+				},
+			},
+			template: &kubeopenv1alpha1.AgentTemplate{
+				Spec: kubeopenv1alpha1.AgentTemplateSpec{
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "sa",
+					PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+						Lifecycle: &corev1.Lifecycle{
+							PostStart: &corev1.LifecycleHandler{
+								Exec: &corev1.ExecAction{
+									Command: []string{"/start-template.sh"},
+								},
+							},
+						},
+					},
+				},
+			},
+			check: func(t *testing.T, cfg agentConfig) {
+				if cfg.podSpec == nil || cfg.podSpec.Lifecycle == nil || cfg.podSpec.Lifecycle.PostStart == nil {
+					t.Fatal("expected template podSpec lifecycle to be inherited")
+				}
+				cmd := cfg.podSpec.Lifecycle.PostStart.Exec.Command[0]
+				if cmd != "/start-template.sh" {
+					t.Errorf("expected template lifecycle inherited, got command %s", cmd)
+				}
+			},
+		},
+		{
 			name: "nil agent extraPorts inherits template extraPorts",
 			agent: &kubeopenv1alpha1.Agent{
 				Spec: kubeopenv1alpha1.AgentSpec{
