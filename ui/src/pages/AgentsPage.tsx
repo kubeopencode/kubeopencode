@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api, { Agent } from '../api/client';
 import Labels from '../components/Labels';
+import AgentStatusBadge from '../components/AgentStatusBadge';
 import Skeleton from '../components/Skeleton';
 import ResourceFilter from '../components/ResourceFilter';
 import MultiSelect from '../components/MultiSelect';
@@ -197,25 +198,10 @@ function AgentsPage() {
                       </h3>
                       <p className="text-xs text-stone-400 mt-0.5 font-mono">{agent.namespace}</p>
                     </div>
-                    <span className={`inline-flex items-center text-[11px] font-medium ${
-                      agent.serverStatus?.suspended
-                        ? 'text-amber-600'
-                        : agent.serverStatus?.ready
-                          ? 'text-emerald-600'
-                          : 'text-violet-600'
-                    }`}>
-                      {agent.serverStatus?.suspended ? (
-                        <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-amber-400" />
-                      ) : agent.serverStatus?.ready ? (
-                        <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-                      ) : (
-                        <span className="relative mr-1.5 flex h-1.5 w-1.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-violet-400" />
-                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-violet-400" />
-                        </span>
-                      )}
-                      {agent.serverStatus?.suspended ? 'Suspended' : agent.serverStatus?.ready ? 'Live' : 'Starting'}
-                    </span>
+                    <AgentStatusBadge
+                      suspended={agent.serverStatus?.suspended}
+                      ready={agent.serverStatus?.ready}
+                    />
                   </div>
 
                   {agent.profile && (

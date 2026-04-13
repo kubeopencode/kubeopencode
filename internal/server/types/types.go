@@ -344,6 +344,15 @@ type CronTaskListResponse struct {
 	Pagination *Pagination        `json:"pagination,omitempty"`
 }
 
+// CreateAgentTemplateRequest represents a request to create an agent template
+type CreateAgentTemplateRequest struct {
+	Name               string `json:"name"`
+	WorkspaceDir       string `json:"workspaceDir,omitempty"`
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+	AgentImage         string `json:"agentImage,omitempty"`
+	ExecutorImage      string `json:"executorImage,omitempty"`
+}
+
 // ErrorResponse represents an error response
 type ErrorResponse struct {
 	Error   string `json:"error"`

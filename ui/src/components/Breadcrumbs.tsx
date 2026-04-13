@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 export interface BreadcrumbItem {
   label: string;
   to?: string;
+  /** If true, render as a namespace badge (monospace, muted style) */
+  isNamespace?: boolean;
 }
 
 interface BreadcrumbsProps {
@@ -29,6 +31,10 @@ function Breadcrumbs({ items }: BreadcrumbsProps) {
               <Link to={item.to} className="text-stone-400 hover:text-stone-600 transition-colors">
                 {item.label}
               </Link>
+            ) : item.isNamespace ? (
+              <span className="text-stone-400 font-mono text-xs bg-stone-100 px-1.5 py-0.5 rounded">
+                {item.label}
+              </span>
             ) : (
               <span className="text-stone-700 font-medium">{item.label}</span>
             )}

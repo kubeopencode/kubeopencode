@@ -4,62 +4,17 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import Labels from '../components/Labels';
+import AgentStatusBadge from '../components/AgentStatusBadge';
+import ConfirmDialog from '../components/ConfirmDialog';
 import Breadcrumbs from '../components/Breadcrumbs';
 import YamlViewer from '../components/YamlViewer';
 import { DetailSkeleton } from '../components/Skeleton';
 
-function DeleteTemplateButton({ namespace, name }: { namespace: string; name: string }) {
-  const [confirming, setConfirming] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const { addToast } = useToast();
-
-  const handleDelete = async () => {
-    setLoading(true);
-    try {
-      await api.deleteAgentTemplate(namespace, name);
-      addToast(`Template "${name}" deleted`, 'success');
-      navigate('/templates');
-    } catch (err) {
-      addToast(`Failed to delete template: ${(err as Error).message}`, 'error');
-      setLoading(false);
-      setConfirming(false);
-    }
-  };
-
-  if (confirming) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-red-600">Delete?</span>
-        <button
-          onClick={handleDelete}
-          disabled={loading}
-          className="px-2.5 py-1 rounded-md text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors"
-        >
-          {loading ? '...' : 'Confirm'}
-        </button>
-        <button
-          onClick={() => setConfirming(false)}
-          className="px-2.5 py-1 rounded-md text-xs font-medium text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <button
-      onClick={() => setConfirming(true)}
-      className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors"
-    >
-      Delete
-    </button>
-  );
-}
-
 function AgentTemplateDetailPage() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const { data: tmpl, isLoading, error, refetch } = useQuery({
     queryKey: ['agent-template', namespace, name],
@@ -113,7 +68,7 @@ function AgentTemplateDetailPage() {
     <div className="animate-fade-in">
       <Breadcrumbs items={[
         { label: 'Templates', to: '/templates' },
-        { label: namespace! },
+        { label: namespace!, isNamespace: true },
         { label: name! },
       ]} />
 
@@ -134,7 +89,12 @@ function AgentTemplateDetailPage() {
                 </svg>
                 Create Agent
               </Link>
-              <DeleteTemplateButton namespace={tmpl.namespace} name={tmpl.name} />
+              <button
+                onClick={() => setShowDeleteDialog(true)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
@@ -210,25 +170,10 @@ function AgentTemplateDetailPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className={`inline-flex items-center text-[11px] font-medium ${
-                        agent.serverStatus?.suspended
-                          ? 'text-amber-600'
-                          : agent.serverStatus?.ready
-                            ? 'text-emerald-600'
-                            : 'text-violet-600'
-                      }`}>
-                        {agent.serverStatus?.suspended ? (
-                          <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-amber-400" />
-                        ) : agent.serverStatus?.ready ? (
-                          <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-                        ) : (
-                          <span className="relative mr-1.5 flex h-1.5 w-1.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-violet-400" />
-                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-violet-400" />
-                          </span>
-                        )}
-                        {agent.serverStatus?.suspended ? 'Suspended' : agent.serverStatus?.ready ? 'Live' : 'Starting'}
-                      </span>
+                      <AgentStatusBadge
+                        suspended={agent.serverStatus?.suspended}
+                        ready={agent.serverStatus?.ready}
+                      />
                       <svg className="w-4 h-4 text-stone-300 group-hover:text-stone-500 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
@@ -346,6 +291,25 @@ function AgentTemplateDetailPage() {
           await api.updateAgentTemplateYaml(namespace!, name!, yaml);
           refetch();
         }}
+      />
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete Template"
+        message={`Are you sure you want to delete template "${name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={async () => {
+          setShowDeleteDialog(false);
+          try {
+            await api.deleteAgentTemplate(namespace!, name!);
+            addToast(`Template "${name}" deleted`, 'success');
+            navigate('/templates');
+          } catch (err) {
+            addToast(`Failed to delete template: ${(err as Error).message}`, 'error');
+          }
+        }}
+        onCancel={() => setShowDeleteDialog(false)}
       />
     </div>
   );

@@ -89,7 +89,7 @@ function TaskDetailPage() {
     <div className="animate-fade-in">
       <Breadcrumbs items={[
         { label: 'Tasks', to: '/tasks' },
-        { label: namespace! },
+        { label: namespace!, isNamespace: true },
         { label: name! },
       ]} />
 

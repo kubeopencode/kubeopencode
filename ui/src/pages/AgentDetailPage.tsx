@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import Labels from '../components/Labels';
+import AgentStatusBadge from '../components/AgentStatusBadge';
+import CopyButton from '../components/CopyButton';
+import ConfirmDialog from '../components/ConfirmDialog';
 import Breadcrumbs from '../components/Breadcrumbs';
 import YamlViewer from '../components/YamlViewer';
 import TerminalPanel from '../components/TerminalPanel';
@@ -66,33 +69,6 @@ function SuspendResumeButton({ namespace, name, suspended, onSuccess }: { namesp
   );
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  return (
-    <button
-      onClick={handleCopy}
-      className="shrink-0 p-1.5 rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-200 transition-colors"
-      title="Copy to clipboard"
-    >
-      {copied ? (
-        <svg className="w-4 h-4 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ) : (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-        </svg>
-      )}
-    </button>
-  );
-}
-
 function ServerConnectCommands({ namespace, agentName }: { namespace: string; agentName: string }) {
   const kocCmd = `kubeoc agent attach ${agentName} -n ${namespace}`;
   const goInstallCmd = 'go install github.com/kubeopencode/kubeopencode/cmd/kubeoc@latest';
@@ -121,58 +97,12 @@ function ServerConnectCommands({ namespace, agentName }: { namespace: string; ag
   );
 }
 
-function DeleteAgentButton({ namespace, name }: { namespace: string; name: string }) {
-  const [confirming, setConfirming] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const { addToast } = useToast();
-
-  const handleDelete = async () => {
-    setLoading(true);
-    try {
-      await api.deleteAgent(namespace, name);
-      addToast(`Agent "${name}" deleted`, 'success');
-      navigate('/agents');
-    } catch (err) {
-      addToast(`Failed to delete agent: ${(err as Error).message}`, 'error');
-      setLoading(false);
-      setConfirming(false);
-    }
-  };
-
-  if (confirming) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-red-600">Delete?</span>
-        <button
-          onClick={handleDelete}
-          disabled={loading}
-          className="px-2.5 py-1 rounded-md text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors"
-        >
-          {loading ? '...' : 'Confirm'}
-        </button>
-        <button
-          onClick={() => setConfirming(false)}
-          className="px-2.5 py-1 rounded-md text-xs font-medium text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <button
-      onClick={() => setConfirming(true)}
-      className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors"
-    >
-      Delete
-    </button>
-  );
-}
-
 function AgentDetailPage() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: agent, isLoading, error, refetch } = useQuery({
     queryKey: ['agent', namespace, name],
@@ -217,7 +147,7 @@ function AgentDetailPage() {
     <div className="animate-fade-in">
       <Breadcrumbs items={[
         { label: 'Agents', to: '/agents' },
-        { label: namespace! },
+        { label: namespace!, isNamespace: true },
         { label: name! },
       ]} />
 
@@ -227,25 +157,10 @@ function AgentDetailPage() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2.5">
                 <h2 className="font-display text-xl font-bold text-stone-900">{agent.name}</h2>
-                <span className={`inline-flex items-center text-xs font-medium ${
-                  agent.serverStatus?.suspended
-                    ? 'text-amber-600'
-                    : agent.serverStatus?.ready
-                      ? 'text-emerald-600'
-                      : 'text-violet-600'
-                }`}>
-                  {agent.serverStatus?.suspended ? (
-                    <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-amber-400" />
-                  ) : agent.serverStatus?.ready ? (
-                    <span className="mr-1.5 inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-                  ) : (
-                    <span className="relative mr-1.5 flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-violet-400" />
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-violet-400" />
-                    </span>
-                  )}
-                  {agent.serverStatus?.suspended ? 'Suspended' : agent.serverStatus?.ready ? 'Live' : 'Starting'}
-                </span>
+                <AgentStatusBadge
+                  suspended={agent.serverStatus?.suspended}
+                  ready={agent.serverStatus?.ready}
+                />
               </div>
               <p className="text-xs text-stone-400 mt-0.5 font-mono">{agent.namespace}</p>
               {agent.profile && (
@@ -270,7 +185,12 @@ function AgentDetailPage() {
                 </svg>
                 Create Task
               </Link>
-              <DeleteAgentButton namespace={agent.namespace} name={agent.name} />
+              <button
+                onClick={() => setShowDeleteDialog(true)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
@@ -399,7 +319,10 @@ function AgentDetailPage() {
                 </div>
                 <div>
                   <dt className="text-xs text-stone-400">URL</dt>
-                  <dd className="mt-1 text-sm text-stone-700 font-mono break-all">{agent.serverStatus.url}</dd>
+                  <dd className="mt-1 flex items-center gap-1.5">
+                    <span className="text-sm text-stone-700 font-mono break-all">{agent.serverStatus.url}</span>
+                    <CopyButton text={agent.serverStatus.url || ''} />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-stone-400">Status</dt>
@@ -623,6 +546,27 @@ function AgentDetailPage() {
           await api.updateAgentYaml(namespace!, name!, yaml);
           refetch();
         }}
+      />
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete Agent"
+        message={`Are you sure you want to delete Agent "${name}"? This will remove the deployment, service, and all associated resources. This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={async () => {
+          setShowDeleteDialog(false);
+          setDeleting(true);
+          try {
+            await api.deleteAgent(namespace!, name!);
+            addToast(`Agent "${name}" deleted`, 'success');
+            navigate('/agents');
+          } catch (err) {
+            addToast(`Failed to delete agent: ${(err as Error).message}`, 'error');
+            setDeleting(false);
+          }
+        }}
+        onCancel={() => setShowDeleteDialog(false)}
       />
     </div>
   );

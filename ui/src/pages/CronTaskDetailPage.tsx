@@ -120,7 +120,7 @@ function CronTaskDetailPage() {
     <div className="animate-fade-in">
       <Breadcrumbs items={[
         { label: 'CronTasks', to: '/crontasks' },
-        { label: namespace! },
+        { label: namespace!, isNamespace: true },
         { label: name! },
       ]} />
 
@@ -341,6 +341,10 @@ function CronTaskDetailPage() {
       <YamlViewer
         queryKey={['crontask-yaml', namespace!, name!]}
         fetchYaml={() => api.getCronTaskYaml(namespace!, name!)}
+        onSave={async (yaml) => {
+          await api.updateCronTaskYaml(namespace!, name!, yaml);
+          queryClient.invalidateQueries({ queryKey: ['crontask', namespace, name] });
+        }}
       />
 
       {/* Execution History */}

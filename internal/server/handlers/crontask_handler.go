@@ -5,13 +5,16 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/robfig/cron/v3"
 
 	"github.com/go-chi/chi/v5"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 	"github.com/kubeopencode/kubeopencode/internal/server/types"
@@ -220,7 +223,8 @@ func (h *CronTaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, cronTaskToResponse(cronTask))
 }
 
-// Update updates an existing CronTask
+// Update updates an existing CronTask.
+// Accepts either JSON (UpdateCronTaskRequest) or YAML (full CronTask spec replacement).
 func (h *CronTaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
@@ -232,6 +236,33 @@ func (h *CronTaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "yaml") {
+		// YAML mode: full spec replacement (like Agent and AgentTemplate Update)
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB limit
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Failed to read request body", err.Error())
+			return
+		}
+
+		var submitted kubeopenv1alpha1.CronTask
+		if err := yaml.Unmarshal(body, &submitted); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid YAML", err.Error())
+			return
+		}
+
+		existing.Spec = submitted.Spec
+		if err := k8sClient.Update(r.Context(), &existing); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to update CronTask", err.Error())
+			return
+		}
+
+		writeResourceOutput(w, r, http.StatusOK, &existing, cronTaskToResponse(&existing))
+		return
+	}
+
+	// JSON mode: partial update
 	var req types.UpdateCronTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body", err.Error())

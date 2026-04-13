@@ -113,6 +113,10 @@ export const handlers = [
   }),
 
   // === Config ===
+  http.put(`${API_BASE}/config`, () => {
+    return HttpResponse.json(mockConfig);
+  }),
+
   http.get(`${API_BASE}/config`, ({ request }) => {
     const url = new URL(request.url);
     if (url.searchParams.get('output') === 'yaml') {
@@ -429,6 +433,25 @@ export const handlers = [
     const url = new URL(request.url);
     const filtered = filterByNamespace(mockAgentTemplates, params.namespace as string);
     return HttpResponse.json(buildTemplateListResponse(filtered, url));
+  }),
+
+  http.post(`${API_BASE}/namespaces/:namespace/agenttemplates`, async ({ params, request }) => {
+    const { namespace } = params;
+    const body = await request.json() as Record<string, unknown>;
+    const newTemplate: AgentTemplate = {
+      name: (body.name as string) || `template-${Date.now()}`,
+      namespace: namespace as string,
+      workspaceDir: (body.workspaceDir as string) || '/workspace',
+      serviceAccountName: body.serviceAccountName as string,
+      agentImage: body.agentImage as string,
+      executorImage: body.executorImage as string,
+      agentCount: 0,
+      contextsCount: 0,
+      credentialsCount: 0,
+      skillsCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    return HttpResponse.json(newTemplate, { status: 201 });
   }),
 
   http.get(`${API_BASE}/namespaces/:namespace/agenttemplates/:name`, ({ params, request }) => {

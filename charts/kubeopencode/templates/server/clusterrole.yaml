@@ -22,10 +22,14 @@ rules:
 - apiGroups: ["kubeopencode.io"]
   resources: ["agents"]
   verbs: ["create", "update", "patch", "delete"]
-# Write access to AgentTemplates (update, delete via UI)
+# Write access to AgentTemplates (create, update, delete via UI)
 - apiGroups: ["kubeopencode.io"]
   resources: ["agenttemplates"]
-  verbs: ["update", "delete"]
+  verbs: ["create", "update", "delete"]
+# Write access to KubeOpenCodeConfig (update via UI YAML editor)
+- apiGroups: ["kubeopencode.io"]
+  resources: ["kubeopencodeconfigs"]
+  verbs: ["update"]
 # Read access to Pods (for status and log streaming)
 - apiGroups: [""]
   resources: ["pods"]

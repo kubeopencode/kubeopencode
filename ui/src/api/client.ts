@@ -71,6 +71,14 @@ export interface CreatePersistenceConfig {
   workspace?: CreateVolumePersistence;
 }
 
+export interface CreateAgentTemplateRequest {
+  name: string;
+  workspaceDir?: string;
+  serviceAccountName?: string;
+  agentImage?: string;
+  executorImage?: string;
+}
+
 export interface CreateAgentRequest {
   name: string;
   profile?: string;
@@ -461,6 +469,12 @@ export const api = {
   getAgentTemplate: (namespace: string, name: string) =>
     request<AgentTemplate>(`/namespaces/${namespace}/agenttemplates/${name}`),
 
+  createAgentTemplate: (namespace: string, data: CreateAgentTemplateRequest) =>
+    request<AgentTemplate>(`/namespaces/${namespace}/agenttemplates`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   deleteAgentTemplate: (namespace: string, name: string) =>
     request<void>(`/namespaces/${namespace}/agenttemplates/${name}`, { method: 'DELETE' }),
 
@@ -556,6 +570,30 @@ export const api = {
     const response = await fetch(`${API_BASE}/config?output=yaml`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.text();
+  },
+
+  updateConfigYaml: async (yaml: string): Promise<void> => {
+    const response = await fetch(`${API_BASE}/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/x-yaml' },
+      body: yaml,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.message || error.error || `HTTP ${response.status}`);
+    }
+  },
+
+  updateCronTaskYaml: async (namespace: string, name: string, yaml: string): Promise<void> => {
+    const response = await fetch(`${API_BASE}/namespaces/${namespace}/crontasks/${name}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/x-yaml' },
+      body: yaml,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.message || error.error || `HTTP ${response.status}`);
+    }
   },
 
 };

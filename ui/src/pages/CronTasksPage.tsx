@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import TimeAgo from '../components/TimeAgo';
 import ResourceFilter from '../components/ResourceFilter';
+import SortableHeader from '../components/SortableHeader';
 import { TableSkeleton } from '../components/Skeleton';
 import { useFilterState } from '../hooks/useFilterState';
 import { useNamespace } from '../contexts/NamespaceContext';
@@ -14,6 +15,7 @@ function CronTasksPage() {
   const { namespace, isAllNamespaces } = useNamespace();
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [filters, setFilters] = useFilterState();
 
   useEffect(() => {
@@ -21,12 +23,12 @@ function CronTasksPage() {
   }, [namespace, filters.name, filters.labelSelector]);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['crontasks', namespace, currentPage, pageSize, filters.name, filters.labelSelector],
+    queryKey: ['crontasks', namespace, currentPage, pageSize, sortOrder, filters.name, filters.labelSelector],
     queryFn: () => {
       const params = {
         limit: pageSize,
         offset: (currentPage - 1) * pageSize,
-        sortOrder: 'desc' as const,
+        sortOrder,
         name: filters.name || undefined,
         labelSelector: filters.labelSelector || undefined,
       };
@@ -34,7 +36,7 @@ function CronTasksPage() {
         ? api.listAllCronTasks(params)
         : api.listCronTasks(namespace, params);
     },
-    refetchInterval: 5000,
+    refetchInterval: 30000,
   });
 
   return (
@@ -110,9 +112,12 @@ function CronTasksPage() {
                 <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider hidden lg:table-cell">
                   Next Run
                 </th>
-                <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">
-                  Age
-                </th>
+                <SortableHeader
+                  label="Age"
+                  active={true}
+                  order={sortOrder}
+                  onToggle={() => { setSortOrder(o => o === 'desc' ? 'asc' : 'desc'); setCurrentPage(1); }}
+                />
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-stone-100">

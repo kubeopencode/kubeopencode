@@ -41,10 +41,14 @@ rules:
 - apiGroups: ["kubeopencode.io"]
   resources: ["agents"]
   verbs: ["create", "update", "patch", "delete"]
-# Delete agent templates
+# Manage agent templates (create, update YAML, delete)
 - apiGroups: ["kubeopencode.io"]
   resources: ["agenttemplates"]
-  verbs: ["delete"]
+  verbs: ["create", "update", "delete"]
+# View and update cluster config
+- apiGroups: ["kubeopencode.io"]
+  resources: ["kubeopencodeconfigs"]
+  verbs: ["get", "list", "watch", "update"]
 # View pod status (required by task detail page)
 - apiGroups: [""]
   resources: ["pods"]

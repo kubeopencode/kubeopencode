@@ -4,6 +4,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"sort"
@@ -192,6 +193,43 @@ func (h *AgentTemplateHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeResourceOutput(w, r, http.StatusOK, &tmpl, resp)
+}
+
+// Create creates a new agent template
+func (h *AgentTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	ctx := r.Context()
+	k8sClient := h.getClient(ctx)
+
+	var req types.CreateAgentTemplateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "Name is required", "")
+		return
+	}
+
+	tmpl := &kubeopenv1alpha1.AgentTemplate{}
+	tmpl.Name = req.Name
+	tmpl.Namespace = namespace
+	tmpl.Spec.WorkspaceDir = req.WorkspaceDir
+	tmpl.Spec.ServiceAccountName = req.ServiceAccountName
+	tmpl.Spec.AgentImage = req.AgentImage
+	tmpl.Spec.ExecutorImage = req.ExecutorImage
+
+	if err := k8sClient.Create(ctx, tmpl); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			writeError(w, http.StatusConflict, "AgentTemplate already exists", err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to create agent template", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, templateToResponse(tmpl))
 }
 
 // Delete deletes an agent template

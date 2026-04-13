@@ -1,12 +1,23 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import Labels from '../components/Labels';
 import Breadcrumbs from '../components/Breadcrumbs';
 import YamlViewer from '../components/YamlViewer';
+import CopyButton from '../components/CopyButton';
 import { DetailSkeleton } from '../components/Skeleton';
 
+const CONFIG_TEMPLATE = `apiVersion: kubeopencode.io/v1alpha1
+kind: KubeOpenCodeConfig
+metadata:
+  name: cluster
+spec:
+  cleanup:
+    ttlSecondsAfterFinished: 3600
+    maxRetainedTasks: 100`;
+
 function ConfigPage() {
+  const queryClient = useQueryClient();
   const { data: config, isLoading, error } = useQuery({
     queryKey: ['config'],
     queryFn: () => api.getConfig(),
@@ -32,16 +43,18 @@ function ConfigPage() {
               : errorMessage}
           </p>
           {isNotFound && (
-            <pre className="mt-4 text-xs text-amber-700 bg-amber-100/50 rounded-lg p-4 font-mono overflow-x-auto">
-{`apiVersion: kubeopencode.io/v1alpha1
-kind: KubeOpenCodeConfig
-metadata:
-  name: cluster
-spec:
-  cleanup:
-    ttlSecondsAfterFinished: 3600
-    maxRetainedTasks: 100`}
-            </pre>
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-amber-700">Apply this YAML to get started:</p>
+                <CopyButton text={CONFIG_TEMPLATE} label="Copy YAML template" />
+              </div>
+              <pre className="text-xs text-amber-700 bg-amber-100/50 rounded-lg p-4 font-mono overflow-x-auto">
+{CONFIG_TEMPLATE}
+              </pre>
+              <p className="mt-3 text-xs text-amber-600">
+                Run: <code className="bg-amber-100/50 px-1.5 py-0.5 rounded font-mono">kubectl apply -f config.yaml</code>
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -172,6 +185,10 @@ spec:
       <YamlViewer
         queryKey={['config-yaml']}
         fetchYaml={() => api.getConfigYaml()}
+        onSave={async (yaml) => {
+          await api.updateConfigYaml(yaml);
+          queryClient.invalidateQueries({ queryKey: ['config'] });
+        }}
       />
     </div>
   );

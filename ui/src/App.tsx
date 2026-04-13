@@ -10,10 +10,12 @@ import AgentDetailPage from './pages/AgentDetailPage';
 import AgentCreatePage from './pages/AgentCreatePage';
 import AgentTemplatesPage from './pages/AgentTemplatesPage';
 import AgentTemplateDetailPage from './pages/AgentTemplateDetailPage';
+import AgentTemplateCreatePage from './pages/AgentTemplateCreatePage';
 import CronTasksPage from './pages/CronTasksPage';
 import CronTaskCreatePage from './pages/CronTaskCreatePage';
 import CronTaskDetailPage from './pages/CronTaskDetailPage';
 import ConfigPage from './pages/ConfigPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
   return (
@@ -32,8 +34,10 @@ function App() {
           <Route path="agents/create" element={<AgentCreatePage />} />
           <Route path="agents/:namespace/:name" element={<AgentDetailPage />} />
           <Route path="templates" element={<AgentTemplatesPage />} />
+          <Route path="templates/create" element={<AgentTemplateCreatePage />} />
           <Route path="templates/:namespace/:name" element={<AgentTemplateDetailPage />} />
           <Route path="config" element={<ConfigPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
       </NamespaceProvider>
