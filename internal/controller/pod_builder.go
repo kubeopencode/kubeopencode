@@ -1147,8 +1147,8 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 
 	// Build pod labels - start with base labels
 	podLabels := map[string]string{
-		"app":                  "kubeopencode",
-		"kubeopencode.io/task": task.Name,
+		"app":        "kubeopencode",
+		TaskLabelKey: task.Name,
 	}
 
 	// Add custom pod labels from Agent.PodSpec

@@ -35,6 +35,9 @@ const (
 	// AgentTemplateLabelKey is the label key used to identify which AgentTemplate a Task uses
 	AgentTemplateLabelKey = "kubeopencode.io/agent-template"
 
+	// TaskLabelKey is the label key used to identify which Task a Pod or ConfigMap belongs to
+	TaskLabelKey = "kubeopencode.io/task"
+
 	// DefaultQueuedRequeueDelay is the default delay for requeuing queued Tasks
 	DefaultQueuedRequeueDelay = 10 * time.Second
 
@@ -810,8 +813,8 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 				Name:      configMapName,
 				Namespace: task.Namespace,
 				Labels: map[string]string{
-					"app":                  "kubeopencode",
-					"kubeopencode.io/task": task.Name,
+					"app":        "kubeopencode",
+					TaskLabelKey: task.Name,
 				},
 				OwnerReferences: []metav1.OwnerReference{
 					*metav1.NewControllerRef(task, kubeopenv1alpha1.SchemeGroupVersion.WithKind("Task")),
