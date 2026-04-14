@@ -53,7 +53,7 @@ Key behaviors:
 
 ### Agent Configuration (Summary)
 
-Key Agent spec fields: `templateRef`, `profile`, `agentImage`, `executorImage`, `attachImage`, `command` (optional, has default), `workspaceDir` (required), `port` (default: 4096), `extraPorts` (additional Service/Deployment ports for DinD, VS Code, etc.), `persistence`, `suspend`, `standby` (automatic suspend/resume lifecycle), `contexts`, `skills` (external SKILL.md sources from Git repos, auto-injects `skills.paths` into OpenCode config), `config` (inline JSON → `/tools/opencode.json`), `credentials`, `caBundle`, `proxy`, `imagePullSecrets`, `podSpec`, `serviceAccountName`, `maxConcurrentTasks`, `quota`.
+Key Agent spec fields: `templateRef`, `profile`, `agentImage`, `executorImage`, `attachImage`, `command` (optional, has default), `workspaceDir` (required), `port` (default: 4096), `extraPorts` (additional Service/Deployment ports for DinD, VS Code, etc.), `persistence`, `suspend`, `standby` (automatic suspend/resume lifecycle), `contexts`, `skills` (external SKILL.md sources from Git repos, auto-injects `skills.paths` into OpenCode config), `config` (inline JSON → `/tools/opencode.json`), `credentials`, `caBundle`, `proxy`, `imagePullSecrets`, `podSpec`, `serviceAccountName`, `maxConcurrentTasks`, `quota`, `share` (shareable terminal link).
 
 > See `website/docs/features.md` for detailed YAML examples of Agent configuration, proxy, credentials, concurrency, quota, persistence, and Git auto-sync.
 
@@ -72,6 +72,10 @@ Reusable blueprint serving two roles: (1) base configuration for Agents via `spe
 Agent always creates a Deployment + Service running `opencode serve`. Supports persistence (sessions/workspace PVCs), manual suspend/resume (`suspend`), and standby mode (`standby` auto-suspends after idle, auto-resumes when new task arrives). Standby is connection-aware: active web terminal or CLI attach sessions prevent auto-suspend via annotation heartbeat (`kubeopencode.io/last-connection-active`). See ADR 0028.
 
 > See `website/docs/features.md` for Agent setup, persistence, suspend/resume, and comparison table.
+
+### Agent Share Link
+
+Agents support shareable terminal links for users without Kubernetes credentials. When `spec.share.enabled: true`, the controller generates a cryptographic token (32-byte, base64url) stored in a Secret `{agent-name}-share`. The server exposes a standalone terminal page at `/s/{token}` outside the auth middleware. Options: `expiresAt` (expiry time), `allowedIPs` (CIDR allowlist), `readOnly` (view-only terminal). CLI: `kubeoc agent share/unshare`. See ADR 0033.
 
 ### Task Stop
 
@@ -355,4 +359,4 @@ Three-tier strategy: unit (`make test`), integration (`make integration-test`, u
 
 ---
 
-**Last Updated**: 2026-04-01
+**Last Updated**: 2026-04-14

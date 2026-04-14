@@ -13,6 +13,20 @@ import (
 //go:embed dist/*
 var staticFiles embed.FS
 
+// ShareHandler returns an http.HandlerFunc that serves the SPA index.html
+// for share link pages (/s/{token}). These are handled by React Router on the client.
+func ShareHandler(_ string) http.HandlerFunc {
+	distFS, err := fs.Sub(staticFiles, "dist")
+	if err != nil {
+		panic(err)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Always serve index.html for share routes — React Router handles the routing
+		r.URL.Path = "/"
+		http.FileServer(http.FS(distFS)).ServeHTTP(w, r)
+	}
+}
+
 // Handler returns an http.Handler that serves the embedded UI files.
 // The baseURL parameter allows serving the UI from a subpath (e.g., "/kubeopencode").
 func Handler(baseURL string) http.Handler {

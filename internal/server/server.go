@@ -148,6 +148,14 @@ func (s *Server) setupRoutes() *chi.Mux {
 	r.Get("/health", s.healthHandler)
 	r.Get("/ready", s.readyHandler)
 
+	// Share link routes (no auth required — token-based access)
+	shareHandler := handlers.NewShareHandler(s.k8sClient, s.clientset, s.restConfig)
+	r.Route("/s/{token}", func(r chi.Router) {
+		r.Get("/", ui.ShareHandler(s.opts.BaseURL))
+		r.Get("/info", shareHandler.ServeShareInfo)
+		r.Get("/terminal", shareHandler.ServeShareTerminal)
+	})
+
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// Add rate limiting if configured

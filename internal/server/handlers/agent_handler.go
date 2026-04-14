@@ -223,6 +223,25 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		}
 	}
 
+	// Populate share status
+	if agent.Spec.Share != nil {
+		shareInfo := &types.ShareStatusInfo{
+			Enabled:    agent.Spec.Share.Enabled,
+			ReadOnly:   agent.Spec.Share.ReadOnly,
+			AllowedIPs: agent.Spec.Share.AllowedIPs,
+		}
+		if agent.Spec.Share.ExpiresAt != nil {
+			t := agent.Spec.Share.ExpiresAt.Time
+			shareInfo.ExpiresAt = &t
+		}
+		if agent.Status.Share != nil {
+			shareInfo.Active = agent.Status.Share.Active
+			shareInfo.SecretName = agent.Status.Share.SecretName
+			shareInfo.URL = agent.Status.Share.URL
+		}
+		resp.Share = shareInfo
+	}
+
 	resp.Conditions = conditionsToResponse(agent.Status.Conditions)
 
 	// Always populate server status (Agent is always a running instance)

@@ -2531,6 +2531,54 @@ spec:
                   based on what permissions their agent needs.
                   When templateRef is set, this field is inherited from the template if not specified.
                 type: string
+              share:
+                description: |-
+                  Share configures a shareable terminal link for this Agent.
+                  When enabled, the controller generates a cryptographic share token and stores it
+                  in a Secret. The KubeOpenCode server exposes a standalone terminal page at
+                  /s/{token} that requires no Kubernetes credentials.
+
+                  This enables Agent developers to share terminal access with "Agent Consumers"
+                  (e.g., QA engineers, stakeholders) who don't have cluster access.
+
+                  Example:
+                    share:
+                      enabled: true
+                      expiresAt: "2026-05-01T00:00:00Z"
+                      readOnly: true
+                properties:
+                  allowedIPs:
+                    description: |-
+                      AllowedIPs is an optional list of CIDR ranges allowed to access the share link.
+                      When set, the server validates the client IP against these ranges.
+                      Empty means all IPs are allowed.
+
+                      Example:
+                        allowedIPs: ["10.0.0.0/8", "192.168.1.0/24"]
+                    items:
+                      type: string
+                    type: array
+                  enabled:
+                    description: |-
+                      Enabled enables the share link feature.
+                      When set to true, the controller generates a share token and stores it in a Secret.
+                      When set to false (or the field is removed), the controller deletes the share Secret.
+                    type: boolean
+                  expiresAt:
+                    description: |-
+                      ExpiresAt is the optional expiry time for the share link.
+                      After this time, the link becomes invalid and the controller marks status.share.active as false.
+                      The token Secret is retained (not deleted) so re-enabling with a new expiresAt reuses the same token.
+                    format: date-time
+                    type: string
+                  readOnly:
+                    description: |-
+                      ReadOnly when true, the shared terminal is view-only.
+                      Users can see the terminal output but cannot send input (stdin is dropped).
+                    type: boolean
+                required:
+                - enabled
+                type: object
               skills:
                 description: |-
                   Skills defines external skill sources for the Agent.
@@ -2808,6 +2856,25 @@ spec:
                   ServiceName is the name of the Kubernetes Service exposing the Agent.
                   Format: "{agent-name}"
                 type: string
+              share:
+                description: Share contains the status of the share link feature.
+                properties:
+                  active:
+                    description: |-
+                      Active indicates whether the share link is currently valid.
+                      False when: share is disabled, expired, or Agent is not ready.
+                    type: boolean
+                  secretName:
+                    description: |-
+                      SecretName is the name of the Secret containing the share token.
+                      Format: "{agent-name}-share"
+                    type: string
+                  url:
+                    description: |-
+                      URL is the full shareable URL.
+                      Only set when the server's external URL is configured in KubeOpenCodeConfig.
+                    type: string
+                type: object
               suspended:
                 description: |-
                   Suspended mirrors spec.suspend for observability.

@@ -16,12 +16,17 @@ import CronTaskCreatePage from './pages/CronTaskCreatePage';
 import CronTaskDetailPage from './pages/CronTaskDetailPage';
 import ConfigPage from './pages/ConfigPage';
 import NotFoundPage from './pages/NotFoundPage';
+import ShareTerminalPage from './pages/ShareTerminalPage';
 
 function App() {
   return (
     <BrowserRouter>
       <NamespaceProvider>
       <Routes>
+        {/* Share terminal — standalone page, no admin Layout */}
+        <Route path="s/:token" element={<ShareTerminalPage />} />
+
+        {/* Admin UI — full Layout with sidebar */}
         <Route path="/" element={<Layout />}>
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />

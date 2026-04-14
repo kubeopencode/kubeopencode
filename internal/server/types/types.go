@@ -176,6 +176,7 @@ type AgentResponse struct {
 	CreatedAt          time.Time         `json:"createdAt"`
 	Labels             map[string]string `json:"labels,omitempty"`
 	Standby            *StandbyInfo      `json:"standby,omitempty"`
+	Share              *ShareStatusInfo  `json:"share,omitempty"`
 	Conditions         []Condition       `json:"conditions,omitempty"`
 	ServerStatus       *ServerStatusInfo `json:"serverStatus,omitempty"`
 }
@@ -351,6 +352,25 @@ type CreateAgentTemplateRequest struct {
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 	AgentImage         string `json:"agentImage,omitempty"`
 	ExecutorImage      string `json:"executorImage,omitempty"`
+}
+
+// ShareInfoResponse represents agent info returned for share link pages
+type ShareInfoResponse struct {
+	AgentName string `json:"agentName"`
+	Namespace string `json:"namespace"`
+	ReadOnly  bool   `json:"readOnly"`
+	Profile   string `json:"profile,omitempty"`
+}
+
+// ShareStatusInfo represents share configuration in API responses
+type ShareStatusInfo struct {
+	Enabled    bool       `json:"enabled"`
+	Active     bool       `json:"active"`
+	SecretName string     `json:"secretName,omitempty"`
+	URL        string     `json:"url,omitempty"`
+	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
+	ReadOnly   bool       `json:"readOnly"`
+	AllowedIPs []string   `json:"allowedIPs,omitempty"`
 }
 
 // ErrorResponse represents an error response

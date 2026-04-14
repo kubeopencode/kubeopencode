@@ -1147,4 +1147,168 @@ var _ = Describe("DeploymentBuilder", func() {
 			Expect(service.Spec.Ports[0].Port).To(Equal(int32(4096)))
 		})
 	})
+
+	Context("When enabling share link", func() {
+		It("Should create a share Secret with a valid token", func() {
+			agentName := "test-share-agent"
+
+			By("Creating an Agent with share enabled")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      "ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest",
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "test-agent",
+					Port:               4096,
+					Share: &kubeopenv1alpha1.ShareConfig{
+						Enabled: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Expecting a share Secret to be created")
+			secretName := ShareSecretName(agentName)
+			Eventually(func() error {
+				var secret corev1.Secret
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      secretName,
+					Namespace: agentNamespace,
+				}, &secret)
+			}, timeout, interval).Should(Succeed())
+
+			By("Verifying the Secret has correct labels and annotations")
+			var secret corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      secretName,
+				Namespace: agentNamespace,
+			}, &secret)).Should(Succeed())
+
+			Expect(secret.Labels).To(HaveKeyWithValue(LabelShareToken, "true"))
+			Expect(secret.Annotations).To(HaveKeyWithValue(AnnotationShareAgentName, agentName))
+			Expect(secret.Annotations).To(HaveKeyWithValue(AnnotationShareAgentNamespace, agentNamespace))
+
+			By("Verifying the token is non-empty and has correct length")
+			token, ok := secret.Data[ShareTokenKey]
+			Expect(ok).To(BeTrue())
+			Expect(string(token)).ToNot(BeEmpty())
+			// base64url of 32 bytes = 43 characters
+			Expect(len(token)).To(Equal(43))
+
+			By("Verifying the Agent status has share info")
+			Eventually(func() bool {
+				var updatedAgent kubeopenv1alpha1.Agent
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				}, &updatedAgent); err != nil {
+					return false
+				}
+				return updatedAgent.Status.Share != nil && updatedAgent.Status.Share.SecretName == secretName
+			}, timeout, interval).Should(BeTrue())
+		})
+
+		It("Should delete share Secret when share is disabled", func() {
+			agentName := "test-share-disable-agent"
+
+			By("Creating an Agent with share enabled")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      "ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest",
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "test-agent",
+					Port:               4096,
+					Share: &kubeopenv1alpha1.ShareConfig{
+						Enabled: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Waiting for the share Secret to be created")
+			secretName := ShareSecretName(agentName)
+			Eventually(func() error {
+				var secret corev1.Secret
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      secretName,
+					Namespace: agentNamespace,
+				}, &secret)
+			}, timeout, interval).Should(Succeed())
+
+			By("Disabling share")
+			var updatedAgent kubeopenv1alpha1.Agent
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      agentName,
+				Namespace: agentNamespace,
+			}, &updatedAgent)).Should(Succeed())
+
+			updatedAgent.Spec.Share = nil
+			Expect(k8sClient.Update(ctx, &updatedAgent)).Should(Succeed())
+
+			By("Expecting the share Secret to be deleted")
+			Eventually(func() bool {
+				var secret corev1.Secret
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      secretName,
+					Namespace: agentNamespace,
+				}, &secret)
+				return err != nil // Should be NotFound
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying the Agent status has no share info")
+			Eventually(func() bool {
+				var a kubeopenv1alpha1.Agent
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				}, &a); err != nil {
+					return false
+				}
+				return a.Status.Share == nil
+			}, timeout, interval).Should(BeTrue())
+		})
+
+		It("Should mark share as expired when expiresAt is in the past", func() {
+			agentName := "test-share-expired-agent"
+
+			By("Creating an Agent with expired share link")
+			pastTime := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      "ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest",
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "test-agent",
+					Port:               4096,
+					Share: &kubeopenv1alpha1.ShareConfig{
+						Enabled:   true,
+						ExpiresAt: &pastTime,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Verifying the share status shows inactive (expired)")
+			Eventually(func() bool {
+				var a kubeopenv1alpha1.Agent
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				}, &a); err != nil {
+					return false
+				}
+				return a.Status.Share != nil && !a.Status.Share.Active
+			}, timeout, interval).Should(BeTrue())
+		})
+	})
 })
