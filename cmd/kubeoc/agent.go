@@ -171,7 +171,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Agent namespace")
-	cmd.Flags().StringVar(&expiresIn, "expires-in", "", "Expiry duration (e.g., 24h, 7d)")
+	cmd.Flags().StringVar(&expiresIn, "expires-in", "", "Expiry duration (e.g., 1h, 24h, 168h)")
 	cmd.Flags().StringSliceVar(&allowedIPs, "allowed-ips", nil, "Comma-separated CIDR ranges for IP allowlist")
 	cmd.Flags().BoolVar(&readOnly, "read-only", false, "Share terminal in read-only (view-only) mode")
 	cmd.Flags().BoolVar(&show, "show", false, "Show existing share link info without modifying")

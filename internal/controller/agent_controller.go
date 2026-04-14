@@ -191,15 +191,21 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	// Reconcile share token Secret (after status update to check Ready)
+	// Reconcile share token Secret (after status update to check Ready).
+	// Capture previous share status to detect changes and avoid redundant updates.
+	prevShareStatus := agent.Status.Share
 	shareRequeueAfter, err := r.reconcileShare(ctx, &agent)
 	if err != nil {
 		logger.Error(err, "Failed to reconcile share")
 		return ctrl.Result{}, err
 	}
 
-	// Re-update status if share changed it
-	if agent.Spec.Share != nil {
+	// Re-update status only if share reconciliation actually changed it
+	shareChanged := (prevShareStatus == nil) != (agent.Status.Share == nil) ||
+		(prevShareStatus != nil && agent.Status.Share != nil &&
+			(prevShareStatus.Active != agent.Status.Share.Active ||
+				prevShareStatus.SecretName != agent.Status.Share.SecretName))
+	if shareChanged {
 		if err := r.Status().Update(ctx, &agent); err != nil {
 			logger.Error(err, "Failed to update Agent status after share reconciliation")
 			return ctrl.Result{}, err

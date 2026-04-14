@@ -4,12 +4,12 @@ package handlers
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -76,7 +76,7 @@ func (h *ShareHandler) resolveShareToken(ctx context.Context, token string) (*sh
 		if !ok {
 			continue
 		}
-		if string(storedToken) != token {
+		if subtle.ConstantTimeCompare(storedToken, []byte(token)) != 1 {
 			continue
 		}
 
@@ -155,16 +155,11 @@ func validateShareIP(r *http.Request, allowedIPs []string) error {
 	return fmt.Errorf("client IP %s is not in the allowed IP list", clientIP)
 }
 
-// getClientIP extracts the client IP from the request, preferring X-Forwarded-For.
+// getClientIP extracts the client IP from the request.
+// Uses r.RemoteAddr which is already set by chi's RealIP middleware
+// (which reads X-Forwarded-For / X-Real-Ip and sets RemoteAddr).
+// This avoids re-reading raw headers which could be spoofed in some deployments.
 func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For (set by RealIP middleware)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.SplitN(xff, ",", 2)
-		return strings.TrimSpace(parts[0])
-	}
-	if xri := r.Header.Get("X-Real-Ip"); xri != "" {
-		return xri
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

@@ -20,10 +20,11 @@ func ShareHandler(_ string) http.HandlerFunc {
 	if err != nil {
 		panic(err)
 	}
+	fileServer := http.FileServer(http.FS(distFS))
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Always serve index.html for share routes — React Router handles the routing
 		r.URL.Path = "/"
-		http.FileServer(http.FS(distFS)).ServeHTTP(w, r)
+		fileServer.ServeHTTP(w, r)
 	}
 }
 

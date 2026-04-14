@@ -149,8 +149,10 @@ func (s *Server) setupRoutes() *chi.Mux {
 	r.Get("/ready", s.readyHandler)
 
 	// Share link routes (no auth required — token-based access)
+	// Rate limited to prevent brute-force token scanning
 	shareHandler := handlers.NewShareHandler(s.k8sClient, s.clientset, s.restConfig)
 	r.Route("/s/{token}", func(r chi.Router) {
+		r.Use(chimiddleware.Throttle(20)) // max 20 concurrent share requests
 		r.Get("/", ui.ShareHandler(s.opts.BaseURL))
 		r.Get("/info", shareHandler.ServeShareInfo)
 		r.Get("/terminal", shareHandler.ServeShareTerminal)
