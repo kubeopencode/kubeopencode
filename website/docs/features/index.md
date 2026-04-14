@@ -18,6 +18,10 @@ KubeOpenCode brings Agentic AI capabilities into the Kubernetes ecosystem. Here'
 - **[Task Stop](task-stop.md)** - Stop running tasks via annotation
 - **[Concurrency & Quota](concurrency-quota.md)** - Limit concurrent tasks and rate of task starts
 
+## Collaboration
+
+- **[Agent Share Link](share-link.md)** - Share terminal access via URL — no Kubernetes credentials required
+
 ## Infrastructure
 
 - **[Persistence & Lifecycle](persistence.md)** - Session/workspace persistence, suspend/resume, and standby

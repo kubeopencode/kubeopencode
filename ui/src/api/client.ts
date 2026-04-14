@@ -156,6 +156,33 @@ export interface SkillInfo {
   git?: SkillGitInfo;
 }
 
+export interface ShareStatusInfo {
+  enabled: boolean;
+  active: boolean;
+  secretName?: string;
+  url?: string;
+  expiresAt?: string;
+  readOnly: boolean;
+  allowedIPs?: string[];
+}
+
+export interface ShareTokenResponse {
+  enabled: boolean;
+  active: boolean;
+  token?: string;
+  path?: string;
+  readOnly: boolean;
+  expiresAt?: string;
+  allowedIPs?: string[];
+}
+
+export interface UpdateShareRequest {
+  enabled: boolean;
+  readOnly?: boolean;
+  expiresIn?: string;
+  allowedIPs?: string[];
+}
+
 export interface Agent {
   name: string;
   namespace: string;
@@ -176,6 +203,7 @@ export interface Agent {
   createdAt: string;
   labels?: Record<string, string>;
   standby?: StandbyInfo;
+  share?: ShareStatusInfo;
   conditions?: Condition[];
   serverStatus?: ServerStatusInfo;
 }
@@ -442,6 +470,21 @@ export const api = {
 
   deleteAgent: (namespace: string, name: string) =>
     request<void>(`/namespaces/${namespace}/agents/${name}`, { method: 'DELETE' }),
+
+  // Agent Share
+  getAgentShare: (namespace: string, name: string) =>
+    request<ShareTokenResponse>(`/namespaces/${namespace}/agents/${name}/share`),
+
+  updateAgentShare: (namespace: string, name: string, data: UpdateShareRequest) =>
+    request<Agent>(`/namespaces/${namespace}/agents/${name}/share`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteAgentShare: (namespace: string, name: string) =>
+    request<Agent>(`/namespaces/${namespace}/agents/${name}/share`, {
+      method: 'DELETE',
+    }),
 
   // Agent Templates
   listAllAgentTemplates: (params?: FilterParams) => {

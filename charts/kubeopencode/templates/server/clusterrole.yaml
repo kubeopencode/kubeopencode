@@ -46,6 +46,14 @@ rules:
 - apiGroups: [""]
   resources: ["namespaces"]
   verbs: ["get", "list"]
+# Read access to Secrets (for share token lookup)
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+# Events (for share link audit logging)
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
 {{- if .Values.server.auth.enabled }}
 # Impersonation (required when auth is enabled for per-user RBAC enforcement)
 - apiGroups: [""]

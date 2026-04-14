@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -221,6 +222,25 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 		resp.Standby = &types.StandbyInfo{
 			IdleTimeout: agent.Spec.Standby.IdleTimeout.Duration.String(),
 		}
+	}
+
+	// Populate share status
+	if agent.Spec.Share != nil {
+		shareInfo := &types.ShareStatusInfo{
+			Enabled:    agent.Spec.Share.Enabled,
+			ReadOnly:   agent.Spec.Share.ReadOnly,
+			AllowedIPs: agent.Spec.Share.AllowedIPs,
+		}
+		if agent.Spec.Share.ExpiresAt != nil {
+			t := agent.Spec.Share.ExpiresAt.Time
+			shareInfo.ExpiresAt = &t
+		}
+		if agent.Status.Share != nil {
+			shareInfo.Active = agent.Status.Share.Active
+			shareInfo.SecretName = agent.Status.Share.SecretName
+			shareInfo.URL = agent.Status.Share.URL
+		}
+		resp.Share = shareInfo
 	}
 
 	resp.Conditions = conditionsToResponse(agent.Status.Conditions)
@@ -439,6 +459,130 @@ func (h *AgentHandler) Suspend(w http.ResponseWriter, r *http.Request) {
 // Resume scales the server deployment back to 1 replica.
 func (h *AgentHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	h.setSuspendState(w, r, false)
+}
+
+// GetShare returns the share token and configuration for an agent.
+// GET /namespaces/{namespace}/agents/{name}/share
+func (h *AgentHandler) GetShare(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+	ctx := r.Context()
+	k8sClient := h.getClient(ctx)
+
+	var agent kubeopenv1alpha1.Agent
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &agent); err != nil {
+		writeError(w, http.StatusNotFound, "Agent not found", err.Error())
+		return
+	}
+
+	resp := types.ShareTokenResponse{
+		Enabled: agent.Spec.Share != nil && agent.Spec.Share.Enabled,
+	}
+
+	if agent.Spec.Share != nil {
+		resp.ReadOnly = agent.Spec.Share.ReadOnly
+		resp.AllowedIPs = agent.Spec.Share.AllowedIPs
+		if agent.Spec.Share.ExpiresAt != nil {
+			t := agent.Spec.Share.ExpiresAt.Time
+			resp.ExpiresAt = &t
+		}
+	}
+
+	if agent.Status.Share != nil {
+		resp.Active = agent.Status.Share.Active
+	}
+
+	// Read the token from the Secret (using server's default client to bypass user RBAC)
+	if agent.Status.Share != nil && agent.Status.Share.SecretName != "" {
+		var secret corev1.Secret
+		if err := h.defaultClient.Get(ctx, client.ObjectKey{
+			Namespace: namespace,
+			Name:      agent.Status.Share.SecretName,
+		}, &secret); err == nil {
+			if token, ok := secret.Data[controller.ShareTokenKey]; ok {
+				resp.Token = string(token)
+				resp.Path = fmt.Sprintf("/s/%s", string(token))
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// UpdateShare enables or updates the share configuration for an agent.
+// POST /namespaces/{namespace}/agents/{name}/share
+func (h *AgentHandler) UpdateShare(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+	ctx := r.Context()
+	k8sClient := h.getClient(ctx)
+
+	var req types.UpdateShareRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	var agent kubeopenv1alpha1.Agent
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &agent); err != nil {
+		if apierrors.IsNotFound(err) {
+			writeError(w, http.StatusNotFound, "Agent not found", err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to get agent", err.Error())
+		return
+	}
+
+	shareConfig := &kubeopenv1alpha1.ShareConfig{
+		Enabled:    req.Enabled,
+		ReadOnly:   req.ReadOnly,
+		AllowedIPs: req.AllowedIPs,
+	}
+
+	if req.ExpiresIn != "" {
+		d, err := time.ParseDuration(req.ExpiresIn)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid expiresIn format", fmt.Sprintf("expected Go duration (e.g. 1h, 24h): %v", err))
+			return
+		}
+		expiresAt := metav1.NewTime(time.Now().Add(d))
+		shareConfig.ExpiresAt = &expiresAt
+	}
+
+	agent.Spec.Share = shareConfig
+	if err := k8sClient.Update(ctx, &agent); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to update agent share config", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, agentToResponse(&agent))
+}
+
+// DeleteShare disables the share link for an agent.
+// DELETE /namespaces/{namespace}/agents/{name}/share
+func (h *AgentHandler) DeleteShare(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+	ctx := r.Context()
+	k8sClient := h.getClient(ctx)
+
+	var agent kubeopenv1alpha1.Agent
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &agent); err != nil {
+		if apierrors.IsNotFound(err) {
+			writeError(w, http.StatusNotFound, "Agent not found", err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to get agent", err.Error())
+		return
+	}
+
+	agent.Spec.Share = nil
+	if err := k8sClient.Update(ctx, &agent); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to disable share", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, agentToResponse(&agent))
 }
 
 func (h *AgentHandler) setSuspendState(w http.ResponseWriter, r *http.Request, suspend bool) {

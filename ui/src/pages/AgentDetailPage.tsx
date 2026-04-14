@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import api from '../api/client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import api, { ShareTokenResponse } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import Labels from '../components/Labels';
 import AgentStatusBadge from '../components/AgentStatusBadge';
@@ -93,6 +93,240 @@ function ServerConnectCommands({ namespace, agentName }: { namespace: string; ag
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ShareLinkSection({ namespace, name, shareStatus }: {
+  namespace: string;
+  name: string;
+  shareStatus?: { enabled: boolean; active: boolean; readOnly: boolean; expiresAt?: string; allowedIPs?: string[] };
+}) {
+  const { addToast } = useToast();
+  const queryClient = useQueryClient();
+  const [loading, setLoading] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const [readOnly, setReadOnly] = useState(shareStatus?.readOnly || false);
+  const [expiresIn, setExpiresIn] = useState('');
+  const [allowedIPs, setAllowedIPs] = useState(shareStatus?.allowedIPs?.join(', ') || '');
+  const [copied, setCopied] = useState(false);
+
+  const enabled = shareStatus?.enabled || false;
+
+  const { data: shareToken, refetch: refetchToken } = useQuery({
+    queryKey: ['agentShare', namespace, name],
+    queryFn: () => api.getAgentShare(namespace, name),
+    enabled: enabled,
+  });
+
+  const invalidate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['agent', namespace, name] });
+    queryClient.invalidateQueries({ queryKey: ['agentShare', namespace, name] });
+  }, [queryClient, namespace, name]);
+
+  const handleToggle = async () => {
+    setLoading(true);
+    try {
+      if (enabled) {
+        await api.deleteAgentShare(namespace, name);
+        addToast('Share link disabled', 'success');
+      } else {
+        await api.updateAgentShare(namespace, name, {
+          enabled: true,
+          readOnly,
+          expiresIn: expiresIn || undefined,
+          allowedIPs: allowedIPs ? allowedIPs.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+        });
+        addToast('Share link enabled', 'success');
+      }
+      setTimeout(() => { invalidate(); setLoading(false); }, 1500);
+    } catch (err) {
+      addToast(`Failed: ${(err as Error).message}`, 'error');
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateConfig = async () => {
+    setLoading(true);
+    try {
+      await api.updateAgentShare(namespace, name, {
+        enabled: true,
+        readOnly,
+        expiresIn: expiresIn || undefined,
+        allowedIPs: allowedIPs ? allowedIPs.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+      });
+      addToast('Share config updated', 'success');
+      setTimeout(() => { invalidate(); setLoading(false); setShowConfig(false); }, 1500);
+    } catch (err) {
+      addToast(`Failed: ${(err as Error).message}`, 'error');
+      setLoading(false);
+    }
+  };
+
+  const shareUrl = shareToken?.path ? `${window.location.origin}${shareToken.path}` : '';
+
+  const handleCopy = () => {
+    if (shareUrl) {
+      navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider">Share Link</h3>
+        <button
+          onClick={handleToggle}
+          disabled={loading}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+            enabled ? 'bg-emerald-500' : 'bg-stone-300'
+          } disabled:opacity-50`}
+        >
+          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+            enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+          }`} />
+        </button>
+      </div>
+
+      {!enabled ? (
+        <div className="bg-stone-50 rounded-lg p-4 border border-stone-100">
+          <p className="text-xs text-stone-500">
+            Enable to generate a shareable URL. Anyone with the link can access this agent's terminal without Kubernetes credentials.
+          </p>
+          {/* Config options for first-time enable */}
+          <div className="mt-3 space-y-2">
+            <label className="flex items-center gap-2 text-xs text-stone-600">
+              <input type="checkbox" checked={readOnly} onChange={e => setReadOnly(e.target.checked)} className="rounded border-stone-300" />
+              Read-only (view only)
+            </label>
+            <div>
+              <label className="text-xs text-stone-500">Expires in</label>
+              <input
+                type="text"
+                value={expiresIn}
+                onChange={e => setExpiresIn(e.target.value)}
+                placeholder="e.g., 24h, 168h (empty = no expiry)"
+                className="mt-0.5 w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded-md bg-white"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-stone-500">Allowed IPs (CIDR, comma-separated)</label>
+              <input
+                type="text"
+                value={allowedIPs}
+                onChange={e => setAllowedIPs(e.target.value)}
+                placeholder="e.g., 10.0.0.0/8, 192.168.1.0/24"
+                className="mt-0.5 w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded-md bg-white"
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Status + Token */}
+          <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-200">
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`w-2 h-2 rounded-full ${shareToken?.active ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className="text-xs font-medium text-emerald-800">
+                {shareToken?.active ? 'Active' : 'Inactive'}
+              </span>
+              {shareStatus?.readOnly && (
+                <span className="px-1.5 py-0.5 text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded">
+                  READ-ONLY
+                </span>
+              )}
+              {shareStatus?.expiresAt && (
+                <span className="text-[10px] text-stone-500">
+                  Expires: {new Date(shareStatus.expiresAt).toLocaleString()}
+                </span>
+              )}
+            </div>
+            {shareUrl && (
+              <div className="flex items-center gap-2 bg-stone-900 rounded-lg px-3 py-2 border border-stone-700">
+                <code className="text-xs text-emerald-400 font-mono flex-1 truncate">{shareUrl}</code>
+                <button
+                  onClick={handleCopy}
+                  className="shrink-0 p-1 rounded hover:bg-white/10 transition-colors"
+                  title="Copy share URL"
+                >
+                  {copied ? (
+                    <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5 text-stone-400 hover:text-stone-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  )}
+                </button>
+                <a
+                  href={shareUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 p-1 rounded hover:bg-white/10 transition-colors"
+                  title="Open in new tab"
+                >
+                  <svg className="w-3.5 h-3.5 text-stone-400 hover:text-stone-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Config toggle */}
+          <button
+            onClick={() => setShowConfig(!showConfig)}
+            className="text-xs text-stone-500 hover:text-stone-700 flex items-center gap-1"
+          >
+            <svg className={`w-3 h-3 transition-transform ${showConfig ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 5l7 7-7 7" />
+            </svg>
+            Configure
+          </button>
+
+          {showConfig && (
+            <div className="bg-stone-50 rounded-lg p-4 border border-stone-100 space-y-3">
+              <label className="flex items-center gap-2 text-xs text-stone-600">
+                <input type="checkbox" checked={readOnly} onChange={e => setReadOnly(e.target.checked)} className="rounded border-stone-300" />
+                Read-only (view only)
+              </label>
+              <div>
+                <label className="text-xs text-stone-500">New expiry (from now)</label>
+                <input
+                  type="text"
+                  value={expiresIn}
+                  onChange={e => setExpiresIn(e.target.value)}
+                  placeholder="e.g., 24h, 168h (empty = keep current)"
+                  className="mt-0.5 w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded-md bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-stone-500">Allowed IPs (CIDR, comma-separated)</label>
+                <input
+                  type="text"
+                  value={allowedIPs}
+                  onChange={e => setAllowedIPs(e.target.value)}
+                  placeholder="e.g., 10.0.0.0/8 (empty = all IPs)"
+                  className="mt-0.5 w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded-md bg-white"
+                />
+              </div>
+              <button
+                onClick={handleUpdateConfig}
+                disabled={loading}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50"
+              >
+                {loading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -397,6 +631,15 @@ function AgentDetailPage() {
             <ServerConnectCommands
               namespace={agent.namespace}
               agentName={agent.name}
+            />
+          )}
+
+          {/* Share Link */}
+          {agent.serverStatus && (
+            <ShareLinkSection
+              namespace={agent.namespace}
+              name={agent.name}
+              shareStatus={agent.share}
             />
           )}
 

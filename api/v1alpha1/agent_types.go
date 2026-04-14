@@ -391,6 +391,22 @@ type AgentSpec struct {
 	//     idleTimeout: "30m"   # Auto-suspend after 30 minutes idle
 	// +optional
 	Standby *StandbyConfig `json:"standby,omitempty"`
+
+	// Share configures a shareable terminal link for this Agent.
+	// When enabled, the controller generates a cryptographic share token and stores it
+	// in a Secret. The KubeOpenCode server exposes a standalone terminal page at
+	// /s/{token} that requires no Kubernetes credentials.
+	//
+	// This enables Agent developers to share terminal access with "Agent Consumers"
+	// (e.g., QA engineers, stakeholders) who don't have cluster access.
+	//
+	// Example:
+	//   share:
+	//     enabled: true
+	//     expiresAt: "2026-05-01T00:00:00Z"
+	//     readOnly: true
+	// +optional
+	Share *ShareConfig `json:"share,omitempty"`
 }
 
 // AgentStatus defines the observed state of Agent
@@ -448,6 +464,10 @@ type AgentStatus struct {
 	// +optional
 	// +listType=atomic
 	GitSyncStatuses []GitSyncStatus `json:"gitSyncStatuses,omitempty"`
+
+	// Share contains the status of the share link feature.
+	// +optional
+	Share *ShareStatus `json:"share,omitempty"`
 }
 
 // GitSyncStatus tracks the observed sync state of a single Git context.
@@ -473,6 +493,55 @@ type StandbyConfig struct {
 	//
 	// Example: "30m", "1h"
 	IdleTimeout metav1.Duration `json:"idleTimeout"`
+}
+
+// ShareConfig configures a shareable terminal link for an Agent.
+// When enabled, the controller generates a cryptographic token stored in a Secret,
+// and the KubeOpenCode server exposes a standalone terminal page at /s/{token}
+// that requires no Kubernetes credentials.
+type ShareConfig struct {
+	// Enabled enables the share link feature.
+	// When set to true, the controller generates a share token and stores it in a Secret.
+	// When set to false (or the field is removed), the controller deletes the share Secret.
+	Enabled bool `json:"enabled"`
+
+	// ExpiresAt is the optional expiry time for the share link.
+	// After this time, the link becomes invalid and the controller marks status.share.active as false.
+	// The token Secret is retained (not deleted) so re-enabling with a new expiresAt reuses the same token.
+	// +optional
+	ExpiresAt *metav1.Time `json:"expiresAt,omitempty"`
+
+	// AllowedIPs is an optional list of CIDR ranges allowed to access the share link.
+	// When set, the server validates the client IP against these ranges.
+	// Empty means all IPs are allowed.
+	//
+	// Example:
+	//   allowedIPs: ["10.0.0.0/8", "192.168.1.0/24"]
+	// +optional
+	AllowedIPs []string `json:"allowedIPs,omitempty"`
+
+	// ReadOnly when true, the shared terminal is view-only.
+	// Users can see the terminal output but cannot send input (stdin is dropped).
+	// +optional
+	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// ShareStatus represents the observed state of the share link feature.
+type ShareStatus struct {
+	// SecretName is the name of the Secret containing the share token.
+	// Format: "{agent-name}-share"
+	// +optional
+	SecretName string `json:"secretName,omitempty"`
+
+	// URL is the full shareable URL.
+	// Only set when the server's external URL is configured in KubeOpenCodeConfig.
+	// +optional
+	URL string `json:"url,omitempty"`
+
+	// Active indicates whether the share link is currently valid.
+	// False when: share is disabled, expired, or Agent is not ready.
+	// +optional
+	Active bool `json:"active,omitempty"`
 }
 
 // ExtraPort defines an additional port to expose on the Agent's Service and Deployment.

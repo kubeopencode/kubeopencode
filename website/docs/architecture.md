@@ -190,7 +190,8 @@ Agent (running AI agent instance — always creates Deployment + Service)
     ├── podSpec: *AgentPodSpec
     ├── serviceAccountName: string
     ├── maxConcurrentTasks: *int32   (limit concurrent Tasks)
-    └── quota: *QuotaConfig          (rate limiting for Task starts)
+    ├── quota: *QuotaConfig          (rate limiting for Task starts)
+    └── share: *ShareConfig          (shareable terminal link)
 
 AgentTemplate (reusable blueprint for Agents and ephemeral Tasks)
 └── AgentTemplateSpec
@@ -294,7 +295,16 @@ type AgentSpec struct {
     ServiceAccountName string
     MaxConcurrentTasks *int32
     Quota              *QuotaConfig
+    Share              *ShareConfig
     TemplateRef        *AgentTemplateReference
+}
+
+// ShareConfig configures a shareable terminal link for an Agent
+type ShareConfig struct {
+    Enabled    bool       // Enable/disable the share link
+    ExpiresAt  *Time      // Optional expiry time (link invalid after this)
+    AllowedIPs []string   // Optional CIDR allowlist (empty = all IPs allowed)
+    ReadOnly   bool       // View-only terminal (stdin dropped)
 }
 
 // ProxyConfig configures HTTP/HTTPS proxy for all containers

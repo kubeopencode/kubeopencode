@@ -148,6 +148,16 @@ func (s *Server) setupRoutes() *chi.Mux {
 	r.Get("/health", s.healthHandler)
 	r.Get("/ready", s.readyHandler)
 
+	// Share link routes (no auth required — token-based access)
+	// Rate limited to prevent brute-force token scanning
+	shareHandler := handlers.NewShareHandler(s.k8sClient, s.clientset, s.restConfig)
+	r.Route("/s/{token}", func(r chi.Router) {
+		r.Use(chimiddleware.Throttle(20)) // max 20 concurrent share requests
+		r.Get("/", ui.ShareHandler(s.opts.BaseURL))
+		r.Get("/info", shareHandler.ServeShareInfo)
+		r.Get("/terminal", shareHandler.ServeShareTerminal)
+	})
+
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// Add rate limiting if configured
@@ -228,6 +238,9 @@ func (s *Server) setupRoutes() *chi.Mux {
 			r.Delete("/{name}", agentHandler.Delete)
 			r.Post("/{name}/suspend", agentHandler.Suspend)
 			r.Post("/{name}/resume", agentHandler.Resume)
+			r.Get("/{name}/share", agentHandler.GetShare)
+			r.Post("/{name}/share", agentHandler.UpdateShare)
+			r.Delete("/{name}/share", agentHandler.DeleteShare)
 
 			// Agent proxy - reverse proxy to OpenCode agent servers
 			// Supports HTTP REST and SSE streaming for opencode attach

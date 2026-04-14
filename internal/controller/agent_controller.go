@@ -83,6 +83,8 @@ type AgentReconciler struct {
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile handles Agent reconciliation.
 // It ensures the Deployment and Service exist and are up-to-date.
@@ -183,14 +185,35 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	// Update Agent status
+	// Update Agent status (needed before reconcileShare to have Ready status)
 	if err := r.updateAgentStatus(ctx, &agent); err != nil {
 		logger.Error(err, "Failed to update Agent status")
 		return ctrl.Result{}, err
 	}
 
+	// Reconcile share token Secret (after status update to check Ready).
+	// Capture previous share status to detect changes and avoid redundant updates.
+	prevShareStatus := agent.Status.Share
+	shareRequeueAfter, err := r.reconcileShare(ctx, &agent)
+	if err != nil {
+		logger.Error(err, "Failed to reconcile share")
+		return ctrl.Result{}, err
+	}
+
+	// Re-update status only if share reconciliation actually changed it
+	shareChanged := (prevShareStatus == nil) != (agent.Status.Share == nil) ||
+		(prevShareStatus != nil && agent.Status.Share != nil &&
+			(prevShareStatus.Active != agent.Status.Share.Active ||
+				prevShareStatus.SecretName != agent.Status.Share.SecretName))
+	if shareChanged {
+		if err := r.Status().Update(ctx, &agent); err != nil {
+			logger.Error(err, "Failed to update Agent status after share reconciliation")
+			return ctrl.Result{}, err
+		}
+	}
+
 	// Calculate optimal requeue interval.
-	// Use the shortest of: default interval, standby idle timeout, git sync interval.
+	// Use the shortest of: default interval, standby idle timeout, git sync interval, share expiry.
 	requeueAfter := DefaultServerReconcileInterval
 	if agent.Spec.Standby != nil && !agent.Spec.Suspend && agent.Status.IdleSince != nil {
 		remaining := time.Until(agent.Status.IdleSince.Add(agent.Spec.Standby.IdleTimeout.Duration))
@@ -200,6 +223,9 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	if syncRequeueAfter > 0 && syncRequeueAfter < requeueAfter {
 		requeueAfter = syncRequeueAfter
+	}
+	if shareRequeueAfter > 0 && shareRequeueAfter < requeueAfter {
+		requeueAfter = shareRequeueAfter
 	}
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
@@ -767,6 +793,7 @@ func (r *AgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
+		Owns(&corev1.Secret{}).
 		Watches(&kubeopenv1alpha1.AgentTemplate{}, handler.EnqueueRequestsFromMapFunc(r.findAgentsForTemplate)).
 		Watches(&kubeopenv1alpha1.Task{}, handler.EnqueueRequestsFromMapFunc(r.findAgentForTask)).
 		Complete(r)
