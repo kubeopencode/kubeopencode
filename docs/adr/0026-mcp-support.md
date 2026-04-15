@@ -386,7 +386,7 @@ Alternatives considered:
 **Documentation:**
 - `docs/features.md` — MCP configuration section
 - `docs/architecture.md` — API field reference update
-- `CLAUDE.md` — Update Agent Configuration Summary
+- `AGENTS.md` — Update Agent Configuration Summary
 
 **Helm Chart:**
 - No RBAC changes needed (mcpServers is a field on existing Agent/AgentTemplate CRDs)

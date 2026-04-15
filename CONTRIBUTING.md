@@ -8,7 +8,7 @@ Before contributing, please:
 
 1. Review the [Architecture Documentation](website/docs/architecture.md)
 2. Set up your [Local Development Environment](docs/local-development.md)
-3. Read through [CLAUDE.md](CLAUDE.md) for detailed development guidelines
+3. Read through [AGENTS.md](AGENTS.md) for detailed development guidelines
 
 ## Commit Standards
 

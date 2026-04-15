@@ -292,7 +292,7 @@ const (
 	DefaultOpenCodePermission = `{"*":"allow"}`
 
 	// ContextFileRelPath is the relative path (from workspaceDir) for KubeOpenCode context file.
-	// This path is chosen to avoid conflicts with repository's AGENTS.md or CLAUDE.md files.
+	// This path is chosen to avoid conflicts with repository's AGENTS.md files.
 	// OpenCode loads this file via the instructions config injected through OPENCODE_CONFIG_CONTENT.
 	ContextFileRelPath = ".kubeopencode/context.md"
 

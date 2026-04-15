@@ -72,7 +72,7 @@ appVersion: "vNEW_VERSION"
 
 Note: `version` has no `v` prefix, `appVersion` has the `v` prefix.
 
-#### 2.4 `CLAUDE.md` (Project Status section)
+#### 2.4 `AGENTS.md` (Project Status section)
 
 ```markdown
 - **Version**: vNEW_VERSION
@@ -102,12 +102,12 @@ helm template kubeopencode charts/kubeopencode | grep 'image:'
 ### Step 4: Commit and Create PR
 
 ```bash
-git add Makefile agents/Makefile charts/kubeopencode/Chart.yaml CLAUDE.md
+git add Makefile agents/Makefile charts/kubeopencode/Chart.yaml AGENTS.md
 git commit -s -m "chore: prepare vNEW_VERSION release
 
 - Update VERSION to NEW_VERSION in Makefile and agents/Makefile
 - Update Chart.yaml version to NEW_VERSION and appVersion to vNEW_VERSION
-- Update CLAUDE.md project status version"
+- Update AGENTS.md project status version"
 
 git push origin release/vNEW_VERSION
 ```
@@ -260,7 +260,7 @@ echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u $GITHUB_ACTOR --password-s
 | `cmd/kubeopencode/main.go` | `Version`, `GitCommit`, `BuildDate` variables (set via ldflags) |
 | `Dockerfile` | `ARG VERSION` passed to Go ldflags at build time |
 | `.github/workflows/release.yaml` | Release workflow triggered by `v*` tags |
-| `CLAUDE.md` | Project status version |
+| `AGENTS.md` | Project status version |
 
 ## CRD Change Reminder
 

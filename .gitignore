@@ -37,9 +37,8 @@ website/.docusaurus/
 internal/opencode-app/dist/
 !internal/opencode-app/dist/.gitkeep
 
-# Override global gitignore to track CLAUDE.md and skills
-!CLAUDE.md
-!.claude/skills/
+# Override global gitignore to track AGENTS.md and skills
+!AGENTS.md
 
 # Secrets
 *.pem

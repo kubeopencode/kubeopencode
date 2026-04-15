@@ -73,7 +73,7 @@ To get Task status:
 - ${WORKSPACE_DIR}/task.md: Your task instructions (description only)
 - ${WORKSPACE_DIR}/.kubeopencode/context.md: KubeOpenCode context (loaded via OpenCode instructions)
 - Additional contexts may be mounted as separate files
-- Note: Repository's AGENTS.md/CLAUDE.md files are preserved and loaded by OpenCode automatically
+- Note: Repository's AGENTS.md files are preserved and loaded by OpenCode automatically
 
 ### KubeOpenCode Concepts
 - Task: Single AI task execution (what you're running now)
@@ -779,7 +779,7 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 	}
 
 	// Create context file if there's any context content
-	// Written to .kubeopencode/context.md to avoid conflicts with repository's AGENTS.md/CLAUDE.md
+	// Written to .kubeopencode/context.md to avoid conflicts with repository's AGENTS.md
 	// OpenCode loads this via OPENCODE_CONFIG_CONTENT env var with instructions config
 	contextFilePath := cfg.workspaceDir + "/" + ContextFileRelPath
 	if len(contextParts) > 0 {
