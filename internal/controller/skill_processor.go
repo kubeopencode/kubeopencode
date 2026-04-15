@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/runtime"
+
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
 
@@ -88,7 +90,7 @@ func processSkills(skills []kubeopenv1alpha1.SkillSource) ([]gitMount, []string)
 // is responsible for JSON validation when needed. The Agent controller intentionally
 // skips validation to allow Deployment creation even with invalid config (the error
 // surfaces at Task execution time instead).
-func processSkillsPluginsAndInjectConfig(skills []kubeopenv1alpha1.SkillSource, plugins []kubeopenv1alpha1.PluginSpec, config *string, configMapData map[string]string, fileMounts []fileMount) ([]gitMount, []fileMount, error) {
+func processSkillsPluginsAndInjectConfig(skills []kubeopenv1alpha1.SkillSource, plugins []kubeopenv1alpha1.PluginSpec, config *runtime.RawExtension, configMapData map[string]string, fileMounts []fileMount) ([]gitMount, []fileMount, error) {
 	skillGitMounts, skillPaths := processSkills(skills)
 
 	// Rewrite plugin names to file:// paths pointing to the shared /plugins volume
@@ -116,9 +118,9 @@ func processSkillsPluginsAndInjectConfig(skills []kubeopenv1alpha1.SkillSource, 
 		effectiveConfig = injected
 	}
 
-	if effectiveConfig != nil && *effectiveConfig != "" {
+	if !configIsEmpty(effectiveConfig) {
 		configMapKey := sanitizeConfigMapKey(OpenCodeConfigPath)
-		configMapData[configMapKey] = *effectiveConfig
+		configMapData[configMapKey] = string(effectiveConfig.Raw)
 		fileMounts = append(fileMounts, fileMount{filePath: OpenCodeConfigPath})
 	}
 
@@ -128,9 +130,9 @@ func processSkillsPluginsAndInjectConfig(skills []kubeopenv1alpha1.SkillSource, 
 		if err != nil {
 			return nil, fileMounts, fmt.Errorf("failed to inject TUI plugins config: %w", err)
 		}
-		if tuiConfig != nil && *tuiConfig != "" {
+		if !configIsEmpty(tuiConfig) {
 			configMapKey := sanitizeConfigMapKey(OpenCodeTUIConfigPath)
-			configMapData[configMapKey] = *tuiConfig
+			configMapData[configMapKey] = string(tuiConfig.Raw)
 			fileMounts = append(fileMounts, fileMount{filePath: OpenCodeTUIConfigPath})
 		}
 	}
@@ -234,7 +236,7 @@ func hasTUIPlugins(plugins []kubeopenv1alpha1.PluginSpec) bool {
 }
 
 // injectPluginsIntoConfig merges plugin entries from spec.plugins into an existing
-// OpenCode configuration JSON string. If existingConfig is nil or empty, a new config
+// OpenCode configuration object. If existingConfig is nil or empty, a new config
 // object is created.
 //
 // OpenCode plugin array format:
@@ -243,15 +245,15 @@ func hasTUIPlugins(plugins []kubeopenv1alpha1.PluginSpec) bool {
 //
 // Plugins from spec.plugins are appended to any existing plugins in the config.
 // Duplicate detection is by package name (first occurrence wins).
-func injectPluginsIntoConfig(existingConfig *string, plugins []kubeopenv1alpha1.PluginSpec) (*string, error) {
+func injectPluginsIntoConfig(existingConfig *runtime.RawExtension, plugins []kubeopenv1alpha1.PluginSpec) (*runtime.RawExtension, error) {
 	if len(plugins) == 0 {
 		return existingConfig, nil
 	}
 
 	// Parse existing config or start fresh
 	configMap := make(map[string]interface{})
-	if existingConfig != nil && *existingConfig != "" {
-		if err := json.Unmarshal([]byte(*existingConfig), &configMap); err != nil {
+	if !configIsEmpty(existingConfig) {
+		if err := json.Unmarshal(existingConfig.Raw, &configMap); err != nil {
 			return nil, fmt.Errorf("failed to parse existing config: %w", err)
 		}
 	}
@@ -311,23 +313,22 @@ func injectPluginsIntoConfig(existingConfig *string, plugins []kubeopenv1alpha1.
 		return nil, fmt.Errorf("failed to marshal config with plugins: %w", err)
 	}
 
-	resultStr := string(result)
-	return &resultStr, nil
+	return &runtime.RawExtension{Raw: result}, nil
 }
 
 // injectSkillsIntoConfig merges skills.paths entries into an existing OpenCode
-// configuration JSON string. If existingConfig is nil or empty, a new config
+// configuration object. If existingConfig is nil or empty, a new config
 // object is created. Existing skills.paths entries are preserved (appended, deduplicated).
 // Other fields in the config (including skills.urls) are preserved.
-func injectSkillsIntoConfig(existingConfig *string, skillPaths []string) (*string, error) {
+func injectSkillsIntoConfig(existingConfig *runtime.RawExtension, skillPaths []string) (*runtime.RawExtension, error) {
 	if len(skillPaths) == 0 {
 		return existingConfig, nil
 	}
 
 	// Parse existing config or start fresh
 	configMap := make(map[string]interface{})
-	if existingConfig != nil && *existingConfig != "" {
-		if err := json.Unmarshal([]byte(*existingConfig), &configMap); err != nil {
+	if !configIsEmpty(existingConfig) {
+		if err := json.Unmarshal(existingConfig.Raw, &configMap); err != nil {
 			return nil, fmt.Errorf("failed to parse existing config: %w", err)
 		}
 	}
@@ -376,6 +377,5 @@ func injectSkillsIntoConfig(existingConfig *string, skillPaths []string) (*strin
 		return nil, fmt.Errorf("failed to marshal config with skills: %w", err)
 	}
 
-	resultStr := string(result)
-	return &resultStr, nil
+	return &runtime.RawExtension{Raw: result}, nil
 }

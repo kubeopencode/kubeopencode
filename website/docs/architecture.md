@@ -183,7 +183,7 @@ Agent (running AI agent instance — always creates Deployment + Service)
     ├── contexts: []ContextItem      (inline context definitions)
     ├── skills: []SkillSource        (external SKILL.md from Git repos)
     ├── plugins: []PluginSpec        (OpenCode plugins to load)
-    ├── config: *string              (inline OpenCode JSON config)
+    ├── config: *runtime.RawExtension (inline OpenCode config, YAML object)
     ├── credentials: []Credential
     ├── caBundle: *CABundleConfig    (custom CA certificates for TLS)
     ├── proxy: *ProxyConfig          (HTTP/HTTPS proxy settings)
@@ -287,7 +287,7 @@ type AgentSpec struct {
     Standby            *StandbyConfig
     Contexts           []ContextItem
     Skills             []SkillSource
-    Config             *string
+    Config             *runtime.RawExtension
     Credentials        []Credential
     CABundle           *CABundleConfig
     Proxy              *ProxyConfig

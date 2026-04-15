@@ -299,7 +299,7 @@ type AgentSpec struct {
 	// +optional
 	Plugins []PluginSpec `json:"plugins,omitempty"`
 
-	// Config provides OpenCode configuration as a JSON string.
+	// Config provides OpenCode configuration as an inline object.
 	// This configuration is written to /tools/opencode.json and the OPENCODE_CONFIG
 	// environment variable is set to point to this file.
 	//
@@ -307,14 +307,14 @@ type AgentSpec struct {
 	// See: https://opencode.ai/config.json for the schema.
 	//
 	// Example:
-	//   config: |
-	//     {
-	//       "$schema": "https://opencode.ai/config.json",
-	//       "model": "opencode/big-pickle",
-	//       "small_model": "opencode/big-pickle"
-	//     }
+	//   config:
+	//     model: opencode/big-pickle
+	//     small_model: opencode/big-pickle
+	//
 	// +optional
-	Config *string `json:"config,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Config *runtime.RawExtension `json:"config,omitempty"`
 
 	// Credentials defines secrets that should be available to the agent.
 	// Similar to GitHub Actions secrets, these can be mounted as files or

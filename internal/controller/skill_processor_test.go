@@ -203,7 +203,7 @@ func TestInjectSkillsIntoConfig(t *testing.T) {
 		}
 
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("invalid JSON: %v", err)
 		}
 
@@ -215,14 +215,14 @@ func TestInjectSkillsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("empty config creates new config", func(t *testing.T) {
-		empty := ""
-		result, err := injectSkillsIntoConfig(&empty, []string{"/skills/a"})
+		empty := &runtime.RawExtension{Raw: []byte("")}
+		result, err := injectSkillsIntoConfig(empty, []string{"/skills/a"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("invalid JSON: %v", err)
 		}
 
@@ -234,14 +234,14 @@ func TestInjectSkillsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("preserves existing config fields", func(t *testing.T) {
-		existing := `{"model":"claude","someField":"value"}`
-		result, err := injectSkillsIntoConfig(&existing, []string{"/skills/a"})
+		existing := &runtime.RawExtension{Raw: []byte(`{"model":"claude","someField":"value"}`)}
+		result, err := injectSkillsIntoConfig(existing, []string{"/skills/a"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("invalid JSON: %v", err)
 		}
 
@@ -254,14 +254,14 @@ func TestInjectSkillsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("appends to existing skills.paths", func(t *testing.T) {
-		existing := `{"skills":{"paths":["/existing/path"]}}`
-		result, err := injectSkillsIntoConfig(&existing, []string{"/skills/new"})
+		existing := &runtime.RawExtension{Raw: []byte(`{"skills":{"paths":["/existing/path"]}}`)}
+		result, err := injectSkillsIntoConfig(existing, []string{"/skills/new"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("invalid JSON: %v", err)
 		}
 
@@ -273,14 +273,14 @@ func TestInjectSkillsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("deduplicates paths", func(t *testing.T) {
-		existing := `{"skills":{"paths":["/skills/a"]}}`
-		result, err := injectSkillsIntoConfig(&existing, []string{"/skills/a", "/skills/b"})
+		existing := &runtime.RawExtension{Raw: []byte(`{"skills":{"paths":["/skills/a"]}}`)}
+		result, err := injectSkillsIntoConfig(existing, []string{"/skills/a", "/skills/b"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("invalid JSON: %v", err)
 		}
 
@@ -292,14 +292,14 @@ func TestInjectSkillsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("preserves skills.urls", func(t *testing.T) {
-		existing := `{"skills":{"urls":["https://example.com/skills/"]}}`
-		result, err := injectSkillsIntoConfig(&existing, []string{"/skills/a"})
+		existing := &runtime.RawExtension{Raw: []byte(`{"skills":{"urls":["https://example.com/skills/"]}}`)}
+		result, err := injectSkillsIntoConfig(existing, []string{"/skills/a"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("invalid JSON: %v", err)
 		}
 
@@ -311,19 +311,19 @@ func TestInjectSkillsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("empty skillPaths returns original config", func(t *testing.T) {
-		existing := `{"model":"claude"}`
-		result, err := injectSkillsIntoConfig(&existing, nil)
+		existing := &runtime.RawExtension{Raw: []byte(`{"model":"claude"}`)}
+		result, err := injectSkillsIntoConfig(existing, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if *result != existing {
-			t.Errorf("expected original config, got %q", *result)
+		if string(result.Raw) != `{"model":"claude"}` {
+			t.Errorf("expected original config, got %q", string(result.Raw))
 		}
 	})
 
 	t.Run("invalid JSON returns error", func(t *testing.T) {
-		invalid := `{invalid`
-		_, err := injectSkillsIntoConfig(&invalid, []string{"/skills/a"})
+		invalid := &runtime.RawExtension{Raw: []byte(`{invalid`)}
+		_, err := injectSkillsIntoConfig(invalid, []string{"/skills/a"})
 		if err == nil {
 			t.Fatal("expected error for invalid JSON")
 		}
@@ -340,7 +340,7 @@ func TestInjectPluginsIntoConfig(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
 		pluginArr, ok := parsed["plugin"].([]interface{})
@@ -356,16 +356,16 @@ func TestInjectPluginsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("empty config creates new config", func(t *testing.T) {
-		empty := ""
+		empty := &runtime.RawExtension{Raw: []byte("")}
 		plugins := []kubeopenv1alpha1.PluginSpec{
 			{Name: "opencode-plugin-otel"},
 		}
-		result, err := injectPluginsIntoConfig(&empty, plugins)
+		result, err := injectPluginsIntoConfig(empty, plugins)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
 		pluginArr := parsed["plugin"].([]interface{})
@@ -375,16 +375,16 @@ func TestInjectPluginsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("preserves existing config fields", func(t *testing.T) {
-		existing := `{"model":"claude-sonnet","provider":{"anthropic":{}}}`
+		existing := &runtime.RawExtension{Raw: []byte(`{"model":"claude-sonnet","provider":{"anthropic":{}}}`)}
 		plugins := []kubeopenv1alpha1.PluginSpec{
 			{Name: "@org/my-plugin"},
 		}
-		result, err := injectPluginsIntoConfig(&existing, plugins)
+		result, err := injectPluginsIntoConfig(existing, plugins)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
 		if parsed["model"] != "claude-sonnet" {
@@ -400,16 +400,16 @@ func TestInjectPluginsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("appends to existing plugins", func(t *testing.T) {
-		existing := `{"plugin":["existing-plugin"]}`
+		existing := &runtime.RawExtension{Raw: []byte(`{"plugin":["existing-plugin"]}`)}
 		plugins := []kubeopenv1alpha1.PluginSpec{
 			{Name: "new-plugin"},
 		}
-		result, err := injectPluginsIntoConfig(&existing, plugins)
+		result, err := injectPluginsIntoConfig(existing, plugins)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
 		pluginArr := parsed["plugin"].([]interface{})
@@ -425,17 +425,17 @@ func TestInjectPluginsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("deduplicates by name", func(t *testing.T) {
-		existing := `{"plugin":["@org/plugin-a"]}`
+		existing := &runtime.RawExtension{Raw: []byte(`{"plugin":["@org/plugin-a"]}`)}
 		plugins := []kubeopenv1alpha1.PluginSpec{
 			{Name: "@org/plugin-a"}, // duplicate
 			{Name: "@org/plugin-b"}, // new
 		}
-		result, err := injectPluginsIntoConfig(&existing, plugins)
+		result, err := injectPluginsIntoConfig(existing, plugins)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
 		pluginArr := parsed["plugin"].([]interface{})
@@ -445,17 +445,17 @@ func TestInjectPluginsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("deduplicates tuple format existing plugins", func(t *testing.T) {
-		existing := `{"plugin":[["@org/plugin-a",{"key":"val"}]]}`
+		existing := &runtime.RawExtension{Raw: []byte(`{"plugin":[["@org/plugin-a",{"key":"val"}]]}`)}
 		plugins := []kubeopenv1alpha1.PluginSpec{
 			{Name: "@org/plugin-a"}, // duplicate (existing is tuple)
 		}
-		result, err := injectPluginsIntoConfig(&existing, plugins)
+		result, err := injectPluginsIntoConfig(existing, plugins)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		// Should return original since no new plugins added
-		if *result != existing {
-			t.Errorf("expected original config returned unchanged, got %v", *result)
+		if string(result.Raw) != string(existing.Raw) {
+			t.Errorf("expected original config returned unchanged, got %v", string(result.Raw))
 		}
 	})
 
@@ -471,7 +471,7 @@ func TestInjectPluginsIntoConfig(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
 		pluginArr := parsed["plugin"].([]interface{})
@@ -511,7 +511,7 @@ func TestInjectPluginsIntoConfig(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(*result), &parsed); err != nil {
+		if err := json.Unmarshal(result.Raw, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
 		pluginArr := parsed["plugin"].([]interface{})
@@ -533,19 +533,19 @@ func TestInjectPluginsIntoConfig(t *testing.T) {
 	})
 
 	t.Run("empty plugins returns original config", func(t *testing.T) {
-		existing := `{"model":"claude"}`
-		result, err := injectPluginsIntoConfig(&existing, nil)
+		existing := &runtime.RawExtension{Raw: []byte(`{"model":"claude"}`)}
+		result, err := injectPluginsIntoConfig(existing, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if *result != existing {
-			t.Errorf("expected original config, got %v", *result)
+		if string(result.Raw) != string(existing.Raw) {
+			t.Errorf("expected original config, got %v", string(result.Raw))
 		}
 	})
 
 	t.Run("invalid JSON returns error", func(t *testing.T) {
-		invalid := `{invalid`
-		_, err := injectPluginsIntoConfig(&invalid, []kubeopenv1alpha1.PluginSpec{
+		invalid := &runtime.RawExtension{Raw: []byte(`{invalid`)}
+		_, err := injectPluginsIntoConfig(invalid, []kubeopenv1alpha1.PluginSpec{
 			{Name: "test-plugin"},
 		})
 		if err == nil {

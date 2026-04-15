@@ -10,6 +10,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
@@ -17,7 +18,7 @@ import (
 func TestConfigHasPermission(t *testing.T) {
 	tests := []struct {
 		name   string
-		config *string
+		config *runtime.RawExtension
 		want   bool
 	}{
 		{
@@ -27,27 +28,27 @@ func TestConfigHasPermission(t *testing.T) {
 		},
 		{
 			name:   "empty config",
-			config: stringPtr(""),
+			config: &runtime.RawExtension{Raw: []byte("")},
 			want:   false,
 		},
 		{
 			name:   "config with permission field",
-			config: stringPtr(`{"permission": "ask", "model": "gpt-4"}`),
+			config: &runtime.RawExtension{Raw: []byte(`{"permission": "ask", "model": "gpt-4"}`)},
 			want:   true,
 		},
 		{
 			name:   "config without permission field",
-			config: stringPtr(`{"model": "gpt-4", "small_model": "gpt-3.5"}`),
+			config: &runtime.RawExtension{Raw: []byte(`{"model": "gpt-4", "small_model": "gpt-3.5"}`)},
 			want:   false,
 		},
 		{
 			name:   "invalid JSON",
-			config: stringPtr(`{invalid json`),
+			config: &runtime.RawExtension{Raw: []byte(`{invalid json`)},
 			want:   false,
 		},
 		{
 			name:   "permission field is null",
-			config: stringPtr(`{"permission": null, "model": "gpt-4"}`),
+			config: &runtime.RawExtension{Raw: []byte(`{"permission": null, "model": "gpt-4"}`)},
 			want:   true, // field exists even if value is null
 		},
 	}
@@ -498,12 +499,11 @@ func TestBuildServerDeployment_SkipsOPENCODE_PERMISSIONWhenConfigHasPermission(t
 		},
 	}
 
-	configWithPermission := `{"permission": "ask", "model": "gpt-4"}`
 	cfg := agentConfig{
 		executorImage: "test-executor:v1.0.0",
 		agentImage:    "test-agent:v1.0.0",
 		workspaceDir:  "/workspace",
-		config:        &configWithPermission,
+		config:        &runtime.RawExtension{Raw: []byte(`{"permission": "ask", "model": "gpt-4"}`)},
 	}
 
 	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
@@ -533,12 +533,11 @@ func TestBuildServerDeployment_SetsOPENCODE_PERMISSIONWhenConfigHasNoPermission(
 		},
 	}
 
-	configWithoutPermission := `{"model": "gpt-4"}`
 	cfg := agentConfig{
 		executorImage: "test-executor:v1.0.0",
 		agentImage:    "test-agent:v1.0.0",
 		workspaceDir:  "/workspace",
-		config:        &configWithoutPermission,
+		config:        &runtime.RawExtension{Raw: []byte(`{"model": "gpt-4"}`)},
 	}
 
 	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)

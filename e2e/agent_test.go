@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -588,7 +589,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 					ServiceAccountName: testServiceAccount,
 					WorkspaceDir:       "/workspace",
 					Command:            []string{"sh", "-c", "echo '=== OPENCODE_CONFIG ===' && echo $OPENCODE_CONFIG && echo '=== Config Content ===' && cat /tools/opencode.json && echo '=== Done ==='"},
-					Config:             &configJSON,
+					Config:             &runtime.RawExtension{Raw: []byte(configJSON)},
 				},
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
@@ -1066,7 +1067,6 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 
 		It("should update Deployment pod template hash when config content changes alongside contexts", func() {
 			agentName := uniqueName("cfg-hash")
-			initialConfig := `{"model":"test-model-a"}`
 
 			By("Creating Agent with config and a text context")
 			agent := &kubeopenv1alpha1.Agent{
@@ -1080,7 +1080,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 					ServiceAccountName: testServiceAccount,
 					WorkspaceDir:       "/workspace",
 					Command:            []string{"sh", "-c", "echo 'running' && sleep 3600"},
-					Config:             &initialConfig,
+					Config:             &runtime.RawExtension{Raw: []byte(`{"model":"test-model-a"}`)},
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
 							Type: kubeopenv1alpha1.ContextTypeText,
@@ -1110,8 +1110,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 			By("Updating only the config content (not adding/removing contexts)")
 			var updatedAgent kubeopenv1alpha1.Agent
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: agentName, Namespace: testNS}, &updatedAgent)).Should(Succeed())
-			newConfig := `{"model":"test-model-b"}`
-			updatedAgent.Spec.Config = &newConfig
+			updatedAgent.Spec.Config = &runtime.RawExtension{Raw: []byte(`{"model":"test-model-b"}`)}
 			Expect(k8sClient.Update(ctx, &updatedAgent)).Should(Succeed())
 
 			By("Expecting the context hash to change (config content change detected)")

@@ -174,8 +174,8 @@ func (in *AgentSpec) DeepCopyInto(out *AgentSpec) {
 	}
 	if in.Config != nil {
 		in, out := &in.Config, &out.Config
-		*out = new(string)
-		**out = **in
+		*out = new(runtime.RawExtension)
+		(*in).DeepCopyInto(*out)
 	}
 	if in.Credentials != nil {
 		in, out := &in.Credentials, &out.Credentials
@@ -396,8 +396,8 @@ func (in *AgentTemplateSpec) DeepCopyInto(out *AgentTemplateSpec) {
 	}
 	if in.Config != nil {
 		in, out := &in.Config, &out.Config
-		*out = new(string)
-		**out = **in
+		*out = new(runtime.RawExtension)
+		(*in).DeepCopyInto(*out)
 	}
 	if in.Credentials != nil {
 		in, out := &in.Credentials, &out.Credentials

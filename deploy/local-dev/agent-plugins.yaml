@@ -23,11 +23,8 @@ spec:
     - name: "plugin-gentleman"
       target: tui
 
-  config: |
-    {
-      "$schema": "https://opencode.ai/config.json",
-      "model": "opencode/big-pickle",
-      "small_model": "opencode/big-pickle",
-      "share": "disabled",
-      "autoupdate": false
-    }
+  config:
+    model: opencode/big-pickle
+    small_model: opencode/big-pickle
+    share: disabled
+    autoupdate: false

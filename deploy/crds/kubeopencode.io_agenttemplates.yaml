@@ -120,8 +120,8 @@ spec:
                   type: string
                 type: array
               config:
-                description: Config provides OpenCode configuration as a JSON string.
-                type: string
+                description: Config provides OpenCode configuration as an inline object.
+                x-kubernetes-preserve-unknown-fields: true
               contexts:
                 description: Contexts provides default contexts for all tasks using
                   Agents derived from this template.

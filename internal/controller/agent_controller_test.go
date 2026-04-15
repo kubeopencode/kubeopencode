@@ -12,6 +12,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
@@ -392,7 +393,6 @@ var _ = Describe("AgentController", func() {
 
 		It("Should update hash when Agent config content changes with skills", func() {
 			agentName := "test-config-hash-agent"
-			initialConfig := `{"model":"claude-sonnet"}`
 
 			By("Creating an Agent with config and a text context")
 			agent := &kubeopenv1alpha1.Agent{
@@ -405,7 +405,7 @@ var _ = Describe("AgentController", func() {
 					WorkspaceDir:       "/workspace",
 					ServiceAccountName: "test-agent",
 					Port:               4096,
-					Config:             &initialConfig,
+					Config:             &runtime.RawExtension{Raw: []byte(`{"model":"claude-sonnet"}`)},
 					Contexts: []kubeopenv1alpha1.ContextItem{
 						{
 							Type: kubeopenv1alpha1.ContextTypeText,
@@ -440,8 +440,7 @@ var _ = Describe("AgentController", func() {
 				Name:      agentName,
 				Namespace: agentNamespace,
 			}, &updatedAgent)).Should(Succeed())
-			newConfig := `{"model":"claude-opus"}`
-			updatedAgent.Spec.Config = &newConfig
+			updatedAgent.Spec.Config = &runtime.RawExtension{Raw: []byte(`{"model":"claude-opus"}`)}
 			Expect(k8sClient.Update(ctx, &updatedAgent)).Should(Succeed())
 
 			By("Expecting the context hash annotation to change")

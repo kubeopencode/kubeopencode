@@ -10,6 +10,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
@@ -1535,13 +1536,12 @@ func TestBuildPod_WithOpenCodeConfig(t *testing.T) {
 	task.APIVersion = "kubeopencode.io/v1alpha1"
 	task.Kind = "Task"
 
-	configJSON := `{"model": "google/gemini-2.5-pro", "small_model": "google/gemini-2.5-flash"}`
 	cfg := agentConfig{
 		agentImage:         "test-opencode:v1.0.0",
 		executorImage:      "test-executor:v1.0.0",
 		workspaceDir:       "/workspace",
 		serviceAccountName: "test-sa",
-		config:             &configJSON,
+		config:             &runtime.RawExtension{Raw: []byte(`{"model": "google/gemini-2.5-pro", "small_model": "google/gemini-2.5-flash"}`)},
 	}
 
 	// Create a ConfigMap with the config content
@@ -1553,7 +1553,7 @@ func TestBuildPod_WithOpenCodeConfig(t *testing.T) {
 			Namespace: "default",
 		},
 		Data: map[string]string{
-			expectedConfigKey: configJSON,
+			expectedConfigKey: string(cfg.config.Raw),
 		},
 	}
 
@@ -1890,13 +1890,12 @@ func TestBuildPod_SkipsOPENCODE_PERMISSIONWhenConfigHasPermission(t *testing.T) 
 	task.APIVersion = "kubeopencode.io/v1alpha1"
 	task.Kind = "Task"
 
-	configWithPermission := `{"permission": "ask", "model": "gpt-4"}`
 	cfg := agentConfig{
 		agentImage:         "test-opencode:v1.0.0",
 		executorImage:      "test-executor:v1.0.0",
 		workspaceDir:       "/workspace",
 		serviceAccountName: "test-sa",
-		config:             &configWithPermission,
+		config:             &runtime.RawExtension{Raw: []byte(`{"permission": "ask", "model": "gpt-4"}`)},
 	}
 
 	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
@@ -1922,13 +1921,12 @@ func TestBuildPod_SetsOPENCODE_PERMISSIONWhenConfigHasNoPermission(t *testing.T)
 	task.APIVersion = "kubeopencode.io/v1alpha1"
 	task.Kind = "Task"
 
-	configWithoutPermission := `{"model": "gpt-4"}`
 	cfg := agentConfig{
 		agentImage:         "test-opencode:v1.0.0",
 		executorImage:      "test-executor:v1.0.0",
 		workspaceDir:       "/workspace",
 		serviceAccountName: "test-sa",
-		config:             &configWithoutPermission,
+		config:             &runtime.RawExtension{Raw: []byte(`{"model": "gpt-4"}`)},
 	}
 
 	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")

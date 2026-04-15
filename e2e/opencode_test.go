@@ -18,21 +18,22 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 	"github.com/kubeopencode/kubeopencode/internal/controller"
 )
 
-// opencodeConfig returns an OpenCode config JSON string using the free big-pickle model.
-func opencodeConfig() string {
-	return `{
+// opencodeConfig returns an OpenCode config object using the free big-pickle model.
+func opencodeConfig() *runtime.RawExtension {
+	return &runtime.RawExtension{Raw: []byte(`{
   "$schema": "https://opencode.ai/config.json",
   "model": "opencode/big-pickle",
   "small_model": "opencode/big-pickle",
   "share": "disabled",
   "autoupdate": false
-}`
+}`)}
 }
 
 var _ = Describe("OpenCode E2E Tests", Label(LabelOpenCode), func() {
@@ -53,7 +54,6 @@ var _ = Describe("OpenCode E2E Tests", Label(LabelOpenCode), func() {
 			}
 
 			By("Creating Agent with OpenCode free model")
-			config := opencodeConfig()
 			agent := &kubeopenv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -66,7 +66,7 @@ var _ = Describe("OpenCode E2E Tests", Label(LabelOpenCode), func() {
 					ServiceAccountName: testServiceAccount,
 					WorkspaceDir:       "/workspace",
 					Port:               4096,
-					Config:             &config,
+					Config:             opencodeConfig(),
 				},
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())

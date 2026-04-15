@@ -153,7 +153,7 @@ spec:
                 type: array
               config:
                 description: |-
-                  Config provides OpenCode configuration as a JSON string.
+                  Config provides OpenCode configuration as an inline object.
                   This configuration is written to /tools/opencode.json and the OPENCODE_CONFIG
                   environment variable is set to point to this file.
 
@@ -161,13 +161,10 @@ spec:
                   See: https://opencode.ai/config.json for the schema.
 
                   Example:
-                    config: |
-                      {
-                        "$schema": "https://opencode.ai/config.json",
-                        "model": "opencode/big-pickle",
-                        "small_model": "opencode/big-pickle"
-                      }
-                type: string
+                    config:
+                      model: opencode/big-pickle
+                      small_model: opencode/big-pickle
+                x-kubernetes-preserve-unknown-fields: true
               contexts:
                 description: |-
                   Contexts provides default contexts for all tasks using this Agent.

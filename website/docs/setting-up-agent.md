@@ -23,7 +23,7 @@ An Agent in KubeOpenCode is a persistent, running AI service on Kubernetes. Conf
 
 ## Step 1: Configure the AI Model
 
-This is the most critical step. KubeOpenCode runs [OpenCode](https://opencode.ai) under the hood, so model configuration follows the OpenCode config format. You provide this via the Agent's `config` field as an inline JSON string.
+This is the most critical step. KubeOpenCode runs [OpenCode](https://opencode.ai) under the hood, so model configuration follows the OpenCode config format. You provide this via the Agent's `config` field as an inline YAML object.
 
 ### Minimal Configuration
 
@@ -35,15 +35,13 @@ metadata:
 spec:
   workspaceDir: /workspace
   serviceAccountName: kubeopencode-agent
-  config: |
-    {
-      "$schema": "https://opencode.ai/config.json",
-      "model": "anthropic/claude-sonnet-4-5",
-      "small_model": "anthropic/claude-haiku-4-5"
-    }
+  config:
+    $schema: https://opencode.ai/config.json
+    model: anthropic/claude-sonnet-4-5
+    small_model: anthropic/claude-haiku-4-5
 ```
 
-The `config` field is written to `/tools/opencode.json` inside the container. The `OPENCODE_CONFIG` environment variable is set automatically — you don't need to do anything else.
+The `config` field is serialized to `/tools/opencode.json` inside the container. The `OPENCODE_CONFIG` environment variable is set automatically — you don't need to do anything else.
 
 ### Model Format
 
@@ -82,12 +80,10 @@ metadata:
 spec:
   workspaceDir: /workspace
   serviceAccountName: kubeopencode-agent
-  config: |
-    {
-      "$schema": "https://opencode.ai/config.json",
-      "model": "anthropic/claude-sonnet-4-5",
-      "small_model": "anthropic/claude-haiku-4-5"
-    }
+  config:
+    $schema: https://opencode.ai/config.json
+    model: anthropic/claude-sonnet-4-5
+    small_model: anthropic/claude-haiku-4-5
   credentials:
     - name: anthropic
       secretRef:
@@ -101,21 +97,16 @@ When no `key` or `mountPath` is specified, all keys in the Secret are injected a
 The `config` field supports the full [OpenCode configuration schema](https://opencode.ai/config.json). Common options:
 
 ```yaml
-config: |
-  {
-    "$schema": "https://opencode.ai/config.json",
-    "model": "anthropic/claude-sonnet-4-5",
-    "small_model": "anthropic/claude-haiku-4-5",
-    "share": "disabled",
-    "autoupdate": false,
-    "provider": {
-      "anthropic": {
-        "options": {
-          "baseURL": "https://your-proxy.example.com/v1"
-        }
-      }
-    }
-  }
+config:
+  $schema: https://opencode.ai/config.json
+  model: anthropic/claude-sonnet-4-5
+  small_model: anthropic/claude-haiku-4-5
+  share: disabled
+  autoupdate: false
+  provider:
+    anthropic:
+      options:
+        baseURL: https://your-proxy.example.com/v1
 ```
 
 For full configuration reference, see the [OpenCode Config documentation](https://opencode.ai/docs/config).
@@ -400,14 +391,12 @@ spec:
   profile: "Full-stack development agent for the platform team"
 
   # Step 1: AI Model Configuration
-  config: |
-    {
-      "$schema": "https://opencode.ai/config.json",
-      "model": "anthropic/claude-sonnet-4-5",
-      "small_model": "anthropic/claude-haiku-4-5",
-      "share": "disabled",
-      "autoupdate": false
-    }
+  config:
+    $schema: https://opencode.ai/config.json
+    model: anthropic/claude-sonnet-4-5
+    small_model: anthropic/claude-haiku-4-5
+    share: disabled
+    autoupdate: false
   credentials:
     - name: anthropic
       secretRef:
@@ -469,12 +458,10 @@ spec:
   executorImage: ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
   serviceAccountName: kubeopencode-agent
-  config: |
-    {
-      "$schema": "https://opencode.ai/config.json",
-      "model": "anthropic/claude-sonnet-4-5",
-      "small_model": "anthropic/claude-haiku-4-5"
-    }
+  config:
+    $schema: https://opencode.ai/config.json
+    model: anthropic/claude-sonnet-4-5
+    small_model: anthropic/claude-haiku-4-5
   credentials:
     - name: anthropic
       secretRef:

@@ -379,7 +379,7 @@ func (r *AgentReconciler) updateAgentStatus(ctx context.Context, agent *kubeopen
 // This is similar to TaskReconciler.processAllContexts but only handles Agent.contexts (no Task description).
 func (r *AgentReconciler) processAgentContexts(ctx context.Context, agent *kubeopenv1alpha1.Agent, cfg agentConfig) (*corev1.ConfigMap, []fileMount, []dirMount, []gitMount, error) {
 	logger := log.FromContext(ctx)
-	if len(cfg.contexts) == 0 && len(cfg.skills) == 0 && len(cfg.plugins) == 0 && (cfg.config == nil || *cfg.config == "") {
+	if len(cfg.contexts) == 0 && len(cfg.skills) == 0 && len(cfg.plugins) == 0 && configIsEmpty(cfg.config) {
 		return nil, nil, nil, nil, nil
 	}
 

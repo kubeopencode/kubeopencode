@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
@@ -29,7 +30,7 @@ type agentConfig struct {
 	contexts           []kubeopenv1alpha1.ContextItem
 	skills             []kubeopenv1alpha1.SkillSource
 	plugins            []kubeopenv1alpha1.PluginSpec // OpenCode plugins to load
-	config             *string                       // OpenCode config JSON string
+	config             *runtime.RawExtension         // OpenCode config (inline JSON object)
 	credentials        []kubeopenv1alpha1.Credential
 	podSpec            *kubeopenv1alpha1.AgentPodSpec
 	serviceAccountName string
@@ -919,7 +920,7 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 
 	// If OpenCode config is provided, or skills/plugins are configured, set OPENCODE_CONFIG env var.
 	// Skills and plugins require the config file because they are injected into it.
-	if (cfg.config != nil && *cfg.config != "") || len(cfg.skills) > 0 || hasServerPlugins(cfg.plugins) {
+	if !configIsEmpty(cfg.config) || len(cfg.skills) > 0 || hasServerPlugins(cfg.plugins) {
 		envVars = append(envVars, corev1.EnvVar{
 			Name:  OpenCodeConfigEnvVar,
 			Value: OpenCodeConfigPath,
@@ -1034,7 +1035,7 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		// If OpenCode config is provided, mount /tools volume in context-init
 		// so it can write the config file. The /tools volume is already created
 		// for sharing the OpenCode binary between containers.
-		if cfg.config != nil && *cfg.config != "" {
+		if !configIsEmpty(cfg.config) {
 			contextInit.VolumeMounts = append(contextInit.VolumeMounts, corev1.VolumeMount{
 				Name:      ToolsVolumeName,
 				MountPath: ToolsMountPath,
@@ -1372,16 +1373,21 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 	return pod
 }
 
+// configIsEmpty returns true if the config is nil or has no raw JSON bytes.
+func configIsEmpty(config *runtime.RawExtension) bool {
+	return config == nil || len(config.Raw) == 0
+}
+
 // configHasPermission checks if the Agent's OpenCode config JSON contains
 // a "permission" field. When present, the user has explicitly configured
 // permissions (e.g., for interactive sessions), so we should not override with the default
 // all-allow environment variable.
-func configHasPermission(config *string) bool {
-	if config == nil || *config == "" {
+func configHasPermission(config *runtime.RawExtension) bool {
+	if configIsEmpty(config) {
 		return false
 	}
 	var parsed map[string]interface{}
-	if err := json.Unmarshal([]byte(*config), &parsed); err != nil {
+	if err := json.Unmarshal(config.Raw, &parsed); err != nil {
 		return false
 	}
 	_, ok := parsed["permission"]

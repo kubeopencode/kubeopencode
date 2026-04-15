@@ -36,14 +36,11 @@ spec:
   #   1. Create a Secret with your API key (see secrets.yaml.example)
   #   2. Update the model fields below
   #   3. Uncomment the credentials section at the bottom
-  config: |
-    {
-      "$schema": "https://opencode.ai/config.json",
-      "model": "opencode/big-pickle",
-      "small_model": "opencode/big-pickle",
-      "share": "disabled",
-      "autoupdate": false
-    }
+  config:
+    model: opencode/big-pickle
+    small_model: opencode/big-pickle
+    share: disabled
+    autoupdate: false
 
   # Skills: import SKILL.md files from Git repositories
   skills:

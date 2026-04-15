@@ -7,9 +7,15 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
+
+// rawExtPtr creates a *runtime.RawExtension from a JSON string for testing.
+func rawExtPtr(s string) *runtime.RawExtension {
+	return &runtime.RawExtension{Raw: []byte(s)}
+}
 
 func TestMergeAgentWithTemplate(t *testing.T) {
 	tests := []struct {
@@ -34,7 +40,7 @@ func TestMergeAgentWithTemplate(t *testing.T) {
 					WorkspaceDir:       "/tmpl-workspace",
 					ServiceAccountName: "tmpl-sa",
 					Command:            []string{"sh", "-c", "echo hello"},
-					Config:             strPtr(`{"model":"gpt-4"}`),
+					Config:             rawExtPtr(`{"model":"gpt-4"}`),
 				},
 			},
 			check: func(t *testing.T, cfg agentConfig) {
@@ -60,7 +66,7 @@ func TestMergeAgentWithTemplate(t *testing.T) {
 					t.Errorf("expected command from template, got %v", cfg.command)
 				}
 				// Config inherited from template
-				if cfg.config == nil || *cfg.config != `{"model":"gpt-4"}` {
+				if cfg.config == nil || string(cfg.config.Raw) != `{"model":"gpt-4"}` {
 					t.Errorf("expected config from template, got %v", cfg.config)
 				}
 			},
@@ -73,7 +79,7 @@ func TestMergeAgentWithTemplate(t *testing.T) {
 					ExecutorImage:      "my-executor:v2",
 					WorkspaceDir:       "/my-workspace",
 					ServiceAccountName: "my-sa",
-					Config:             strPtr(`{"model":"claude"}`),
+					Config:             rawExtPtr(`{"model":"claude"}`),
 				},
 			},
 			template: &kubeopenv1alpha1.AgentTemplate{
@@ -82,7 +88,7 @@ func TestMergeAgentWithTemplate(t *testing.T) {
 					ExecutorImage:      "tmpl-executor:v1",
 					WorkspaceDir:       "/tmpl-workspace",
 					ServiceAccountName: "tmpl-sa",
-					Config:             strPtr(`{"model":"gpt-4"}`),
+					Config:             rawExtPtr(`{"model":"gpt-4"}`),
 				},
 			},
 			check: func(t *testing.T, cfg agentConfig) {
@@ -95,7 +101,7 @@ func TestMergeAgentWithTemplate(t *testing.T) {
 				if cfg.workspaceDir != "/my-workspace" {
 					t.Errorf("expected workspaceDir override, got %s", cfg.workspaceDir)
 				}
-				if cfg.config == nil || *cfg.config != `{"model":"claude"}` {
+				if cfg.config == nil || string(cfg.config.Raw) != `{"model":"claude"}` {
 					t.Errorf("expected config override, got %v", cfg.config)
 				}
 			},
@@ -551,10 +557,6 @@ func TestMergeAgentWithTemplate(t *testing.T) {
 	}
 }
 
-func strPtr(s string) *string {
-	return &s
-}
-
 func int32Ptr(i int32) *int32 {
 	return &i
 }
@@ -614,7 +616,7 @@ func TestResolveTemplateToConfig(t *testing.T) {
 					WorkspaceDir:       "/tmpl-workspace",
 					ServiceAccountName: "tmpl-sa",
 					Command:            []string{"sh", "-c", "run"},
-					Config:             strPtr(`{"model":"gpt-4"}`),
+					Config:             rawExtPtr(`{"model":"gpt-4"}`),
 					MaxConcurrentTasks: int32Ptr(5),
 					Quota: &kubeopenv1alpha1.QuotaConfig{
 						MaxTaskStarts: 100,
@@ -650,7 +652,7 @@ func TestResolveTemplateToConfig(t *testing.T) {
 				if len(cfg.command) != 3 || cfg.command[0] != "sh" {
 					t.Errorf("expected command [sh -c run], got %v", cfg.command)
 				}
-				if cfg.config == nil || *cfg.config != `{"model":"gpt-4"}` {
+				if cfg.config == nil || string(cfg.config.Raw) != `{"model":"gpt-4"}` {
 					t.Errorf("expected config from template, got %v", cfg.config)
 				}
 				// maxConcurrentTasks and quota are intentionally NOT populated

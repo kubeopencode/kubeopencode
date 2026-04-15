@@ -5,6 +5,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // +genclient
@@ -84,9 +85,11 @@ type AgentTemplateSpec struct {
 	// +optional
 	Plugins []PluginSpec `json:"plugins,omitempty"`
 
-	// Config provides OpenCode configuration as a JSON string.
+	// Config provides OpenCode configuration as an inline object.
 	// +optional
-	Config *string `json:"config,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Config *runtime.RawExtension `json:"config,omitempty"`
 
 	// Credentials defines secrets that should be available to the agent.
 	// +optional

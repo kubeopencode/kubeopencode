@@ -193,7 +193,7 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 	}
 
 	// Add OpenCode config if provided, or if skills/plugins are configured (injected into config)
-	if agentCfg.config != nil || len(agentCfg.skills) > 0 || hasServerPlugins(agentCfg.plugins) {
+	if !configIsEmpty(agentCfg.config) || len(agentCfg.skills) > 0 || hasServerPlugins(agentCfg.plugins) {
 		envVars = append(envVars, corev1.EnvVar{
 			Name:  OpenCodeConfigEnvVar,
 			Value: OpenCodeConfigPath,
@@ -322,7 +322,7 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		})
 
 		// Mount /tools volume so context-init can write config file
-		if agentCfg.config != nil && *agentCfg.config != "" {
+		if !configIsEmpty(agentCfg.config) {
 			contextInit.VolumeMounts = append(contextInit.VolumeMounts, corev1.VolumeMount{
 				Name:      ToolsVolumeName,
 				MountPath: ToolsMountPath,
@@ -495,12 +495,12 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 	// When context-init handles config file writing, we don't need inline heredoc.
 	hasContextInit := len(ctxFileMounts) > 0 || len(ctxDirMounts) > 0
 	var command []string
-	if agentCfg.config != nil && *agentCfg.config != "" && !hasContextInit {
+	if !configIsEmpty(agentCfg.config) && !hasContextInit {
 		// No context-init container — write config inline in the command
 		command = []string{
 			"sh", "-c",
 			fmt.Sprintf("%s; cat > %s << 'KOCEOF'\n%s\nKOCEOF\n/tools/opencode serve --port %d --hostname 0.0.0.0",
-				OpenCodeSymlinkCmd, OpenCodeConfigPath, *agentCfg.config, port),
+				OpenCodeSymlinkCmd, OpenCodeConfigPath, string(agentCfg.config.Raw), port),
 		}
 	} else {
 		// Config is written by context-init, or no config at all

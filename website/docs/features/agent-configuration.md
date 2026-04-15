@@ -40,7 +40,7 @@ spec:
 
 ## OpenCode Configuration
 
-The `config` field allows you to provide OpenCode configuration as an inline JSON string:
+The `config` field allows you to provide OpenCode configuration as an inline YAML object:
 
 ```yaml
 apiVersion: kubeopencode.io/v1alpha1
@@ -53,12 +53,10 @@ spec:
   executorImage: ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
   serviceAccountName: kubeopencode-agent
-  config: |
-    {
-      "$schema": "https://opencode.ai/config.json",
-      "model": "google/gemini-2.5-pro",
-      "small_model": "google/gemini-2.5-flash"
-    }
+  config:
+    $schema: https://opencode.ai/config.json
+    model: google/gemini-2.5-pro
+    small_model: google/gemini-2.5-flash
 ```
 
-The configuration is written to `/tools/opencode.json` and the `OPENCODE_CONFIG` environment variable is set automatically. See [OpenCode configuration schema](https://opencode.ai/config.json) for available options.
+The configuration is serialized to `/tools/opencode.json` and the `OPENCODE_CONFIG` environment variable is set automatically. See [OpenCode configuration schema](https://opencode.ai/config.json) for available options.

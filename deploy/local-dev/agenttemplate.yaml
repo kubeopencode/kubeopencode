@@ -25,11 +25,8 @@ spec:
   # To use a different model (e.g., Anthropic, Google), update the model fields
   # and create a Secret with your API key (see secrets.yaml.example).
   # Shared OpenCode configuration
-  config: |
-    {
-      "$schema": "https://opencode.ai/config.json",
-      "model": "opencode/big-pickle",
-      "small_model": "opencode/big-pickle",
-      "share": "disabled",
-      "autoupdate": false
-    }
+  config:
+    model: opencode/big-pickle
+    small_model: opencode/big-pickle
+    share: disabled
+    autoupdate: false

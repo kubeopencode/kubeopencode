@@ -789,9 +789,9 @@ func (r *TaskReconciler) processAllContexts(ctx context.Context, task *kubeopenv
 	}
 
 	// Validate JSON syntax of user-provided config before processing
-	if cfg.config != nil && *cfg.config != "" {
+	if !configIsEmpty(cfg.config) {
 		var jsonCheck interface{}
-		if err := json.Unmarshal([]byte(*cfg.config), &jsonCheck); err != nil {
+		if err := json.Unmarshal(cfg.config.Raw, &jsonCheck); err != nil {
 			return nil, nil, nil, nil, fmt.Errorf("invalid JSON in Agent config: %w", err)
 		}
 	}
