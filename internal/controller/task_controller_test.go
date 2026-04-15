@@ -18,6 +18,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
@@ -1492,7 +1493,7 @@ var _ = Describe("TaskController", func() {
 					ExecutorImage:      "test-executor:latest",
 					WorkspaceDir:       "/workspace",
 					ServiceAccountName: "default",
-					Config:             &configJSON,
+					Config:             &runtime.RawExtension{Raw: []byte(configJSON)},
 				},
 			}
 			createReadyAgent(ctx, agent)
@@ -1558,21 +1559,19 @@ var _ = Describe("TaskController", func() {
 			}, timeout, interval).Should(BeTrue())
 			expectedConfigKey := sanitizeConfigMapKey(OpenCodeConfigPath)
 			Expect(createdConfigMap.Data).Should(HaveKey(expectedConfigKey))
-			Expect(createdConfigMap.Data[expectedConfigKey]).Should(Equal(configJSON))
+			Expect(createdConfigMap.Data[expectedConfigKey]).Should(MatchJSON(configJSON))
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 
-		It("Should reject invalid JSON in config", func() {
+		It("Should reject invalid JSON in config at API level", func() {
 			agentName := "agent-invalid-config"
-			taskName := "test-task-invalid-config"
-			description := "Test task with invalid config"
 
+			// With runtime.RawExtension, the API server validates JSON at admission time.
+			// Invalid JSON is rejected before it reaches the controller.
 			invalidConfigJSON := `{"model": "google/gemini-2.5-pro", invalid json}`
-
-			// Create Agent with invalid Config
 			agent := &kubeopenv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -1583,48 +1582,11 @@ var _ = Describe("TaskController", func() {
 					ExecutorImage:      "test-executor:latest",
 					WorkspaceDir:       "/workspace",
 					ServiceAccountName: "default",
-					Config:             &invalidConfigJSON,
+					Config:             &runtime.RawExtension{Raw: []byte(invalidConfigJSON)},
 				},
 			}
-			createReadyAgent(ctx, agent)
-
-			// Create Task referencing the Agent
-			task := &kubeopenv1alpha1.Task{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      taskName,
-					Namespace: taskNamespace,
-				},
-				Spec: kubeopenv1alpha1.TaskSpec{
-					Description: &description,
-					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
-				},
-			}
-			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
-
-			By("Checking Task status shows error due to invalid JSON")
-			taskLookupKey := types.NamespacedName{Name: taskName, Namespace: taskNamespace}
-			createdTask := &kubeopenv1alpha1.Task{}
-			Eventually(func() kubeopenv1alpha1.TaskPhase {
-				if err := k8sClient.Get(ctx, taskLookupKey, createdTask); err != nil {
-					return ""
-				}
-				return createdTask.Status.Phase
-			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseFailed))
-
-			By("Verifying error condition mentions invalid JSON")
-			var readyCondition *metav1.Condition
-			for i, cond := range createdTask.Status.Conditions {
-				if cond.Type == kubeopenv1alpha1.ConditionTypeReady {
-					readyCondition = &createdTask.Status.Conditions[i]
-					break
-				}
-			}
-			Expect(readyCondition).ShouldNot(BeNil())
-			Expect(readyCondition.Message).Should(ContainSubstring("invalid JSON"))
-
-			By("Cleaning up")
-			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
-			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+			err := k8sClient.Create(ctx, agent)
+			Expect(err).Should(HaveOccurred(), "API server should reject invalid JSON in config")
 		})
 	})
 
@@ -1749,7 +1711,7 @@ var _ = Describe("TaskController", func() {
 					ExecutorImage:      "test-executor:latest",
 					WorkspaceDir:       "/workspace",
 					ServiceAccountName: "default",
-					Config:             &configJSON,
+					Config:             &runtime.RawExtension{Raw: []byte(configJSON)},
 					Skills: []kubeopenv1alpha1.SkillSource{
 						{
 							Name: "tools",
