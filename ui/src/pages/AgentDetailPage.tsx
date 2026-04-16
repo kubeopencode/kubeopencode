@@ -100,13 +100,12 @@ function ServerConnectCommands({ namespace, agentName }: { namespace: string; ag
 function ShareLinkSection({ namespace, name, shareStatus }: {
   namespace: string;
   name: string;
-  shareStatus?: { enabled: boolean; active: boolean; readOnly: boolean; expiresAt?: string; allowedIPs?: string[] };
+  shareStatus?: { enabled: boolean; active: boolean; expiresAt?: string; allowedIPs?: string[] };
 }) {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
-  const [readOnly, setReadOnly] = useState(shareStatus?.readOnly || false);
   const [expiresIn, setExpiresIn] = useState('');
   const [allowedIPs, setAllowedIPs] = useState(shareStatus?.allowedIPs?.join(', ') || '');
   const [copied, setCopied] = useState(false);
@@ -133,7 +132,6 @@ function ShareLinkSection({ namespace, name, shareStatus }: {
       } else {
         await api.updateAgentShare(namespace, name, {
           enabled: true,
-          readOnly,
           expiresIn: expiresIn || undefined,
           allowedIPs: allowedIPs ? allowedIPs.split(',').map(s => s.trim()).filter(Boolean) : undefined,
         });
@@ -151,7 +149,6 @@ function ShareLinkSection({ namespace, name, shareStatus }: {
     try {
       await api.updateAgentShare(namespace, name, {
         enabled: true,
-        readOnly,
         expiresIn: expiresIn || undefined,
         allowedIPs: allowedIPs ? allowedIPs.split(',').map(s => s.trim()).filter(Boolean) : undefined,
       });
@@ -197,10 +194,6 @@ function ShareLinkSection({ namespace, name, shareStatus }: {
           </p>
           {/* Config options for first-time enable */}
           <div className="mt-3 space-y-2">
-            <label className="flex items-center gap-2 text-xs text-stone-600">
-              <input type="checkbox" checked={readOnly} onChange={e => setReadOnly(e.target.checked)} className="rounded border-stone-300" />
-              Read-only (view only)
-            </label>
             <div>
               <label className="text-xs text-stone-500">Expires in</label>
               <input
@@ -232,11 +225,6 @@ function ShareLinkSection({ namespace, name, shareStatus }: {
               <span className="text-xs font-medium text-emerald-800">
                 {shareToken?.active ? 'Active' : 'Inactive'}
               </span>
-              {shareStatus?.readOnly && (
-                <span className="px-1.5 py-0.5 text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded">
-                  READ-ONLY
-                </span>
-              )}
               {shareStatus?.expiresAt && (
                 <span className="text-[10px] text-stone-500">
                   Expires: {new Date(shareStatus.expiresAt).toLocaleString()}
@@ -292,10 +280,6 @@ function ShareLinkSection({ namespace, name, shareStatus }: {
 
           {showConfig && (
             <div className="bg-stone-50 rounded-lg p-4 border border-stone-100 space-y-3">
-              <label className="flex items-center gap-2 text-xs text-stone-600">
-                <input type="checkbox" checked={readOnly} onChange={e => setReadOnly(e.target.checked)} className="rounded border-stone-300" />
-                Read-only (view only)
-              </label>
               <div>
                 <label className="text-xs text-stone-500">New expiry (from now)</label>
                 <input

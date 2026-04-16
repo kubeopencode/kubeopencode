@@ -10,7 +10,6 @@ import '@xterm/xterm/css/xterm.css';
 interface ShareInfo {
   agentName: string;
   namespace: string;
-  readOnly: boolean;
   profile?: string;
 }
 
@@ -65,14 +64,13 @@ function ShareTerminalPage() {
     if (!shareInfo || !termRef.current || !token) return;
 
     const term = new Terminal({
-      cursorBlink: !shareInfo.readOnly,
+      cursorBlink: true,
       fontSize: 13,
       fontFamily: 'ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", monospace',
-      disableStdin: shareInfo.readOnly,
       theme: {
         background: '#0c0a09',
         foreground: '#e7e5e4',
-        cursor: shareInfo.readOnly ? '#78716c' : '#10b981',
+        cursor: '#10b981',
         selectionBackground: '#44403c',
       },
     });
@@ -124,15 +122,13 @@ function ShareTerminalPage() {
       term.write('\r\n\x1b[31m[Connection error]\x1b[0m\r\n');
     };
 
-    // Send keystrokes (only if not read-only)
-    if (!shareInfo.readOnly) {
-      term.onData((data) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          const encoder = new TextEncoder();
-          ws.send(encoder.encode(data));
-        }
-      });
-    }
+    // Send keystrokes
+    term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        const encoder = new TextEncoder();
+        ws.send(encoder.encode(data));
+      }
+    });
 
     // Send resize events
     term.onResize(({ cols, rows }) => {
@@ -208,11 +204,6 @@ function ShareTerminalPage() {
           </div>
           <span className="text-sm text-stone-300 font-mono">{shareInfo.agentName}</span>
           <span className="text-[11px] text-stone-600">{shareInfo.namespace}</span>
-          {shareInfo.readOnly && (
-            <span className="px-1.5 py-0.5 text-[10px] font-medium text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded">
-              VIEW ONLY
-            </span>
-          )}
         </div>
         <div className="flex items-center space-x-1">
           <button

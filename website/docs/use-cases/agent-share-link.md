@@ -66,27 +66,7 @@ Post in Slack: *"QA review agent for feature-xyz is ready: https://kubeopencode.
 kubeoc agent unshare qa-review-agent -n qa
 ```
 
-## Scenario 2: Read-Only Demo for Stakeholders
-
-Share a view-only terminal for stakeholders to observe agent behavior without being able to interact.
-
-```yaml
-spec:
-  share:
-    enabled: true
-    readOnly: true                    # View-only — no keyboard input
-    expiresAt: "2026-04-15T18:00:00Z" # Expire after the demo
-```
-
-Or via CLI:
-
-```bash
-kubeoc agent share demo-agent -n demos --read-only --expires-in 4h
-```
-
-The consumer sees a "VIEW ONLY" badge on the terminal and cannot type.
-
-## Scenario 3: External Access with IP Restriction
+## Scenario 2: External Access with IP Restriction
 
 Grant access to external contractors while restricting to their office IP range.
 
@@ -102,7 +82,7 @@ spec:
 
 Access from any IP outside these ranges returns a `403 Forbidden` error.
 
-## Scenario 4: GitOps-Managed Shared Agent
+## Scenario 3: GitOps-Managed Shared Agent
 
 For teams using GitOps (Argo CD, Flux), the share configuration is declarative and version-controlled:
 
@@ -137,7 +117,6 @@ kubeoc agent share team-agent -n platform --show
 - The URL itself is the credential — treat it like a password
 - Use `expiresAt` to limit the window of access
 - Use `allowedIPs` when sharing with external parties
-- Use `readOnly` for demos and observation
 - Rotate tokens by disabling and re-enabling: `kubeoc agent unshare && kubeoc agent share`
 
 ### Networking

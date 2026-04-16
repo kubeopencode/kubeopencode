@@ -30,6 +30,11 @@ import (
 
 var shareLog = ctrl.Log.WithName("share")
 
+// shareValidationInterval is how often active share sessions re-check
+// whether the share link is still enabled. This ensures that disabling
+// a share link disconnects existing sessions promptly.
+const shareValidationInterval = 15 * time.Second
+
 // shareUpgrader allows cross-origin WebSocket connections since the token itself is the credential.
 var shareUpgrader = websocket.Upgrader{
 	CheckOrigin: func(_ *http.Request) bool { return true },
@@ -54,8 +59,7 @@ func NewShareHandler(k8sClient client.Client, clientset kubernetes.Interface, re
 
 // shareContext holds the resolved agent and share configuration for a validated token.
 type shareContext struct {
-	agent    *kubeopenv1alpha1.Agent
-	readOnly bool
+	agent *kubeopenv1alpha1.Agent
 }
 
 // resolveShareToken validates a share token and returns the associated agent.
@@ -114,8 +118,7 @@ func (h *ShareHandler) resolveShareToken(ctx context.Context, token string) (*sh
 		}
 
 		return &shareContext{
-			agent:    &agent,
-			readOnly: agent.Spec.Share.ReadOnly,
+			agent: &agent,
 		}, nil
 	}
 
@@ -188,7 +191,6 @@ func (h *ShareHandler) ServeShareInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, servertypes.ShareInfoResponse{
 		AgentName: sc.agent.Name,
 		Namespace: sc.agent.Namespace,
-		ReadOnly:  sc.readOnly,
 		Profile:   sc.agent.Spec.Profile,
 	})
 }
@@ -223,8 +225,7 @@ func (h *ShareHandler) ServeShareTerminal(w http.ResponseWriter, r *http.Request
 
 	shareLog.Info("share terminal session starting",
 		"agent", agent.Name, "namespace", agent.Namespace,
-		"pod", podName, "readOnly", sc.readOnly,
-		"clientIP", getClientIP(r))
+		"pod", podName, "clientIP", getClientIP(r))
 
 	// Upgrade to WebSocket
 	ws, err := shareUpgrader.Upgrade(w, r, nil)
@@ -244,6 +245,32 @@ func (h *ShareHandler) ServeShareTerminal(w http.ResponseWriter, r *http.Request
 	go controller.RunConnectionHeartbeat(sessionCtx, h.k8sClient, agent.Namespace, agent.Name, func(err error) {
 		shareLog.Error(err, "share heartbeat: failed to patch annotation", "agent", agent.Name)
 	})
+
+	// Periodically re-validate share status so that disabling a share link
+	// disconnects existing sessions promptly instead of waiting for idle timeout.
+	go func() {
+		ticker := time.NewTicker(shareValidationInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-sessionCtx.Done():
+				return
+			case <-ticker.C:
+				if _, err := h.resolveShareToken(sessionCtx, token); err != nil {
+					shareLog.Info("share terminal: share revoked, disconnecting session",
+						"agent", agent.Name, "reason", err.Error())
+					wsMu.Lock()
+					revokedMsg := "\r\n\x1b[31mShare link has been disabled. Disconnecting...\x1b[0m\r\n"
+					_ = ws.WriteMessage(websocket.BinaryMessage, []byte(revokedMsg))
+					_ = ws.WriteMessage(websocket.CloseMessage,
+						websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "share link revoked"))
+					wsMu.Unlock()
+					sessionCancel()
+					return
+				}
+			}
+		}
+	}()
 
 	// Build exec request using server's own ServiceAccount (not impersonated)
 	attachURL := fmt.Sprintf("http://localhost:%d", port)
@@ -279,10 +306,6 @@ func (h *ShareHandler) ServeShareTerminal(w http.ResponseWriter, r *http.Request
 					}
 				}
 			} else {
-				// In read-only mode, drop all stdin input
-				if sc.readOnly {
-					continue
-				}
 				select {
 				case inputCh <- append([]byte(nil), data...):
 				case <-sessionCtx.Done():
@@ -309,7 +332,7 @@ func (h *ShareHandler) ServeShareTerminal(w http.ResponseWriter, r *http.Request
 			VersionedParams(&corev1.PodExecOptions{
 				Container: containerName,
 				Command:   []string{"/tools/opencode", "attach", attachURL},
-				Stdin:     !sc.readOnly,
+				Stdin:     true,
 				Stdout:    true,
 				TTY:       true,
 			}, scheme.ParameterCodec)
@@ -355,12 +378,10 @@ func (h *ShareHandler) ServeShareTerminal(w http.ResponseWriter, r *http.Request
 		}()
 
 		streamOpts := remotecommand.StreamOptions{
+			Stdin:             pr,
 			Stdout:            wsWriter,
 			Tty:               true,
 			TerminalSizeQueue: sizeQueue,
-		}
-		if !sc.readOnly {
-			streamOpts.Stdin = pr
 		}
 
 		lastErr = executor.StreamWithContext(attemptCtx, streamOpts)

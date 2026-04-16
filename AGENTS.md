@@ -73,7 +73,7 @@ Agent always creates a Deployment + Service running `opencode serve`. Supports p
 
 ### Agent Share Link
 
-Agents support shareable terminal links for users without Kubernetes credentials. When `spec.share.enabled: true`, the controller generates a cryptographic token (32-byte, base64url) stored in a Secret `{agent-name}-share`. The server exposes a standalone terminal page at `/s/{token}` outside the auth middleware. Options: `expiresAt` (expiry time), `allowedIPs` (CIDR allowlist), `readOnly` (view-only terminal). CLI: `kubeoc agent share/unshare`. See ADR 0033.
+Agents support shareable terminal links for users without Kubernetes credentials. When `spec.share.enabled: true`, the controller generates a cryptographic token (32-byte, base64url) stored in a Secret `{agent-name}-share`. The server exposes a standalone terminal page at `/s/{token}` outside the auth middleware. Options: `expiresAt` (expiry time), `allowedIPs` (CIDR allowlist). CLI: `kubeoc agent share/unshare`. See ADR 0033.
 
 ### Task Stop
 

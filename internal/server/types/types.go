@@ -155,50 +155,63 @@ type GitSkillInfo struct {
 	Names      []string `json:"names,omitempty"`
 }
 
+// PluginInfo represents a plugin in API responses
+type PluginInfo struct {
+	Name    string                 `json:"name"`
+	Target  string                 `json:"target,omitempty"`
+	Options map[string]interface{} `json:"options,omitempty"`
+}
+
 // AgentResponse represents an agent in API responses
 type AgentResponse struct {
-	Name               string            `json:"name"`
-	Namespace          string            `json:"namespace"`
-	Profile            string            `json:"profile,omitempty"`
-	TemplateRef        *AgentReference   `json:"templateRef,omitempty"`
-	ExecutorImage      string            `json:"executorImage,omitempty"`
-	AgentImage         string            `json:"agentImage,omitempty"`
-	WorkspaceDir       string            `json:"workspaceDir,omitempty"`
-	ServiceAccountName string            `json:"serviceAccountName,omitempty"`
-	ContextsCount      int               `json:"contextsCount"`
-	CredentialsCount   int               `json:"credentialsCount"`
-	SkillsCount        int               `json:"skillsCount"`
-	MaxConcurrentTasks *int32            `json:"maxConcurrentTasks,omitempty"`
-	Quota              *QuotaInfo        `json:"quota,omitempty"`
-	Credentials        []CredentialInfo  `json:"credentials,omitempty"`
-	Contexts           []ContextItem     `json:"contexts,omitempty"`
-	Skills             []SkillInfo       `json:"skills,omitempty"`
-	CreatedAt          time.Time         `json:"createdAt"`
-	Labels             map[string]string `json:"labels,omitempty"`
-	Standby            *StandbyInfo      `json:"standby,omitempty"`
-	Share              *ShareStatusInfo  `json:"share,omitempty"`
-	Conditions         []Condition       `json:"conditions,omitempty"`
-	ServerStatus       *ServerStatusInfo `json:"serverStatus,omitempty"`
+	Name               string                 `json:"name"`
+	Namespace          string                 `json:"namespace"`
+	Profile            string                 `json:"profile,omitempty"`
+	TemplateRef        *AgentReference        `json:"templateRef,omitempty"`
+	ExecutorImage      string                 `json:"executorImage,omitempty"`
+	AgentImage         string                 `json:"agentImage,omitempty"`
+	WorkspaceDir       string                 `json:"workspaceDir,omitempty"`
+	ServiceAccountName string                 `json:"serviceAccountName,omitempty"`
+	ContextsCount      int                    `json:"contextsCount"`
+	CredentialsCount   int                    `json:"credentialsCount"`
+	SkillsCount        int                    `json:"skillsCount"`
+	PluginsCount       int                    `json:"pluginsCount"`
+	MaxConcurrentTasks *int32                 `json:"maxConcurrentTasks,omitempty"`
+	Quota              *QuotaInfo             `json:"quota,omitempty"`
+	Credentials        []CredentialInfo       `json:"credentials,omitempty"`
+	Contexts           []ContextItem          `json:"contexts,omitempty"`
+	Skills             []SkillInfo            `json:"skills,omitempty"`
+	Plugins            []PluginInfo           `json:"plugins,omitempty"`
+	Config             map[string]interface{} `json:"config,omitempty"`
+	CreatedAt          time.Time              `json:"createdAt"`
+	Labels             map[string]string      `json:"labels,omitempty"`
+	Standby            *StandbyInfo           `json:"standby,omitempty"`
+	Share              *ShareStatusInfo       `json:"share,omitempty"`
+	Conditions         []Condition            `json:"conditions,omitempty"`
+	ServerStatus       *ServerStatusInfo      `json:"serverStatus,omitempty"`
 }
 
 // AgentTemplateResponse represents an agent template in API responses
 type AgentTemplateResponse struct {
-	Name               string            `json:"name"`
-	Namespace          string            `json:"namespace"`
-	AgentImage         string            `json:"agentImage,omitempty"`
-	ExecutorImage      string            `json:"executorImage,omitempty"`
-	WorkspaceDir       string            `json:"workspaceDir,omitempty"`
-	ServiceAccountName string            `json:"serviceAccountName,omitempty"`
-	ContextsCount      int               `json:"contextsCount"`
-	CredentialsCount   int               `json:"credentialsCount"`
-	SkillsCount        int               `json:"skillsCount"`
-	Credentials        []CredentialInfo  `json:"credentials,omitempty"`
-	Contexts           []ContextItem     `json:"contexts,omitempty"`
-	Skills             []SkillInfo       `json:"skills,omitempty"`
-	CreatedAt          time.Time         `json:"createdAt"`
-	Labels             map[string]string `json:"labels,omitempty"`
-	Conditions         []Condition       `json:"conditions,omitempty"`
-	AgentCount         int               `json:"agentCount"`
+	Name               string                 `json:"name"`
+	Namespace          string                 `json:"namespace"`
+	AgentImage         string                 `json:"agentImage,omitempty"`
+	ExecutorImage      string                 `json:"executorImage,omitempty"`
+	WorkspaceDir       string                 `json:"workspaceDir,omitempty"`
+	ServiceAccountName string                 `json:"serviceAccountName,omitempty"`
+	ContextsCount      int                    `json:"contextsCount"`
+	CredentialsCount   int                    `json:"credentialsCount"`
+	SkillsCount        int                    `json:"skillsCount"`
+	PluginsCount       int                    `json:"pluginsCount"`
+	Credentials        []CredentialInfo       `json:"credentials,omitempty"`
+	Contexts           []ContextItem          `json:"contexts,omitempty"`
+	Skills             []SkillInfo            `json:"skills,omitempty"`
+	Plugins            []PluginInfo           `json:"plugins,omitempty"`
+	Config             map[string]interface{} `json:"config,omitempty"`
+	CreatedAt          time.Time              `json:"createdAt"`
+	Labels             map[string]string      `json:"labels,omitempty"`
+	Conditions         []Condition            `json:"conditions,omitempty"`
+	AgentCount         int                    `json:"agentCount"`
 }
 
 // AgentTemplateListResponse represents a list of agent templates
@@ -360,7 +373,6 @@ type ShareTokenResponse struct {
 	Active     bool       `json:"active"`
 	Token      string     `json:"token,omitempty"`
 	Path       string     `json:"path,omitempty"`
-	ReadOnly   bool       `json:"readOnly"`
 	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
 	AllowedIPs []string   `json:"allowedIPs,omitempty"`
 }
@@ -368,7 +380,6 @@ type ShareTokenResponse struct {
 // UpdateShareRequest is the request body for POST /agents/{name}/share
 type UpdateShareRequest struct {
 	Enabled    bool     `json:"enabled"`
-	ReadOnly   bool     `json:"readOnly,omitempty"`
 	ExpiresIn  string   `json:"expiresIn,omitempty"` // Go duration string (e.g., "24h")
 	AllowedIPs []string `json:"allowedIPs,omitempty"`
 }
@@ -377,7 +388,6 @@ type UpdateShareRequest struct {
 type ShareInfoResponse struct {
 	AgentName string `json:"agentName"`
 	Namespace string `json:"namespace"`
-	ReadOnly  bool   `json:"readOnly"`
 	Profile   string `json:"profile,omitempty"`
 }
 
@@ -388,7 +398,6 @@ type ShareStatusInfo struct {
 	SecretName string     `json:"secretName,omitempty"`
 	URL        string     `json:"url,omitempty"`
 	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
-	ReadOnly   bool       `json:"readOnly"`
 	AllowedIPs []string   `json:"allowedIPs,omitempty"`
 }
 

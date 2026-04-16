@@ -146,7 +146,6 @@ func newAgentShareCmd() *cobra.Command {
 		namespace  string
 		expiresIn  string
 		allowedIPs []string
-		readOnly   bool
 		show       bool
 	)
 
@@ -162,18 +161,17 @@ who need terminal access without Kubernetes credentials.
 Examples:
   kubeoc agent share my-agent -n test
   kubeoc agent share my-agent --expires-in 24h
-  kubeoc agent share my-agent --allowed-ips 10.0.0.0/8,192.168.1.0/24 --read-only
+  kubeoc agent share my-agent --allowed-ips 10.0.0.0/8,192.168.1.0/24
   kubeoc agent share my-agent --show`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAgentShare(cmd.Context(), namespace, args[0], expiresIn, allowedIPs, readOnly, show)
+			return runAgentShare(cmd.Context(), namespace, args[0], expiresIn, allowedIPs, show)
 		},
 	}
 
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Agent namespace")
 	cmd.Flags().StringVar(&expiresIn, "expires-in", "", "Expiry duration (e.g., 1h, 24h, 168h)")
 	cmd.Flags().StringSliceVar(&allowedIPs, "allowed-ips", nil, "Comma-separated CIDR ranges for IP allowlist")
-	cmd.Flags().BoolVar(&readOnly, "read-only", false, "Share terminal in read-only (view-only) mode")
 	cmd.Flags().BoolVar(&show, "show", false, "Show existing share link info without modifying")
 	return cmd
 }
@@ -200,7 +198,7 @@ Examples:
 	return cmd
 }
 
-func runAgentShare(ctx context.Context, namespace, agentName, expiresIn string, allowedIPs []string, readOnly, showOnly bool) error {
+func runAgentShare(ctx context.Context, namespace, agentName, expiresIn string, allowedIPs []string, showOnly bool) error {
 	cfg, err := getKubeConfig()
 	if err != nil {
 		return fmt.Errorf("cannot connect to cluster: %w", err)
@@ -227,7 +225,6 @@ func runAgentShare(ctx context.Context, namespace, agentName, expiresIn string, 
 	// Build share config
 	shareConfig := &kubeopenv1alpha1.ShareConfig{
 		Enabled:    true,
-		ReadOnly:   readOnly,
 		AllowedIPs: allowedIPs,
 	}
 
@@ -246,9 +243,6 @@ func runAgentShare(ctx context.Context, namespace, agentName, expiresIn string, 
 	}
 
 	fmt.Printf("Share link enabled for agent %s/%s\n", namespace, agentName)
-	if readOnly {
-		fmt.Println("Mode: read-only (view only)")
-	}
 	if len(allowedIPs) > 0 {
 		fmt.Printf("Allowed IPs: %v\n", allowedIPs)
 	}
@@ -294,9 +288,6 @@ func showShareInfo(ctx context.Context, k8sClient client.Client, agent *kubeopen
 
 	fmt.Printf("Agent:  %s/%s\n", agent.Namespace, agent.Name)
 	fmt.Printf("Active: %v\n", agent.Status.Share.Active)
-	if agent.Spec.Share.ReadOnly {
-		fmt.Println("Mode:   read-only")
-	}
 	fmt.Printf("Token:  %s\n", token)
 	fmt.Printf("Path:   /s/%s\n", token)
 	if agent.Status.Share.URL != "" {

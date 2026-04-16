@@ -37,7 +37,6 @@ type ShareConfig struct {
     Enabled    bool        `json:"enabled"`
     ExpiresAt  *metav1.Time `json:"expiresAt,omitempty"`
     AllowedIPs []string    `json:"allowedIPs,omitempty"`
-    ReadOnly   bool        `json:"readOnly,omitempty"`
 }
 
 type ShareStatus struct {
@@ -70,7 +69,7 @@ New routes **outside** the `/api/v1` auth middleware:
 | Route | Method | Purpose |
 |---|---|---|
 | `/s/{token}` | GET | Serve standalone terminal HTML page |
-| `/s/{token}/info` | GET | Return agent info (name, namespace, readOnly) |
+| `/s/{token}/info` | GET | Return agent info (name, namespace) |
 | `/s/{token}/terminal` | GET (WebSocket) | WebSocket terminal connection |
 
 ### Token Validation Flow
@@ -92,7 +91,7 @@ The share terminal handler differs from the existing terminal handler:
 | Auth | K8s Bearer Token + RBAC | Share Token (URL path) |
 | K8s Client | Impersonated user credentials | Server's own ServiceAccount |
 | Origin Check | Same-origin only | Cross-origin allowed (token is credential) |
-| Read-only | Not supported | Supported (drop stdin when readOnly=true) |
+| Read-only | Not supported | Not supported |
 | Audit | None | K8s Events on Agent |
 
 ### Standalone UI
@@ -100,7 +99,6 @@ The share terminal handler differs from the existing terminal handler:
 A new React page at route `/s/:token`:
 - Full-screen terminal (no admin Layout/sidebar)
 - Minimal header with agent name and connection status
-- Read-only badge when applicable
 - Connects WebSocket to `/s/{token}/terminal`
 
 ### Security
@@ -118,7 +116,7 @@ A new React page at route `/s/:token`:
 ### CLI Support
 
 ```bash
-kubeoc agent share <name> [--expires-in 24h] [--allowed-ips 10.0.0.0/8] [--read-only]
+kubeoc agent share <name> [--expires-in 24h] [--allowed-ips 10.0.0.0/8]
 kubeoc agent share <name> --show
 kubeoc agent unshare <name>
 ```
@@ -137,7 +135,6 @@ These commands patch the Agent spec declaratively.
 - Simple sharing model: one URL, no additional credentials
 - Declarative (GitOps-friendly) — share config lives in Agent spec
 - Automatic cleanup via OwnerReference
-- Read-only mode for safe observation
 - Audit trail via K8s Events
 
 ### Negative

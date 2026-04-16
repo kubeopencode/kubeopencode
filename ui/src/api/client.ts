@@ -162,7 +162,6 @@ export interface ShareStatusInfo {
   secretName?: string;
   url?: string;
   expiresAt?: string;
-  readOnly: boolean;
   allowedIPs?: string[];
 }
 
@@ -171,14 +170,12 @@ export interface ShareTokenResponse {
   active: boolean;
   token?: string;
   path?: string;
-  readOnly: boolean;
   expiresAt?: string;
   allowedIPs?: string[];
 }
 
 export interface UpdateShareRequest {
   enabled: boolean;
-  readOnly?: boolean;
   expiresIn?: string;
   allowedIPs?: string[];
 }

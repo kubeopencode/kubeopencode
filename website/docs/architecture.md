@@ -305,7 +305,6 @@ type ShareConfig struct {
     Enabled    bool       // Enable/disable the share link
     ExpiresAt  *Time      // Optional expiry time (link invalid after this)
     AllowedIPs []string   // Optional CIDR allowlist (empty = all IPs allowed)
-    ReadOnly   bool       // View-only terminal (stdin dropped)
 }
 
 // ProxyConfig configures HTTP/HTTPS proxy for all containers

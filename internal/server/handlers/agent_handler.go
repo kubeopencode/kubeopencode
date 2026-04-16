@@ -228,7 +228,6 @@ func agentToResponse(agent *kubeopenv1alpha1.Agent) types.AgentResponse {
 	if agent.Spec.Share != nil {
 		shareInfo := &types.ShareStatusInfo{
 			Enabled:    agent.Spec.Share.Enabled,
-			ReadOnly:   agent.Spec.Share.ReadOnly,
 			AllowedIPs: agent.Spec.Share.AllowedIPs,
 		}
 		if agent.Spec.Share.ExpiresAt != nil {
@@ -480,7 +479,6 @@ func (h *AgentHandler) GetShare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if agent.Spec.Share != nil {
-		resp.ReadOnly = agent.Spec.Share.ReadOnly
 		resp.AllowedIPs = agent.Spec.Share.AllowedIPs
 		if agent.Spec.Share.ExpiresAt != nil {
 			t := agent.Spec.Share.ExpiresAt.Time
@@ -535,7 +533,6 @@ func (h *AgentHandler) UpdateShare(w http.ResponseWriter, r *http.Request) {
 
 	shareConfig := &kubeopenv1alpha1.ShareConfig{
 		Enabled:    req.Enabled,
-		ReadOnly:   req.ReadOnly,
 		AllowedIPs: req.AllowedIPs,
 	}
 

@@ -65,7 +65,6 @@ spec:
     allowedIPs:                           # Only these IPs can access
       - "10.0.0.0/8"
       - "192.168.1.0/24"
-    readOnly: true                        # View-only terminal (no input)
 ```
 
 ### Field Reference
@@ -75,7 +74,6 @@ spec:
 | `enabled` | bool | `false` | Enable/disable the share link |
 | `expiresAt` | string | — | RFC3339 timestamp; link becomes invalid after this time |
 | `allowedIPs` | []string | — | CIDR ranges allowed to access; empty = all IPs |
-| `readOnly` | bool | `false` | When true, shared terminal is view-only (stdin dropped) |
 
 ## CLI Usage
 
@@ -84,7 +82,7 @@ spec:
 kubeoc agent share <agent-name> -n <namespace>
 
 # Enable with options
-kubeoc agent share <agent-name> --expires-in 24h --read-only
+kubeoc agent share <agent-name> --expires-in 24h
 kubeoc agent share <agent-name> --allowed-ips 10.0.0.0/8,192.168.1.0/24
 
 # Show existing share link info
@@ -100,7 +98,7 @@ kubeoc agent unshare <agent-name> -n <namespace>
 2. The token is stored in a Kubernetes Secret named `{agent-name}-share` with an OwnerReference to the Agent
 3. The **server** exposes three routes outside the auth middleware:
    - `GET /s/{token}` — Standalone terminal HTML page
-   - `GET /s/{token}/info` — Agent info (name, namespace, readOnly)
+   - `GET /s/{token}/info` — Agent info (name, namespace)
    - `GET /s/{token}/terminal` — WebSocket terminal connection
 4. The terminal connection uses the **server's own ServiceAccount** for pod exec (no user credentials needed)
 5. When share is disabled, the Secret is deleted and the token becomes invalid immediately
@@ -149,7 +147,6 @@ The `ShareReady` condition reflects the current state:
 | **Token scope** | Only grants terminal access — no API operations |
 | **IP restriction** | Optional CIDR allowlist via `allowedIPs` |
 | **Expiry** | Optional time-based expiration via `expiresAt` |
-| **Read-only** | Optional view-only mode — stdin is dropped server-side |
 | **Rate limiting** | Server throttles concurrent share requests |
 | **Cleanup** | Secret has OwnerReference — deleted when Agent is deleted |
 | **Audit** | Terminal access logged via Kubernetes Events on the Agent |

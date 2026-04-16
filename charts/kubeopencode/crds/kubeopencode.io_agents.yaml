@@ -2609,7 +2609,6 @@ spec:
                     share:
                       enabled: true
                       expiresAt: "2026-05-01T00:00:00Z"
-                      readOnly: true
                 properties:
                   allowedIPs:
                     description: |-
@@ -2635,11 +2634,6 @@ spec:
                       The token Secret is retained (not deleted) so re-enabling with a new expiresAt reuses the same token.
                     format: date-time
                     type: string
-                  readOnly:
-                    description: |-
-                      ReadOnly when true, the shared terminal is view-only.
-                      Users can see the terminal output but cannot send input (stdin is dropped).
-                    type: boolean
                 required:
                 - enabled
                 type: object

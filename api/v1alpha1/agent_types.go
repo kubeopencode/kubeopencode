@@ -488,7 +488,6 @@ type AgentSpec struct {
 	//   share:
 	//     enabled: true
 	//     expiresAt: "2026-05-01T00:00:00Z"
-	//     readOnly: true
 	// +optional
 	Share *ShareConfig `json:"share,omitempty"`
 }
@@ -603,11 +602,6 @@ type ShareConfig struct {
 	//   allowedIPs: ["10.0.0.0/8", "192.168.1.0/24"]
 	// +optional
 	AllowedIPs []string `json:"allowedIPs,omitempty"`
-
-	// ReadOnly when true, the shared terminal is view-only.
-	// Users can see the terminal output but cannot send input (stdin is dropped).
-	// +optional
-	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
 // ShareStatus represents the observed state of the share link feature.
