@@ -1308,6 +1308,11 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		agentContainer.Lifecycle = cfg.podSpec.Lifecycle
 	}
 
+	// Apply extra volume mounts to the agent container
+	if cfg.podSpec != nil && len(cfg.podSpec.ExtraVolumeMounts) > 0 {
+		agentContainer.VolumeMounts = append(agentContainer.VolumeMounts, cfg.podSpec.ExtraVolumeMounts...)
+	}
+
 	// Apply default security context to init containers
 	for i := range initContainers {
 		if initContainers[i].SecurityContext == nil {
@@ -1317,6 +1322,11 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 
 	// Build containers list
 	containers := []corev1.Container{agentContainer}
+
+	// Add extra volumes from PodSpec
+	if cfg.podSpec != nil && len(cfg.podSpec.ExtraVolumes) > 0 {
+		volumes = append(volumes, cfg.podSpec.ExtraVolumes...)
+	}
 
 	// Build PodSpec with scheduling configuration
 	podSpec := corev1.PodSpec{

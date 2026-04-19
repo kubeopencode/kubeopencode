@@ -3047,3 +3047,120 @@ func TestBuildPodSecurityContext(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildPod_WithExtraVolumesAndMounts(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	t.Run("extra volumes and mounts are applied", func(t *testing.T) {
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+			podSpec: &kubeopenv1alpha1.AgentPodSpec{
+				ExtraVolumes: []corev1.Volume{
+					{
+						Name: "shared-skills",
+						VolumeSource: corev1.VolumeSource{
+							NFS: &corev1.NFSVolumeSource{
+								Server: "nfs.example.com",
+								Path:   "/exports/skills",
+							},
+						},
+					},
+					{
+						Name: "config-data",
+						VolumeSource: corev1.VolumeSource{
+							ConfigMap: &corev1.ConfigMapVolumeSource{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "my-config",
+								},
+							},
+						},
+					},
+				},
+				ExtraVolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "shared-skills",
+						MountPath: "/workspace/.opencode/skills",
+						ReadOnly:  true,
+					},
+					{
+						Name:      "config-data",
+						MountPath: "/etc/myconfig",
+						ReadOnly:  true,
+					},
+				},
+			},
+		}
+
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+		// Verify extra volumes are in pod spec
+		volumeNames := make(map[string]bool)
+		for _, vol := range pod.Spec.Volumes {
+			volumeNames[vol.Name] = true
+		}
+		if !volumeNames["shared-skills"] {
+			t.Error("expected 'shared-skills' volume in pod spec")
+		}
+		if !volumeNames["config-data"] {
+			t.Error("expected 'config-data' volume in pod spec")
+		}
+		// Controller-managed volumes should still be present
+		if !volumeNames["tools"] {
+			t.Error("expected 'tools' volume to still be present")
+		}
+		if !volumeNames["workspace"] {
+			t.Error("expected 'workspace' volume to still be present")
+		}
+
+		// Verify extra volume mounts are on the agent container
+		container := pod.Spec.Containers[0]
+		mountPaths := make(map[string]string) // name -> mountPath
+		for _, vm := range container.VolumeMounts {
+			mountPaths[vm.Name] = vm.MountPath
+		}
+		if mountPaths["shared-skills"] != "/workspace/.opencode/skills" {
+			t.Errorf("expected 'shared-skills' mount at /workspace/.opencode/skills, got %q", mountPaths["shared-skills"])
+		}
+		if mountPaths["config-data"] != "/etc/myconfig" {
+			t.Errorf("expected 'config-data' mount at /etc/myconfig, got %q", mountPaths["config-data"])
+		}
+
+		// Verify extra volume mounts are NOT on init containers
+		for _, initC := range pod.Spec.InitContainers {
+			for _, vm := range initC.VolumeMounts {
+				if vm.Name == "shared-skills" || vm.Name == "config-data" {
+					t.Errorf("extra volume mount %q should not be on init container %q", vm.Name, initC.Name)
+				}
+			}
+		}
+	})
+
+	t.Run("no extra volumes when podSpec is nil", func(t *testing.T) {
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+		}
+
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+		// Only controller-managed volumes should be present
+		for _, vol := range pod.Spec.Volumes {
+			if vol.Name == "shared-skills" || vol.Name == "config-data" {
+				t.Errorf("unexpected extra volume %q when podSpec is nil", vol.Name)
+			}
+		}
+	})
+}

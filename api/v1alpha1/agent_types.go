@@ -750,6 +750,41 @@ type AgentPodSpec struct {
 	// See: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/
 	// +optional
 	Lifecycle *corev1.Lifecycle `json:"lifecycle,omitempty"`
+
+	// ExtraVolumes defines additional volumes to add to the agent pod.
+	// These volumes are appended to the pod's volume list alongside
+	// the controller-managed volumes (tools, workspace, etc.).
+	//
+	// Use this to mount ConfigMaps, Secrets, PVCs, NFS shares, or any other
+	// Kubernetes volume types into agent pods. Combined with ExtraVolumeMounts,
+	// this enables scenarios like:
+	//   - Mounting shared skills from a PVC or NFS share
+	//   - Providing configuration files from ConfigMaps
+	//   - Attaching external storage for large datasets
+	//
+	// Example — mount shared skills from NFS:
+	//   extraVolumes:
+	//     - name: shared-skills
+	//       nfs:
+	//         server: nfs.example.com
+	//         path: /exports/skills
+	//
+	// +optional
+	ExtraVolumes []corev1.Volume `json:"extraVolumes,omitempty"`
+
+	// ExtraVolumeMounts defines additional volume mounts for the executor (worker) container.
+	// Each mount must reference a volume defined in ExtraVolumes by name.
+	//
+	// Mounts are applied to the main executor container only (not init containers).
+	//
+	// Example — mount shared skills into the OpenCode skills directory:
+	//   extraVolumeMounts:
+	//     - name: shared-skills
+	//       mountPath: /workspace/.opencode/skills
+	//       readOnly: true
+	//
+	// +optional
+	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
 }
 
 // PodScheduling defines scheduling configuration for agent pods.

@@ -2018,3 +2018,104 @@ func TestBuildServerDeployment_WithoutLifecycle(t *testing.T) {
 		t.Errorf("expected Lifecycle to be nil when not configured, got %v", container.Lifecycle)
 	}
 }
+
+func TestBuildServerDeployment_WithExtraVolumesAndMounts(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			Port: 4096,
+		},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		podSpec: &kubeopenv1alpha1.AgentPodSpec{
+			ExtraVolumes: []corev1.Volume{
+				{
+					Name: "shared-skills",
+					VolumeSource: corev1.VolumeSource{
+						NFS: &corev1.NFSVolumeSource{
+							Server: "nfs.example.com",
+							Path:   "/exports/skills",
+						},
+					},
+				},
+			},
+			ExtraVolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "shared-skills",
+					MountPath: "/workspace/.opencode/skills",
+					ReadOnly:  true,
+				},
+			},
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+
+	// Verify extra volumes are in deployment pod spec
+	volumeNames := make(map[string]bool)
+	for _, vol := range deployment.Spec.Template.Spec.Volumes {
+		volumeNames[vol.Name] = true
+	}
+	if !volumeNames["shared-skills"] {
+		t.Error("expected 'shared-skills' volume in deployment pod spec")
+	}
+	// Controller-managed volumes should still be present
+	if !volumeNames["tools"] {
+		t.Error("expected 'tools' volume to still be present")
+	}
+	if !volumeNames["workspace"] {
+		t.Error("expected 'workspace' volume to still be present")
+	}
+
+	// Verify extra volume mounts are on the server container
+	container := deployment.Spec.Template.Spec.Containers[0]
+	mountPaths := make(map[string]string)
+	for _, vm := range container.VolumeMounts {
+		mountPaths[vm.Name] = vm.MountPath
+	}
+	if mountPaths["shared-skills"] != "/workspace/.opencode/skills" {
+		t.Errorf("expected 'shared-skills' mount at /workspace/.opencode/skills, got %q", mountPaths["shared-skills"])
+	}
+
+	// Verify extra volume mounts are NOT on init containers
+	for _, initC := range deployment.Spec.Template.Spec.InitContainers {
+		for _, vm := range initC.VolumeMounts {
+			if vm.Name == "shared-skills" {
+				t.Errorf("extra volume mount %q should not be on init container %q", vm.Name, initC.Name)
+			}
+		}
+	}
+}
+
+func TestBuildServerDeployment_WithoutExtraVolumes(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			Port: 4096,
+		},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+
+	for _, vol := range deployment.Spec.Template.Spec.Volumes {
+		if vol.Name == "shared-skills" {
+			t.Errorf("unexpected extra volume %q when podSpec is nil", vol.Name)
+		}
+	}
+}

@@ -581,6 +581,11 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		container.Lifecycle = agentCfg.podSpec.Lifecycle
 	}
 
+	// Apply extra volume mounts to the server container
+	if agentCfg.podSpec != nil && len(agentCfg.podSpec.ExtraVolumeMounts) > 0 {
+		container.VolumeMounts = append(container.VolumeMounts, agentCfg.podSpec.ExtraVolumeMounts...)
+	}
+
 	// Apply default security context to init containers
 	for i := range initContainers {
 		if initContainers[i].SecurityContext == nil {
@@ -615,6 +620,11 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 			}
 			sidecars = append(sidecars, sidecar)
 		}
+	}
+
+	// Add extra volumes from PodSpec
+	if agentCfg.podSpec != nil && len(agentCfg.podSpec.ExtraVolumes) > 0 {
+		volumes = append(volumes, agentCfg.podSpec.ExtraVolumes...)
 	}
 
 	// Build pod template spec
