@@ -2119,3 +2119,183 @@ func TestBuildServerDeployment_WithoutExtraVolumes(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildServerDeployment_WithPlugins(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			Port: 4096,
+		},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		plugins: []kubeopenv1alpha1.PluginSpec{
+			{Name: "@example/my-plugin", Target: "server"},
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+	podSpec := deployment.Spec.Template.Spec
+
+	// Should have plugin-init container
+	hasPluginInit := false
+	for _, c := range podSpec.InitContainers {
+		if c.Name == "plugin-init" {
+			hasPluginInit = true
+		}
+	}
+	if !hasPluginInit {
+		t.Error("expected plugin-init container in Deployment")
+	}
+
+	// Should have plugins volume
+	hasPluginsVolume := false
+	for _, v := range podSpec.Volumes {
+		if v.Name == PluginsVolumeName {
+			hasPluginsVolume = true
+		}
+	}
+	if !hasPluginsVolume {
+		t.Error("expected plugins volume in Deployment")
+	}
+
+	// Main container should have plugins mount (read-only)
+	mainContainer := podSpec.Containers[0]
+	hasPluginsMount := false
+	for _, vm := range mainContainer.VolumeMounts {
+		if vm.Name == PluginsVolumeName {
+			hasPluginsMount = true
+			if !vm.ReadOnly {
+				t.Error("plugins mount should be read-only on main container")
+			}
+		}
+	}
+	if !hasPluginsMount {
+		t.Error("expected plugins volume mount on main container")
+	}
+}
+
+func TestBuildServerDeployment_WithTUIPlugins(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			Port: 4096,
+		},
+	}
+
+	t.Run("TUI plugin sets OPENCODE_TUI_CONFIG", func(t *testing.T) {
+		cfg := agentConfig{
+			executorImage: "test-executor:v1.0.0",
+			agentImage:    "test-agent:v1.0.0",
+			workspaceDir:  "/workspace",
+			plugins: []kubeopenv1alpha1.PluginSpec{
+				{Name: "@example/tui-plugin", Target: "tui"},
+			},
+		}
+		deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+		mainContainer := deployment.Spec.Template.Spec.Containers[0]
+		hasTUIConfig := false
+		for _, env := range mainContainer.Env {
+			if env.Name == OpenCodeTUIConfigEnvVar {
+				hasTUIConfig = true
+				if env.Value != OpenCodeTUIConfigPath {
+					t.Errorf("OPENCODE_TUI_CONFIG = %q, want %q", env.Value, OpenCodeTUIConfigPath)
+				}
+			}
+		}
+		if !hasTUIConfig {
+			t.Error("expected OPENCODE_TUI_CONFIG for TUI plugins")
+		}
+	})
+
+	t.Run("server-only plugins do not set OPENCODE_TUI_CONFIG", func(t *testing.T) {
+		cfg := agentConfig{
+			executorImage: "test-executor:v1.0.0",
+			agentImage:    "test-agent:v1.0.0",
+			workspaceDir:  "/workspace",
+			plugins: []kubeopenv1alpha1.PluginSpec{
+				{Name: "@example/server-plugin", Target: "server"},
+			},
+		}
+		deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+		mainContainer := deployment.Spec.Template.Spec.Containers[0]
+		for _, env := range mainContainer.Env {
+			if env.Name == OpenCodeTUIConfigEnvVar {
+				t.Error("OPENCODE_TUI_CONFIG should not be set for server-only plugins")
+			}
+		}
+	})
+}
+
+func TestBuildServerDeployment_WithGitWorkspaceRoot(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			Port: 4096,
+		},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+	}
+
+	gitMounts := []gitMount{
+		{
+			contextName: "context",
+			repository:  "https://github.com/example/repo.git",
+			ref:         "main",
+			mountPath:   "/workspace", // same as workspaceDir
+			depth:       1,
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, gitMounts, nil)
+	podSpec := deployment.Spec.Template.Spec
+
+	// git-init container should have GIT_WORKSPACE_DIR
+	var gitInit *corev1.Container
+	for i := range podSpec.InitContainers {
+		if podSpec.InitContainers[i].Name == "git-init-0" {
+			gitInit = &podSpec.InitContainers[i]
+			break
+		}
+	}
+	if gitInit == nil {
+		t.Fatal("expected git-init-0 container")
+	}
+
+	hasWorkspaceDir := false
+	for _, env := range gitInit.Env {
+		if env.Name == "GIT_WORKSPACE_DIR" {
+			hasWorkspaceDir = true
+			if env.Value != "/workspace" {
+				t.Errorf("GIT_WORKSPACE_DIR = %q, want /workspace", env.Value)
+			}
+		}
+	}
+	if !hasWorkspaceDir {
+		t.Error("expected GIT_WORKSPACE_DIR on git-init for workspace root mount")
+	}
+
+	// Should NOT have separate git volume mount on main container at /workspace
+	mainContainer := podSpec.Containers[0]
+	for _, vm := range mainContainer.VolumeMounts {
+		if vm.Name == "git-context-0" && vm.MountPath == "/workspace" {
+			t.Error("workspace root git mount should not add separate volume mount on main container")
+		}
+	}
+}

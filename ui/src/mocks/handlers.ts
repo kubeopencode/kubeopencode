@@ -284,6 +284,61 @@ export const handlers = [
     return HttpResponse.json(newAgent, { status: 201 });
   }),
 
+  http.delete(`${API_BASE}/namespaces/:namespace/agents/:name`, ({ params }) => {
+    const { namespace, name } = params;
+    const agent = mockAgents.find((a) => a.namespace === namespace && a.name === name);
+    if (!agent) {
+      return HttpResponse.json({ error: 'agent not found' }, { status: 404 });
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.put(`${API_BASE}/namespaces/:namespace/agents/:name`, async ({ params, request }) => {
+    const { namespace, name } = params;
+    const agent = mockAgents.find((a) => a.namespace === namespace && a.name === name);
+    if (!agent) {
+      return HttpResponse.json({ error: 'agent not found' }, { status: 404 });
+    }
+    const body = await request.text();
+    return new HttpResponse(body, { headers: { 'Content-Type': 'text/plain' } });
+  }),
+
+  http.get(`${API_BASE}/namespaces/:namespace/agents/:name/share`, ({ params }) => {
+    const { namespace, name } = params;
+    const agent = mockAgents.find((a) => a.namespace === namespace && a.name === name);
+    if (!agent) {
+      return HttpResponse.json({ error: 'agent not found' }, { status: 404 });
+    }
+    return HttpResponse.json({
+      enabled: agent.share?.enabled || false,
+      url: agent.share?.url || '',
+      active: agent.share?.active || false,
+    });
+  }),
+
+  http.post(`${API_BASE}/namespaces/:namespace/agents/:name/share`, async ({ params, request }) => {
+    const { namespace, name } = params;
+    const agent = mockAgents.find((a) => a.namespace === namespace && a.name === name);
+    if (!agent) {
+      return HttpResponse.json({ error: 'agent not found' }, { status: 404 });
+    }
+    const body = await request.json() as Record<string, unknown>;
+    return HttpResponse.json({
+      enabled: body.enabled ?? true,
+      url: `http://localhost:2746/s/mock-token-${name}`,
+      active: true,
+    });
+  }),
+
+  http.delete(`${API_BASE}/namespaces/:namespace/agents/:name/share`, ({ params }) => {
+    const { namespace, name } = params;
+    const agent = mockAgents.find((a) => a.namespace === namespace && a.name === name);
+    if (!agent) {
+      return HttpResponse.json({ error: 'agent not found' }, { status: 404 });
+    }
+    return HttpResponse.json({ enabled: false, url: '', active: false });
+  }),
+
   http.post(`${API_BASE}/namespaces/:namespace/agents/:name/suspend`, ({ params }) => {
     const { namespace, name } = params;
     const agent = mockAgents.find((a) => a.namespace === namespace && a.name === name);
@@ -454,6 +509,25 @@ export const handlers = [
       createdAt: new Date().toISOString(),
     };
     return HttpResponse.json(newTemplate, { status: 201 });
+  }),
+
+  http.delete(`${API_BASE}/namespaces/:namespace/agenttemplates/:name`, ({ params }) => {
+    const { namespace, name } = params;
+    const template = mockAgentTemplates.find((t) => t.namespace === namespace && t.name === name);
+    if (!template) {
+      return HttpResponse.json({ error: 'agent template not found' }, { status: 404 });
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.put(`${API_BASE}/namespaces/:namespace/agenttemplates/:name`, async ({ params, request }) => {
+    const { namespace, name } = params;
+    const template = mockAgentTemplates.find((t) => t.namespace === namespace && t.name === name);
+    if (!template) {
+      return HttpResponse.json({ error: 'agent template not found' }, { status: 404 });
+    }
+    const body = await request.text();
+    return new HttpResponse(body, { headers: { 'Content-Type': 'text/plain' } });
   }),
 
   http.get(`${API_BASE}/namespaces/:namespace/agenttemplates/:name`, ({ params, request }) => {

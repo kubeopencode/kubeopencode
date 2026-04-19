@@ -363,6 +363,102 @@ var _ = Describe("CronTaskController", func() {
 		})
 	})
 
+	Context("ConcurrencyPolicy Replace", func() {
+		It("Should stop active Tasks when a new scheduled Task is created", func() {
+			cronTaskName := fmt.Sprintf("ct-replace-%d", time.Now().UnixNano())
+			cronTask := newCronTask(cronTaskName, everyMinuteSchedule)
+			cronTask.Spec.ConcurrencyPolicy = kubeopenv1alpha1.ReplaceConcurrent
+
+			By("Creating the CronTask with everyMinuteSchedule")
+			Expect(k8sClient.Create(ctx, cronTask)).Should(Succeed())
+
+			By("Waiting for the first child Task to be created via schedule")
+			taskList := &kubeopenv1alpha1.TaskList{}
+			Eventually(func() int {
+				if err := k8sClient.List(ctx, taskList,
+					client.InNamespace(cronTaskNamespace),
+					client.MatchingLabels{kubeopenv1alpha1.CronTaskLabelKey: cronTaskName},
+				); err != nil {
+					return 0
+				}
+				return len(taskList.Items)
+			}, cronTaskTimeout, interval).Should(BeNumerically(">=", 1))
+
+			firstTaskName := taskList.Items[0].Name
+
+			By("Waiting for the second child Task via next schedule (Replace should stop the first)")
+			Eventually(func() int {
+				if err := k8sClient.List(ctx, taskList,
+					client.InNamespace(cronTaskNamespace),
+					client.MatchingLabels{kubeopenv1alpha1.CronTaskLabelKey: cronTaskName},
+				); err != nil {
+					return 0
+				}
+				return len(taskList.Items)
+			}, cronTaskTimeout, interval).Should(BeNumerically(">=", 2))
+
+			By("Verifying the first Task has stop annotation from Replace policy")
+			firstTask := &kubeopenv1alpha1.Task{}
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: firstTaskName, Namespace: cronTaskNamespace}, firstTask); err != nil {
+					return false
+				}
+				return firstTask.Annotations != nil && firstTask.Annotations["kubeopencode.io/stop"] == "true"
+			}, cronTaskTimeout, interval).Should(BeTrue())
+
+			By("Cleaning up")
+			lookup := types.NamespacedName{Name: cronTaskName, Namespace: cronTaskNamespace}
+			created := &kubeopenv1alpha1.CronTask{}
+			Expect(k8sClient.Get(ctx, lookup, created)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, created)).Should(Succeed())
+		})
+	})
+
+	Context("ConcurrencyPolicy Allow", func() {
+		It("Should allow multiple Tasks to run concurrently", func() {
+			cronTaskName := fmt.Sprintf("ct-allow-%d", time.Now().UnixNano())
+			cronTask := newCronTask(cronTaskName, everyMinuteSchedule)
+			cronTask.Spec.ConcurrencyPolicy = kubeopenv1alpha1.AllowConcurrent
+
+			By("Creating the CronTask with everyMinuteSchedule")
+			Expect(k8sClient.Create(ctx, cronTask)).Should(Succeed())
+
+			By("Waiting for the first child Task via schedule")
+			taskList := &kubeopenv1alpha1.TaskList{}
+			Eventually(func() int {
+				if err := k8sClient.List(ctx, taskList,
+					client.InNamespace(cronTaskNamespace),
+					client.MatchingLabels{kubeopenv1alpha1.CronTaskLabelKey: cronTaskName},
+				); err != nil {
+					return 0
+				}
+				return len(taskList.Items)
+			}, cronTaskTimeout, interval).Should(BeNumerically(">=", 1))
+
+			By("Waiting for the second child Task via next schedule (Allow should keep the first running)")
+			Eventually(func() int {
+				if err := k8sClient.List(ctx, taskList,
+					client.InNamespace(cronTaskNamespace),
+					client.MatchingLabels{kubeopenv1alpha1.CronTaskLabelKey: cronTaskName},
+				); err != nil {
+					return 0
+				}
+				return len(taskList.Items)
+			}, cronTaskTimeout, interval).Should(BeNumerically(">=", 2))
+
+			By("Verifying no Tasks have stop annotation (Allow policy)")
+			for _, task := range taskList.Items {
+				Expect(task.Annotations).ShouldNot(HaveKey("kubeopencode.io/stop"))
+			}
+
+			By("Cleaning up")
+			lookup := types.NamespacedName{Name: cronTaskName, Namespace: cronTaskNamespace}
+			created := &kubeopenv1alpha1.CronTask{}
+			Expect(k8sClient.Get(ctx, lookup, created)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, created)).Should(Succeed())
+		})
+	})
+
 	Context("OwnerReference setup", func() {
 		It("Should set correct ownerReference on child Tasks", func() {
 			cronTaskName := fmt.Sprintf("ct-gc-%d", time.Now().UnixNano())

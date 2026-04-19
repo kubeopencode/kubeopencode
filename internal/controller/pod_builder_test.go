@@ -3164,3 +3164,384 @@ func TestBuildPod_WithExtraVolumesAndMounts(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildPluginInitContainer(t *testing.T) {
+	plugins := []kubeopenv1alpha1.PluginSpec{
+		{Name: "@example/plugin-a"},
+		{Name: "@example/plugin-b"},
+		{Name: "@example/plugin-a"}, // duplicate should be deduped
+	}
+	sysCfg := defaultSystemConfig()
+
+	container := buildPluginInitContainer(plugins, sysCfg)
+
+	if container.Name != "plugin-init" {
+		t.Errorf("name = %q, want plugin-init", container.Name)
+	}
+	if container.Image != DefaultKubeOpenCodeImage {
+		t.Errorf("image = %q, want %q", container.Image, DefaultKubeOpenCodeImage)
+	}
+	if len(container.Command) != 2 || container.Command[1] != "plugin-init" {
+		t.Errorf("command = %v, want [/kubeopencode plugin-init]", container.Command)
+	}
+
+	// Check env vars
+	var pluginPackages, pluginDir string
+	for _, env := range container.Env {
+		switch env.Name {
+		case "PLUGIN_PACKAGES":
+			pluginPackages = env.Value
+		case "PLUGIN_DIR":
+			pluginDir = env.Value
+		}
+	}
+	if pluginDir != DefaultPluginsMountBase {
+		t.Errorf("PLUGIN_DIR = %q, want %q", pluginDir, DefaultPluginsMountBase)
+	}
+	// Should contain 2 packages (deduped)
+	if !strings.Contains(pluginPackages, "@example/plugin-a") || !strings.Contains(pluginPackages, "@example/plugin-b") {
+		t.Errorf("PLUGIN_PACKAGES = %q, missing expected packages", pluginPackages)
+	}
+
+	// Check volume mounts
+	if len(container.VolumeMounts) != 1 || container.VolumeMounts[0].Name != PluginsVolumeName {
+		t.Errorf("expected single volume mount %q, got %v", PluginsVolumeName, container.VolumeMounts)
+	}
+}
+
+func TestBuildPod_WithPlugins(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeopenv1alpha1.TaskSpec{
+			TemplateRef: &kubeopenv1alpha1.AgentTemplateReference{Name: "test-template"},
+		},
+	}
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		plugins: []kubeopenv1alpha1.PluginSpec{
+			{Name: "@example/my-plugin", Target: "server"},
+		},
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+	// Should have a plugin-init container
+	hasPluginInit := false
+	for _, c := range pod.Spec.InitContainers {
+		if c.Name == "plugin-init" {
+			hasPluginInit = true
+		}
+	}
+	if !hasPluginInit {
+		t.Error("expected plugin-init container")
+	}
+
+	// Should have plugins volume
+	hasPluginsVolume := false
+	for _, v := range pod.Spec.Volumes {
+		if v.Name == PluginsVolumeName {
+			hasPluginsVolume = true
+			if v.EmptyDir == nil {
+				t.Error("plugins volume should be emptyDir")
+			}
+		}
+	}
+	if !hasPluginsVolume {
+		t.Error("expected plugins volume")
+	}
+
+	// Executor container should have plugins volume mount (read-only)
+	executor := pod.Spec.Containers[0]
+	hasPluginsMount := false
+	for _, vm := range executor.VolumeMounts {
+		if vm.Name == PluginsVolumeName {
+			hasPluginsMount = true
+			if !vm.ReadOnly {
+				t.Error("plugins mount on executor should be read-only")
+			}
+			if vm.MountPath != DefaultPluginsMountBase {
+				t.Errorf("plugins mount path = %q, want %q", vm.MountPath, DefaultPluginsMountBase)
+			}
+		}
+	}
+	if !hasPluginsMount {
+		t.Error("expected plugins volume mount on executor")
+	}
+}
+
+func TestBuildPod_WithTUIPlugins(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeopenv1alpha1.TaskSpec{
+			TemplateRef: &kubeopenv1alpha1.AgentTemplateReference{Name: "test-template"},
+		},
+	}
+
+	t.Run("TUI plugin sets OPENCODE_TUI_CONFIG", func(t *testing.T) {
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+			plugins: []kubeopenv1alpha1.PluginSpec{
+				{Name: "@example/tui-plugin", Target: "tui"},
+			},
+		}
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+		executor := pod.Spec.Containers[0]
+		hasTUIConfig := false
+		for _, env := range executor.Env {
+			if env.Name == OpenCodeTUIConfigEnvVar {
+				hasTUIConfig = true
+				if env.Value != OpenCodeTUIConfigPath {
+					t.Errorf("OPENCODE_TUI_CONFIG = %q, want %q", env.Value, OpenCodeTUIConfigPath)
+				}
+			}
+		}
+		if !hasTUIConfig {
+			t.Error("expected OPENCODE_TUI_CONFIG env var for TUI plugins")
+		}
+	})
+
+	t.Run("server-only plugins do not set OPENCODE_TUI_CONFIG", func(t *testing.T) {
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+			plugins: []kubeopenv1alpha1.PluginSpec{
+				{Name: "@example/server-plugin", Target: "server"},
+			},
+		}
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+		executor := pod.Spec.Containers[0]
+		for _, env := range executor.Env {
+			if env.Name == OpenCodeTUIConfigEnvVar {
+				t.Error("OPENCODE_TUI_CONFIG should not be set for server-only plugins")
+			}
+		}
+	})
+}
+
+func TestBuildPod_WithGitWorkspaceRoot(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeopenv1alpha1.TaskSpec{
+			TemplateRef: &kubeopenv1alpha1.AgentTemplateReference{Name: "test-template"},
+		},
+	}
+
+	t.Run("git context at workspace root uses GIT_WORKSPACE_DIR", func(t *testing.T) {
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+		}
+		gitMounts := []gitMount{
+			{
+				contextName: "context",
+				repository:  "https://github.com/example/repo.git",
+				ref:         "main",
+				mountPath:   "/workspace", // same as workspaceDir
+				depth:       1,
+			},
+		}
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, gitMounts, defaultSystemConfig(), "")
+
+		// The git-init container should have GIT_WORKSPACE_DIR env var
+		var gitInit *corev1.Container
+		for i := range pod.Spec.InitContainers {
+			if strings.HasPrefix(pod.Spec.InitContainers[i].Name, "git-init") {
+				gitInit = &pod.Spec.InitContainers[i]
+				break
+			}
+		}
+		if gitInit == nil {
+			t.Fatal("expected git-init container")
+		}
+		hasWorkspaceDir := false
+		for _, env := range gitInit.Env {
+			if env.Name == "GIT_WORKSPACE_DIR" {
+				hasWorkspaceDir = true
+				if env.Value != "/workspace" {
+					t.Errorf("GIT_WORKSPACE_DIR = %q, want /workspace", env.Value)
+				}
+			}
+		}
+		if !hasWorkspaceDir {
+			t.Error("expected GIT_WORKSPACE_DIR env var on git-init for workspace root mount")
+		}
+
+		// Workspace root mounts should have workspace volume on git-init
+		hasWorkspaceMount := false
+		for _, vm := range gitInit.VolumeMounts {
+			if vm.Name == WorkspaceVolumeName && vm.MountPath == "/workspace" {
+				hasWorkspaceMount = true
+			}
+		}
+		if !hasWorkspaceMount {
+			t.Error("expected workspace volume mount on git-init for workspace root merge")
+		}
+
+		// Executor should NOT have a separate git volume mount at /workspace
+		// (only the existing workspace volume)
+		executor := pod.Spec.Containers[0]
+		gitMountOnExecutor := false
+		for _, vm := range executor.VolumeMounts {
+			if strings.HasPrefix(vm.Name, "git-context") && vm.MountPath == "/workspace" {
+				gitMountOnExecutor = true
+			}
+		}
+		if gitMountOnExecutor {
+			t.Error("workspace root git mount should not add a separate volume mount on executor")
+		}
+	})
+
+	t.Run("git context at workspace root with repoPath sets GIT_REPO_SUBPATH", func(t *testing.T) {
+		cfg := agentConfig{
+			agentImage:         "test-opencode:v1.0.0",
+			executorImage:      "test-executor:v1.0.0",
+			workspaceDir:       "/workspace",
+			serviceAccountName: "test-sa",
+		}
+		gitMounts := []gitMount{
+			{
+				contextName: "context",
+				repository:  "https://github.com/example/repo.git",
+				ref:         "main",
+				mountPath:   "/workspace",
+				repoPath:    "src/app",
+				depth:       1,
+			},
+		}
+		pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, gitMounts, defaultSystemConfig(), "")
+
+		var gitInit *corev1.Container
+		for i := range pod.Spec.InitContainers {
+			if strings.HasPrefix(pod.Spec.InitContainers[i].Name, "git-init") {
+				gitInit = &pod.Spec.InitContainers[i]
+				break
+			}
+		}
+		if gitInit == nil {
+			t.Fatal("expected git-init container")
+		}
+		hasSubpath := false
+		for _, env := range gitInit.Env {
+			if env.Name == "GIT_REPO_SUBPATH" {
+				hasSubpath = true
+				if env.Value != "src/app" {
+					t.Errorf("GIT_REPO_SUBPATH = %q, want src/app", env.Value)
+				}
+			}
+		}
+		if !hasSubpath {
+			t.Error("expected GIT_REPO_SUBPATH env var when repoPath is set")
+		}
+	})
+}
+
+func TestBuildGitInitContainer_WithRecurseSubmodules(t *testing.T) {
+	gm := gitMount{
+		contextName:       "context",
+		repository:        "https://github.com/example/repo.git",
+		ref:               "main",
+		mountPath:         "/workspace/repo",
+		depth:             1,
+		recurseSubmodules: true,
+	}
+	container := buildGitInitContainer(gm, "git-context-0", 0, defaultSystemConfig())
+
+	hasRecurse := false
+	for _, env := range container.Env {
+		if env.Name == "GIT_RECURSE_SUBMODULES" {
+			hasRecurse = true
+			if env.Value != "true" {
+				t.Errorf("GIT_RECURSE_SUBMODULES = %q, want true", env.Value)
+			}
+		}
+	}
+	if !hasRecurse {
+		t.Error("expected GIT_RECURSE_SUBMODULES env var")
+	}
+}
+
+func TestBuildGitInitContainer_WithoutRecurseSubmodules(t *testing.T) {
+	gm := gitMount{
+		contextName:       "context",
+		repository:        "https://github.com/example/repo.git",
+		ref:               "main",
+		mountPath:         "/workspace/repo",
+		depth:             1,
+		recurseSubmodules: false,
+	}
+	container := buildGitInitContainer(gm, "git-context-0", 0, defaultSystemConfig())
+
+	for _, env := range container.Env {
+		if env.Name == "GIT_RECURSE_SUBMODULES" {
+			t.Error("GIT_RECURSE_SUBMODULES should not be set when recurseSubmodules is false")
+		}
+	}
+}
+
+func TestApplySystemDefaults(t *testing.T) {
+	t.Run("agent proxy nil inherits system proxy", func(t *testing.T) {
+		cfg := agentConfig{}
+		sys := systemConfig{
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy:  "http://proxy:8080",
+				HttpsProxy: "http://proxy:8443",
+			},
+		}
+		cfg.applySystemDefaults(sys)
+		if cfg.proxy == nil {
+			t.Fatal("expected proxy to be inherited from system")
+		}
+		if cfg.proxy.HttpProxy != "http://proxy:8080" {
+			t.Errorf("HttpProxy = %q, want http://proxy:8080", cfg.proxy.HttpProxy)
+		}
+	})
+
+	t.Run("agent proxy overrides system proxy", func(t *testing.T) {
+		cfg := agentConfig{
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://agent-proxy:9090",
+			},
+		}
+		sys := systemConfig{
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://system-proxy:8080",
+			},
+		}
+		cfg.applySystemDefaults(sys)
+		if cfg.proxy.HttpProxy != "http://agent-proxy:9090" {
+			t.Errorf("HttpProxy = %q, agent proxy should take precedence", cfg.proxy.HttpProxy)
+		}
+	})
+
+	t.Run("no system proxy leaves agent proxy nil", func(t *testing.T) {
+		cfg := agentConfig{}
+		sys := systemConfig{}
+		cfg.applySystemDefaults(sys)
+		if cfg.proxy != nil {
+			t.Error("proxy should remain nil when no system proxy")
+		}
+	})
+}
