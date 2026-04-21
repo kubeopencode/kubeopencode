@@ -34,7 +34,7 @@
 #   OPENCODE_VERSION is defined in agents/Makefile (single source of truth).
 #   When building via make, it is passed automatically as --build-arg.
 #   For standalone docker build, you must pass it explicitly:
-#     docker build --build-arg OPENCODE_VERSION=1.3.13 -t opencode .
+#     docker build --build-arg OPENCODE_VERSION=1.14.19 -t opencode .
 #
 
 FROM debian:bookworm-20260406-slim
