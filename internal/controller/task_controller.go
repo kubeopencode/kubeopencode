@@ -1320,9 +1320,14 @@ func (r *TaskReconciler) checkRetentionCleanup(ctx context.Context, namespace st
 		return nil
 	}
 
-	// Sort by CompletionTime (oldest first)
+	// Sort by CompletionTime (oldest first), then by name for deterministic order
 	sort.Slice(completedTasks, func(i, j int) bool {
-		return completedTasks[i].Status.CompletionTime.Before(completedTasks[j].Status.CompletionTime)
+		ti := completedTasks[i].Status.CompletionTime.Time
+		tj := completedTasks[j].Status.CompletionTime.Time
+		if ti.Equal(tj) {
+			return completedTasks[i].Name < completedTasks[j].Name
+		}
+		return ti.Before(tj)
 	})
 
 	// Delete excess Tasks (oldest first)
