@@ -252,7 +252,6 @@ func (r *CronTaskReconciler) parseSchedule(cronTask *kubeopenv1alpha1.CronTask) 
 		if err != nil {
 			return nil, fmt.Errorf("invalid timezone %q: %w", *cronTask.Spec.TimeZone, err)
 		}
-		parser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 		sched, err := parser.Parse(cronTask.Spec.Schedule)
 		if err != nil {
 			return nil, err
