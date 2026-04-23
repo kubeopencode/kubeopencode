@@ -447,7 +447,6 @@ func taskToResponse(task *kubeopenv1alpha1.Task) types.TaskResponse {
 		resp.Session = &types.SessionInfoResponse{
 			ID:    task.Status.Session.ID,
 			Title: task.Status.Session.Title,
-			URL:   task.Status.Session.URL,
 		}
 		if task.Status.Session.Summary != nil {
 			s := task.Status.Session.Summary

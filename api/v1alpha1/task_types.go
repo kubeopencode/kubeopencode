@@ -158,11 +158,6 @@ type SessionInfo struct {
 	// +optional
 	Title string `json:"title,omitempty"`
 
-	// URL is the direct API URL to the session on the Agent's OpenCode server.
-	// Format: http://<agent>.<namespace>.svc.cluster.local:<port>/session/<id>
-	// +optional
-	URL string `json:"url,omitempty"`
-
 	// Summary is populated when the Task completes with session statistics.
 	// +optional
 	Summary *SessionSummary `json:"summary,omitempty"`

@@ -109,7 +109,6 @@ type TaskResponse struct {
 type SessionInfoResponse struct {
 	ID      string                  `json:"id,omitempty"`
 	Title   string                  `json:"title,omitempty"`
-	URL     string                  `json:"url,omitempty"`
 	Summary *SessionSummaryResponse `json:"summary,omitempty"`
 }
 

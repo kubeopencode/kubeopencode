@@ -504,11 +504,6 @@ spec:
                       Title is the session title used when creating the session.
                       Format: "kubeopencode/<namespace>/<task-name>"
                     type: string
-                  url:
-                    description: |-
-                      URL is the direct API URL to the session on the Agent's OpenCode server.
-                      Format: http://<agent>.<namespace>.svc.cluster.local:<port>/session/<id>
-                    type: string
                 type: object
               startTime:
                 description: Start time

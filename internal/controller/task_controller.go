@@ -665,9 +665,8 @@ func (r *TaskReconciler) resolveSessionInfo(ctx context.Context, task *kubeopenv
 		return
 	}
 
-	// Populate session ID and URL
+	// Populate session ID
 	task.Status.Session.ID = session.ID
-	task.Status.Session.URL = fmt.Sprintf("%s/session/%s", serverURL, session.ID)
 	log.Info("resolved session for task", "sessionID", session.ID, "agent", agentName)
 
 	// Aggregate message stats (best-effort). Uses the already-fetched session

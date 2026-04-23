@@ -65,14 +65,14 @@ Add session information to `TaskExecutionStatus`:
 
 ```go
 type SessionInfo struct {
-    // SessionID is the OpenCode session ID (e.g., "ses_ff34a1b2...")
+    // ID is the OpenCode session ID (e.g., "ses_ff34a1b2...")
     // +optional
     ID string `json:"id,omitempty"`
 
-    // URL is the direct API URL to the session on the Agent's OpenCode server.
-    // Format: http://<agent>.<namespace>.svc.cluster.local:<port>/session/<id>
+    // Title is the session title used when creating the session.
+    // Format: "kubeopencode/<namespace>/<task-name>"
     // +optional
-    URL string `json:"url,omitempty"`
+    Title string `json:"title,omitempty"`
 }
 
 type TaskExecutionStatus struct {
