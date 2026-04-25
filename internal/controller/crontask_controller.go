@@ -22,6 +22,12 @@ import (
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
 
+const (
+	// MaxMissedSchedules is the maximum number of missed cron schedules to track
+	// before resetting. Prevents infinite loops during clock skew or long suspends.
+	MaxMissedSchedules = 100
+)
+
 // CronTaskReconciler reconciles a CronTask object
 type CronTaskReconciler struct {
 	client.Client
@@ -166,7 +172,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 	}
 
-	if missedCount > 100 {
+	if missedCount > MaxMissedSchedules {
 		// Too many missed schedules — likely clock skew or long suspend. Reset.
 		log.Info("too many missed schedules, resetting", "missed", missedCount)
 		r.Recorder.Eventf(cronTask, nil, corev1.EventTypeWarning, "TooManyMissed", "Schedule",
@@ -314,7 +320,7 @@ func (r *CronTaskReconciler) getMostRecentScheduleTime(
 		t = sched.Next(t)
 
 		// Safety: prevent infinite loop
-		if missedCount > 100 {
+		if missedCount > MaxMissedSchedules {
 			break
 		}
 	}
