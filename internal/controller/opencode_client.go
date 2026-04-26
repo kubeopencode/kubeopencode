@@ -94,14 +94,19 @@ func (c *OpenCodeClient) FindSessionByTitle(ctx context.Context, serverURL, titl
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
-	// Find exact title match
+	// Find exact title match. When multiple sessions share the same title
+	// (e.g., Task deleted and recreated with the same name), return the
+	// most recently created session.
+	var latest *OpenCodeSession
 	for i := range sessions {
 		if sessions[i].Title == title {
-			return &sessions[i], nil
+			if latest == nil || sessions[i].Time.Created > latest.Time.Created {
+				latest = &sessions[i]
+			}
 		}
 	}
 
-	return nil, nil
+	return latest, nil
 }
 
 // GetSession retrieves a session by ID from the OpenCode server.

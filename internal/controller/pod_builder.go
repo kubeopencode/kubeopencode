@@ -1402,12 +1402,18 @@ func configHasPermission(config *runtime.RawExtension) bool {
 	return ok
 }
 
-// sessionTitle generates a deterministic session title for the OpenCode session.
-// Format: "kubeopencode/<namespace>/<task-name>"
-// This deterministic format enables the Task controller to look up the session
-// by title via the OpenCode API (GET /session?search=<title>).
+// sessionTitle generates a unique session title for the OpenCode session.
+// Format: "kubeopencode/<namespace>/<task-name>/<uid-prefix>"
+// The UID prefix ensures uniqueness when a Task is deleted and recreated with
+// the same name (each new Task object gets a new UID from Kubernetes).
+// This enables the Task controller to look up the correct session by title
+// via the OpenCode API (GET /session?search=<title>).
 func sessionTitle(task *kubeopenv1alpha1.Task) string {
-	return fmt.Sprintf("kubeopencode/%s/%s", task.Namespace, task.Name)
+	uid := string(task.UID)
+	if len(uid) > 8 {
+		uid = uid[:8]
+	}
+	return fmt.Sprintf("kubeopencode/%s/%s/%s", task.Namespace, task.Name, uid)
 }
 
 // shellEscape wraps a string in single quotes for safe use in shell commands.

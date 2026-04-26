@@ -116,7 +116,11 @@ This adds Pod complexity but cleanly separates concerns.
 
 This is the most elegant but adds a dependency on the plugin system.
 
-**Recommended: Option B (Controller polls Agent API)** for initial implementation due to simplicity. The controller already knows the Agent's server URL and can query sessions. Title-based matching can be made reliable by using a deterministic title format (e.g., `"kubeopencode/<namespace>/<task-name>"`) and adding a `--title` flag that is always set.
+**Recommended: Option B (Controller polls Agent API)** for initial implementation due to simplicity. The controller already knows the Agent's server URL and can query sessions. Title-based matching is made reliable by using a unique title format that includes the Task UID prefix (e.g., `"kubeopencode/<namespace>/<task-name>/<uid-prefix>"`) and adding a `--title` flag that is always set.
+
+> **Note (2026-04-26):** The original implementation used `"kubeopencode/<namespace>/<task-name>"` as the session title, which caused incorrect session matching when a Task was deleted and recreated with the same name (multiple sessions shared the same title). This was fixed by:
+> 1. Appending the first 8 characters of `task.metadata.uid` to the session title, making it unique per Task object.
+> 2. Changing `FindSessionByTitle` to return the most recently created session (by `Time.Created`) when multiple sessions match, as a defense-in-depth measure.
 
 ### Phase 2: Session Proxy API in KubeOpenCode Server
 

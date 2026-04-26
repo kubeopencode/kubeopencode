@@ -1969,9 +1969,9 @@ func TestBuildPod_SessionTitleDeterministic(t *testing.T) {
 	pod := buildPod(task, "my-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
 	container := pod.Spec.Containers[0]
 
-	// Should contain deterministic title format: kubeopencode/<namespace>/<task-name>
-	if !strings.Contains(container.Command[2], "'kubeopencode/default/my-task'") {
-		t.Errorf("Command --title should contain deterministic session title, got: %s", container.Command[2])
+	// Should contain unique title format: kubeopencode/<namespace>/<task-name>/<uid-prefix>
+	if !strings.Contains(container.Command[2], "'kubeopencode/default/my-task/test-uid") {
+		t.Errorf("Command --title should contain unique session title with UID prefix, got: %s", container.Command[2])
 	}
 }
 
@@ -2535,10 +2535,11 @@ func TestSessionTitle(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-task",
 			Namespace: "test-ns",
+			UID:       types.UID("abcdef12-3456-7890-abcd-ef1234567890"),
 		},
 	}
 	title := sessionTitle(task)
-	expected := "kubeopencode/test-ns/my-task"
+	expected := "kubeopencode/test-ns/my-task/abcdef12"
 	if title != expected {
 		t.Errorf("sessionTitle = %q, want %q", title, expected)
 	}
@@ -2547,6 +2548,14 @@ func TestSessionTitle(t *testing.T) {
 	title2 := sessionTitle(task)
 	if title != title2 {
 		t.Errorf("sessionTitle should be deterministic, got %q and %q", title, title2)
+	}
+
+	// Verify different UID produces different title
+	task2 := task.DeepCopy()
+	task2.UID = types.UID("99999999-0000-1111-2222-333344445555")
+	title3 := sessionTitle(task2)
+	if title == title3 {
+		t.Errorf("different UIDs should produce different titles, both got %q", title)
 	}
 }
 
