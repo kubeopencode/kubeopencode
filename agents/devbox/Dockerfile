@@ -10,7 +10,7 @@
 #
 # AI agent images (opencode, etc.) build on top of this base.
 #
-FROM debian:bookworm-20260406-slim
+FROM debian:bookworm-20260421-slim
 
 # === Core Utilities ===
 # Essential tools for development and automation
