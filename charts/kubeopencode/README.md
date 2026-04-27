@@ -61,6 +61,28 @@ helm install kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
   --values my-values.yaml
 ```
 
+#### Using Gateway API (HTTPRoute)
+
+If your cluster uses the [Gateway API](https://gateway-api.sigs.k8s.io/) instead of Ingress:
+
+```yaml
+server:
+  enabled: true
+  route:
+    main:
+      enabled: true
+      parentRefs:
+        - name: my-gateway
+          namespace: gateway-system
+      hostnames:
+        - kubeopencode.example.com
+```
+
+> **Note:** The agent proxy uses SSE (Server-Sent Events) for streaming. Depending on your
+> gateway controller, you may need to disable response buffering and increase timeouts.
+> For example, with Envoy Gateway, add a [BackendTrafficPolicy](https://gateway.envoyproxy.io/docs/api/extension_types/#backendtrafficpolicy)
+> to configure timeouts.
+
 ## Configuration
 
 The following table lists the configurable parameters of the KubeOpenCode chart and their default values.
@@ -89,6 +111,10 @@ The following table lists the configurable parameters of the KubeOpenCode chart 
 | `server.auth.allowAnonymous` | Allow unauthenticated requests | `false` |
 | `server.ingress.enabled` | Enable Ingress | `false` |
 | `server.ingress.className` | Ingress class name | `""` |
+| `server.route.main.enabled` | Enable Gateway API HTTPRoute | `false` |
+| `server.route.main.parentRefs` | Gateway references for HTTPRoute | `[]` |
+| `server.route.main.hostnames` | Hostnames for HTTPRoute matching | `[]` |
+| `server.route.main.httpsRedirect` | Enable HTTPS redirect (HTTP 301) | `false` |
 | `server.portForward.enabled` | Create port-forward RBAC | `false` |
 
 ### Agent Configuration

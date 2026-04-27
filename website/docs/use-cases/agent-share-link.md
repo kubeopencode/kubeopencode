@@ -121,7 +121,7 @@ kubeoc agent share team-agent -n platform --show
 
 ### Networking
 
-- The share URL must be reachable by the consumer — ensure your Ingress or LoadBalancer exposes the KubeOpenCode server
+- The share URL must be reachable by the consumer — ensure your Ingress, HTTPRoute, or LoadBalancer exposes the KubeOpenCode server
 - The server port is `2746` by default
 - For local testing: `kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746`
 

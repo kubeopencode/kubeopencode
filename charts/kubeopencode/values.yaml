@@ -97,7 +97,7 @@ server:
     port: 2746
 
   # Authentication configuration
-  # Enable when exposing the server externally (via Ingress) for agent proxy access.
+  # Enable when exposing the server externally (via Ingress or HTTPRoute) for agent proxy access.
   # Uses Kubernetes TokenReview to validate Bearer tokens from kubeconfig.
   auth:
     enabled: true
@@ -126,57 +126,57 @@ server:
     #    hosts:
     #      - kubeopencode.local
 
-    ## route (map) allows configuration of HTTPRoute resources
-    ## Requires Gateway API resources and suitable controller installed within the cluster
-    ## Ref. https://gateway-api.sigs.k8s.io/guides/http-routing/
-    ##
-    ## The agent proxy uses SSE (Server-Sent Events) for streaming. Depending on your
-    ## gateway controller, you may need to configure it to disable response buffering and
-    ## increase timeouts.
-    route:
-      main:
-        ## Enable this route
-        enabled: false
+  ## route (map) allows configuration of HTTPRoute resources
+  ## Requires Gateway API resources and suitable controller installed within the cluster
+  ## Ref. https://gateway-api.sigs.k8s.io/guides/http-routing/
+  ##
+  ## The agent proxy uses SSE (Server-Sent Events) for streaming. Depending on your
+  ## gateway controller, you may need to configure it to disable response buffering and
+  ## increase timeouts.
+  route:
+    main:
+      ## Enable this route
+      enabled: false
 
-        ## ApiVersion set by default to "gateway.networking.k8s.io/v1"
-        apiVersion: ""
-        ## kind set by default to HTTPRoute
-        kind: ""
+      ## ApiVersion set by default to "gateway.networking.k8s.io/v1"
+      apiVersion: ""
+      ## kind set by default to HTTPRoute
+      kind: ""
 
-        ## Annotations to attach to the HTTPRoute resource
-        annotations: {}
-        ## Labels to attach to the HTTPRoute resource
-        labels: {}
+      ## Annotations to attach to the HTTPRoute resource
+      annotations: {}
+      ## Labels to attach to the HTTPRoute resource
+      labels: {}
 
-        ## ParentRefs refers to resources this HTTPRoute is to be attached to (Gateways)
-        parentRefs: []
-          # - name: contour
-          #   sectionName: http
+      ## ParentRefs refers to resources this HTTPRoute is to be attached to (Gateways)
+      parentRefs: []
+        # - name: contour
+        #   sectionName: http
 
-        ## Hostnames (templated) defines a set of hostnames that should match against
-        ## the HTTP Host header to select a HTTPRoute used to process the request
-        hostnames: []
-          # - my.example.com
+      ## Hostnames (templated) defines a set of hostnames that should match against
+      ## the HTTP Host header to select a HTTPRoute used to process the request
+      hostnames: []
+        # - my.example.com
 
-        ## additionalRules (templated) allows adding custom rules to the route
-        additionalRules: []
+      ## additionalRules (templated) allows adding custom rules to the route
+      additionalRules: []
 
-        ## Filters define the filters that are applied to requests that match
-        ## this rule
-        filters: []
+      ## Filters define the filters that are applied to requests that match
+      ## this rule
+      filters: []
 
-        ## Matches define conditions used for matching the rule against incoming
-        ## HTTP requests
-        matches:
-          - path:
-              type: PathPrefix
-              value: /
+      ## Matches define conditions used for matching the rule against incoming
+      ## HTTP requests
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
 
-        ## httpsRedirect adds a filter for redirecting to https (HTTP 301 Moved Permanently).
-        ## To redirect HTTP traffic to HTTPS, you need to have a Gateway with both HTTP and HTTPS listeners.
-        ## Matches and filters do not take effect if enabled.
-        ## Ref. https://gateway-api.sigs.k8s.io/guides/http-redirect-rewrite/
-        httpsRedirect: false
+      ## httpsRedirect adds a filter for redirecting to https (HTTP 301 Moved Permanently).
+      ## To redirect HTTP traffic to HTTPS, you need to have a Gateway with both HTTP and HTTPS listeners.
+      ## Matches and filters do not take effect if enabled.
+      ## Ref. https://gateway-api.sigs.k8s.io/guides/http-redirect-rewrite/
+      httpsRedirect: false
 
   # Resource limits and requests
   resources:

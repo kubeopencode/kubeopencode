@@ -192,6 +192,22 @@ Add to `/etc/hosts`:
 127.0.0.1 kubeopencode.local
 ```
 
+#### Option 4: HTTPRoute (Gateway API)
+
+If your cluster has a [Gateway API](https://gateway-api.sigs.k8s.io/) controller installed:
+
+```bash
+helm upgrade kubeopencode ./charts/kubeopencode \
+  --namespace kubeopencode-system \
+  --set server.enabled=true \
+  --set server.route.main.enabled=true \
+  --set "server.route.main.parentRefs[0].name=my-gateway" \
+  --set "server.route.main.hostnames[0]=kubeopencode.local"
+```
+
+> **Note:** SSE streaming may require additional gateway controller configuration
+> (e.g., disabling response buffering and increasing timeouts).
+
 ### UI Features
 
 | Feature | Description |
