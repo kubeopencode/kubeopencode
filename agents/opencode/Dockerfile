@@ -27,8 +27,9 @@
 #   - Linux x64: opencode-linux-x64.tar.gz (glibc)
 #   - Linux arm64: opencode-linux-arm64.tar.gz (glibc)
 #
-# Note: Using glibc variants for Debian-based executor (devbox) compatibility.
-# The init container uses Debian to ensure binary compatibility with glibc-based work containers.
+# Note: The binary is a glibc variant, executed by the glibc-based work container.
+# The init container (Alpine) only stores and copies the binary — it does not run it.
+# The entrypoint version check gracefully skips if the binary is incompatible at copy time.
 #
 # Version Management:
 #   OPENCODE_VERSION is defined in agents/Makefile (single source of truth).
@@ -37,7 +38,8 @@
 #     docker build --build-arg OPENCODE_VERSION=1.14.19 -t opencode .
 #
 
-FROM debian:bookworm-20260421-slim
+# Stage 1: download and verify the binary using glibc (Debian)
+FROM debian:bookworm-20260421-slim AS downloader
 
 # OpenCode version to download — must be passed via --build-arg (no default).
 # Single source of truth: agents/Makefile (OPENCODE_VERSION variable).
@@ -66,16 +68,18 @@ RUN set -ex; \
     chmod +x /opencode; \
     rm -f /tmp/opencode.tar.gz; \
     # Verify the binary
-    /opencode --version
+    /opencode --version | tee /opencode-version
 
-# Remove curl to minimize image size
-RUN apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+# Stage 2: minimal Alpine image that carries the binary
+FROM alpine:3.22.4
 
 # Default environment variables
 ENV TOOLS_DIR=/tools
 ENV OPENCODE_BIN=opencode
 
 # Copy entrypoint script
+COPY --from=downloader /opencode /opencode
+COPY --from=downloader /opencode-version /opencode-version
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
