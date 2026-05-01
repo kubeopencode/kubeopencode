@@ -19,8 +19,5 @@ mkdir -p "${TOOLS_DIR}"
 cp /opencode "${TARGET}"
 chmod +x "${TARGET}"
 
-echo "[opencode-init] OpenCode binary installed successfully."
+echo "[opencode-init] OpenCode binary installed successfully (version $(cat /opencode-version 2>/dev/null || echo 'unknown'))."
 echo "[opencode-init] Work containers can use: ${TARGET}"
-
-# Print version for verification
-"${TARGET}" --version 2>/dev/null || echo "[opencode-init] Version check skipped"
