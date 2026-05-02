@@ -12,6 +12,11 @@
 #
 FROM debian:bookworm-20260421-slim
 
+# === Retry Helper ===
+# Network downloads may fail transiently; retry up to 3 times with 5s delay
+ENV RETRY_COUNT=3 RETRY_DELAY=5
+SHELL ["/bin/bash", "-c"]
+
 # === Core Utilities ===
 # Essential tools for development and automation
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -39,42 +44,63 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # === GitHub CLI ===
-RUN mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
-       gpg --dearmor -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-       > /etc/apt/sources.list.d/github-cli.list \
-    && apt-get update && apt-get install -y --no-install-recommends gh \
-    && rm -rf /var/lib/apt/lists/*
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      mkdir -p /etc/apt/keyrings \
+      && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
+         gpg --dearmor -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+      && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+         > /etc/apt/sources.list.d/github-cli.list \
+      && apt-get update && apt-get install -y --no-install-recommends gh \
+      && rm -rf /var/lib/apt/lists/* \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # === yq (YAML processor) ===
-RUN curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$(dpkg --print-architecture)" \
-    -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$(dpkg --print-architecture)" \
+        -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # === kubectl ===
-RUN ARCH=$(dpkg --print-architecture | sed 's/aarch64/arm64/' | sed 's/x86_64/amd64/') \
-    && curl -fsSL "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl" \
-    -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      ARCH=$(dpkg --print-architecture | sed 's/aarch64/arm64/' | sed 's/x86_64/amd64/') \
+      && curl -fsSL "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl" \
+        -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # === helm ===
-RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # === Go ===
 ARG GO_VERSION=1.25.5
-RUN ARCH=$(dpkg --print-architecture) \
-    && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz \
-    && tar -C /usr/local -xzf /tmp/go.tar.gz \
-    && rm /tmp/go.tar.gz
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      ARCH=$(dpkg --print-architecture) \
+      && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz \
+      && tar -C /usr/local -xzf /tmp/go.tar.gz \
+      && rm /tmp/go.tar.gz \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # === golangci-lint ===
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # === Node.js (LTS) ===
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/*
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+      && apt-get install -y --no-install-recommends nodejs \
+      && rm -rf /var/lib/apt/lists/* \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # === Python 3 + pipx ===
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -86,27 +112,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
 # === Google Cloud CLI ===
-RUN curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
-    gpg --dearmor -o /etc/apt/keyrings/google-cloud.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
-       > /etc/apt/sources.list.d/google-cloud-sdk.list \
-    && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
-    && rm -rf /var/lib/apt/lists/*
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+        gpg --dearmor -o /etc/apt/keyrings/google-cloud.gpg \
+      && echo "deb [signed-by=/etc/apt/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+         > /etc/apt/sources.list.d/google-cloud-sdk.list \
+      && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
+      && rm -rf /var/lib/apt/lists/* \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # === AWS CLI v2 ===
-RUN ARCH=$(dpkg --print-architecture | sed 's/amd64/x86_64/' | sed 's/arm64/aarch64/') \
-    && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" -o /tmp/awscliv2.zip \
-    && unzip -q /tmp/awscliv2.zip -d /tmp \
-    && /tmp/aws/install \
-    && rm -rf /tmp/aws /tmp/awscliv2.zip
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      ARCH=$(dpkg --print-architecture | sed 's/amd64/x86_64/' | sed 's/arm64/aarch64/') \
+      && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" -o /tmp/awscliv2.zip \
+      && unzip -q /tmp/awscliv2.zip -d /tmp \
+      && /tmp/aws/install \
+      && rm -rf /tmp/aws /tmp/awscliv2.zip \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # === Docker CLI (for DinD scenarios) ===
-RUN curl -fsSL https://download.docker.com/linux/debian/gpg | \
-    gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" \
-       > /etc/apt/sources.list.d/docker.list \
-    && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
-    && rm -rf /var/lib/apt/lists/*
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      curl -fsSL https://download.docker.com/linux/debian/gpg | \
+        gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" \
+         > /etc/apt/sources.list.d/docker.list \
+      && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
+      && rm -rf /var/lib/apt/lists/* \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # === Zsh ===
 RUN apt-get update && apt-get install -y --no-install-recommends zsh \
@@ -118,8 +153,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends zsh \
 # providing go-to-definition, find-references, diagnostics, and hover info.
 
 # gopls (Go LSP) - install to /usr/local/bin via GOBIN
-RUN GOBIN=/usr/local/bin go install golang.org/x/tools/gopls@latest \
-    && rm -rf /root/.cache/go-build /root/go
+RUN for i in $(seq 1 $RETRY_COUNT); do \
+      GOBIN=/usr/local/bin go install golang.org/x/tools/gopls@latest \
+      && rm -rf /root/.cache/go-build /root/go \
+      && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
+    done
 
 # typescript-language-server (TypeScript/JavaScript LSP)
 RUN npm install -g typescript-language-server typescript
