@@ -157,6 +157,8 @@ gh run watch <RUN_ID>
 ```
 
 > **IMPORTANT (for AI assistants)**: Monitor the workflow automatically. If all jobs pass, proceed to Step 7. Only escalate to the user if any job fails.
+>
+> **IMPORTANT (for AI assistants)**: Use a **minimum 30-minute polling interval** when monitoring long-running workflows. Frequent polling (e.g., every 1-5 minutes) wastes conversation context without meaningful progress. A single workflow run typically takes 20-40 minutes; polling every 30 minutes is sufficient. If the workflow is still running after the first check, wait another 30 minutes before checking again.
 
 Expected jobs:
 
