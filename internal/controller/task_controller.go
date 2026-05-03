@@ -208,7 +208,8 @@ func (r *TaskReconciler) initializeTask(ctx context.Context, task *kubeopenv1alp
 		if port == 0 {
 			port = DefaultServerPort
 		}
-		serverURL = ServerURL(refName, task.Namespace, port)
+		sysCfg := r.getSystemConfig(ctx)
+		serverURL = ServerURL(refName, task.Namespace, port, sysCfg.clusterDomain)
 	}
 
 	// Add label to Task (agent or template label)
@@ -1261,6 +1262,7 @@ func resolveSystemConfig(ctx context.Context, reader client.Reader) systemConfig
 	cfg := systemConfig{
 		systemImage:           DefaultKubeOpenCodeImage,
 		systemImagePullPolicy: corev1.PullIfNotPresent,
+		clusterDomain:         "cluster.local", // Default value
 	}
 
 	config := &kubeopenv1alpha1.KubeOpenCodeConfig{}
@@ -1280,6 +1282,10 @@ func resolveSystemConfig(ctx context.Context, reader client.Reader) systemConfig
 		if config.Spec.SystemImage.ImagePullPolicy != "" {
 			cfg.systemImagePullPolicy = config.Spec.SystemImage.ImagePullPolicy
 		}
+	}
+
+	if config.Spec.ClusterDomain != "" {
+		cfg.clusterDomain = config.Spec.ClusterDomain
 	}
 
 	cfg.proxy = config.Spec.Proxy

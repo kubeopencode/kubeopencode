@@ -20,11 +20,12 @@ var proxyLog = ctrl.Log.WithName("agent-proxy")
 // to forward all requests, supporting both HTTP REST and SSE streaming.
 type AgentProxyHandler struct {
 	defaultClient client.Client
+	clusterDomain string
 }
 
 // NewAgentProxyHandler creates a new AgentProxyHandler
-func NewAgentProxyHandler(c client.Client) *AgentProxyHandler {
-	return &AgentProxyHandler{defaultClient: c}
+func NewAgentProxyHandler(c client.Client, clusterDomain string) *AgentProxyHandler {
+	return &AgentProxyHandler{defaultClient: c, clusterDomain: clusterDomain}
 }
 
 // ServeProxy is the catch-all handler for /api/v1/namespaces/{namespace}/agents/{name}/proxy/*
@@ -39,7 +40,8 @@ func (h *AgentProxyHandler) ServeProxy(w http.ResponseWriter, r *http.Request) {
 	ctx := context.WithoutCancel(r.Context())
 
 	k8sClient := clientFromContext(ctx, h.defaultClient)
-	serverURL, err := resolveAgentServerURL(ctx, k8sClient, namespace, agentName)
+
+	serverURL, err := resolveAgentServerURL(ctx, k8sClient, namespace, agentName, h.clusterDomain)
 	if err != nil {
 		proxyLog.Error(err, "Failed to resolve agent server URL", "namespace", namespace, "agent", agentName)
 		writeError(w, http.StatusBadGateway, "Cannot resolve agent server", err.Error())

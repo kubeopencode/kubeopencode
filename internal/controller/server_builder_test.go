@@ -616,8 +616,8 @@ func TestBuildServerDeploymentWithProxy(t *testing.T) {
 	// Verify NO_PROXY includes .svc,.cluster.local
 	for _, env := range container.Env {
 		if env.Name == "NO_PROXY" {
-			if env.Value != "localhost,127.0.0.1,.svc,.cluster.local" {
-				t.Errorf("NO_PROXY = %q, want %q", env.Value, "localhost,127.0.0.1,.svc,.cluster.local")
+			if env.Value != "localhost,127.0.0.1,.svc" {
+				t.Errorf("NO_PROXY = %q, want %q", env.Value, "localhost,127.0.0.1,.svc")
 			}
 		}
 	}

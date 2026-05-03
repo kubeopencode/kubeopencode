@@ -54,7 +54,7 @@ func clientsetFromContext(ctx context.Context, defaultClientset kubernetes.Inter
 }
 
 // resolveAgentServerURL looks up the Agent CR and returns its in-cluster server URL.
-func resolveAgentServerURL(ctx context.Context, k8sClient client.Client, namespace, agentName string) (string, error) {
+func resolveAgentServerURL(ctx context.Context, k8sClient client.Client, namespace, agentName, clusterDomain string) (string, error) {
 	var agent kubeopenv1alpha1.Agent
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentName}, &agent); err != nil {
 		return "", fmt.Errorf("agent not found: %w", err)
@@ -69,7 +69,7 @@ func resolveAgentServerURL(ctx context.Context, k8sClient client.Client, namespa
 	}
 
 	serverURL := agent.Status.URL
-	if err := validateServerURL(serverURL); err != nil {
+	if err := validateServerURL(serverURL, clusterDomain); err != nil {
 		return "", fmt.Errorf("agent %q has invalid server URL: %w", agentName, err)
 	}
 
@@ -79,7 +79,7 @@ func resolveAgentServerURL(ctx context.Context, k8sClient client.Client, namespa
 // validateServerURL ensures the URL points to an in-cluster Kubernetes service.
 // This prevents SSRF if the Agent status is tampered with (e.g., via direct
 // status patch or a compromised controller).
-func validateServerURL(rawURL string) error {
+func validateServerURL(rawURL string, clusterDomain string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
@@ -88,7 +88,7 @@ func validateServerURL(rawURL string) error {
 		return fmt.Errorf("URL scheme must be http, got %q", u.Scheme)
 	}
 	host := u.Hostname()
-	if !strings.HasSuffix(host, ".svc.cluster.local") {
+	if !strings.HasSuffix(host, ".svc." + clusterDomain) {
 		return fmt.Errorf("URL host must be a cluster-local service, got %q", host)
 	}
 	if u.User != nil {

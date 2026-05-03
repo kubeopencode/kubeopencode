@@ -28,6 +28,13 @@ type KubeOpenCodeConfig struct {
 
 // KubeOpenCodeConfigSpec defines the system-level configuration
 type KubeOpenCodeConfigSpec struct {
+	// ClusterDomain specifies the cluster domain name (e.g., "cluster.local").
+	// This is used for constructing in-cluster service URLs.
+	// If not specified, "cluster.local" is used as the default.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`
+	// +kubebuilder:validation:MaxLength=253
+	ClusterDomain string `json:"clusterDomain,omitempty"`
 	// SystemImage configures the KubeOpenCode system image used for internal components
 	// such as git-init and context-init containers.
 	// If not specified, uses the built-in default image with IfNotPresent policy.

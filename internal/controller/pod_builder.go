@@ -110,6 +110,9 @@ type systemConfig struct {
 	// proxy is the cluster-wide proxy configuration from KubeOpenCodeConfig.
 	// Agent-level proxy takes precedence over this.
 	proxy *kubeopenv1alpha1.ProxyConfig
+	// clusterDomain is the cluster domain name (e.g., "cluster.local")
+	// Defaults to "cluster.local" if not specified in KubeOpenCodeConfig
+	clusterDomain string
 }
 
 // applySystemDefaults merges cluster-level configuration from KubeOpenCodeConfig
@@ -782,7 +785,7 @@ func buildCABundleVolumeMountEnv(caBundle *kubeopenv1alpha1.CABundleConfig) (cor
 // Both uppercase and lowercase variants are set for maximum compatibility.
 // ".svc" and ".cluster.local" are always appended to NO_PROXY to prevent proxying
 // in-cluster Kubernetes traffic.
-func buildProxyEnvVars(proxy *kubeopenv1alpha1.ProxyConfig) []corev1.EnvVar {
+func buildProxyEnvVars(proxy *kubeopenv1alpha1.ProxyConfig, clusterDomain string) []corev1.EnvVar {
 	if proxy == nil {
 		return nil
 	}
@@ -807,13 +810,13 @@ func buildProxyEnvVars(proxy *kubeopenv1alpha1.ProxyConfig) []corev1.EnvVar {
 	// Each suffix is checked independently to avoid duplication.
 	noProxy := proxy.NoProxy
 	if noProxy == "" {
-		noProxy = ".svc,.cluster.local"
+		noProxy = ".svc,." + clusterDomain
 	} else {
 		if !strings.Contains(noProxy, ".svc") {
 			noProxy += ",.svc"
 		}
-		if !strings.Contains(noProxy, ".cluster.local") {
-			noProxy += ",.cluster.local"
+		if !strings.Contains(noProxy, "." + clusterDomain) {
+			noProxy += ",." + clusterDomain
 		}
 	}
 
@@ -1214,7 +1217,7 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 
 	// Add HTTP/HTTPS proxy environment variables to all containers if configured
 	if cfg.proxy != nil {
-		proxyEnvs := buildProxyEnvVars(cfg.proxy)
+		proxyEnvs := buildProxyEnvVars(cfg.proxy, sysCfg.clusterDomain)
 		// Add to all init containers
 		for i := range initContainers {
 			initContainers[i].Env = append(initContainers[i].Env, proxyEnvs...)

@@ -3000,7 +3000,7 @@ var _ = Describe("TaskController", func() {
 			Expect(commandStr).Should(ContainSubstring("--attach"))
 
 			// Should contain server URL
-			expectedURL := ServerURL(agentName, taskNamespace, 4096)
+			expectedURL := ServerURL(agentName, taskNamespace, 4096, "cluster.local")
 			Expect(commandStr).Should(ContainSubstring(expectedURL))
 
 			By("Cleaning up")
