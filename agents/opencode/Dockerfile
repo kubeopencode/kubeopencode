@@ -71,7 +71,7 @@ RUN set -ex; \
     /opencode --version | tee /opencode-version
 
 # Stage 2: minimal Alpine image that carries the binary
-FROM alpine:3.22.4
+FROM alpine:3.23.4
 
 # Default environment variables
 ENV TOOLS_DIR=/tools
