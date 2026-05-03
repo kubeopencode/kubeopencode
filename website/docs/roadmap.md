@@ -7,7 +7,7 @@ description: Future directions for KubeOpenCode
 # Roadmap
 
 :::caution Alpha Project
-KubeOpenCode is in **early alpha** (v0.0.x). The API (`v1alpha1`) may introduce breaking changes between releases. We do not guarantee backward compatibility at this stage. See [Getting Started](getting-started.md) for details.
+KubeOpenCode is in **early alpha** (v0.1.x). The API (`v1alpha1`) may introduce breaking changes between releases. We do not guarantee backward compatibility at this stage. See [Getting Started](getting-started.md) for details.
 :::
 
 ## Direction 1: Instant Messaging Integration

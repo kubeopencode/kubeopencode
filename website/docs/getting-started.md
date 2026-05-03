@@ -69,7 +69,7 @@ Open [http://localhost:2746](http://localhost:2746). The UI provides:
 
 ### Create an Agent
 
-Create a namespace and a simple Agent:
+Create a namespace and a simple Agent. By default, Agents use the free `opencode/big-pickle` model — no API key required. You can change the model via the Agent's `config` field (see [Setting Up an Agent](setting-up-agent.md)).
 
 ```bash
 kubectl create namespace test

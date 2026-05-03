@@ -297,6 +297,22 @@ kubectl get sensor -n <namespace>
 kubectl logs -n <namespace> -l sensor-name=<sensor-name>
 ```
 
+## Debugging Tools
+
+### Reading OpenCode Stream JSON Output
+
+When running Tasks with `--format json`, the output is in stream-json format which can be hard to read. Use the provided utility script to format the output:
+
+```bash
+# Read from kubectl logs
+kubectl logs <pod-name> -n <namespace> | ./hack/opencode-stream-reader.sh
+
+# Read from a saved log file
+cat task-output.log | ./hack/opencode-stream-reader.sh
+```
+
+The script requires `jq` and converts the JSON stream into human-readable output with colors and formatting.
+
 ## Common Error Messages
 
 ### "Agent not found"
