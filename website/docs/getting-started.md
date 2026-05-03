@@ -1,95 +1,59 @@
 ---
 sidebar_position: 1
 title: Getting Started
-description: Set up KubeOpenCode locally in minutes with Kind
+description: Install KubeOpenCode and run your first AI task
 ---
 
 # Getting Started
 
 :::caution Alpha Project
-KubeOpenCode is in **early alpha** (v0.0.x). It is **not recommended for production use**. The API (`v1alpha1`) may introduce breaking changes between releases — backward compatibility is not guaranteed at this stage. We welcome contributions and feedback!
+KubeOpenCode is in **early alpha** (v0.1.x). It is **not recommended for production use**. The API (`v1alpha1`) may introduce breaking changes between releases — backward compatibility is not guaranteed at this stage. We welcome contributions and feedback!
 :::
 
-This guide gets you running KubeOpenCode on a local Kind cluster in minutes. The default setup uses the free `opencode/big-pickle` model — **no API key required**.
+This guide covers installing KubeOpenCode on a Kubernetes cluster and running your first AI task. The default setup uses the free `opencode/big-pickle` model — **no API key required**.
+
+> **Looking for local development setup?** If you want to build from source and run on a local Kind cluster, see the [Contributing Guide](https://github.com/kubeopencode/kubeopencode/blob/main/CONTRIBUTING.md#local-development-environment).
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/)
-- [Kind](https://kind.sigs.k8s.io/) (`brew install kind` on macOS)
+- A Kubernetes cluster (1.28+)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - [Helm](https://helm.sh/) 3.8+
-- [Go](https://go.dev/) 1.25+
 
-## Quick Start (AI-Assisted)
+## Installation
 
-The fastest way to get started — let your AI agent set up everything for you:
-
-```bash
-git clone https://github.com/kubeopencode/kubeopencode.git
-cd kubeopencode
-```
-
-Then tell your AI agent (Claude Code, Cursor, Windsurf, etc.):
-
-> Follow `deploy/local-dev/local-development.md` to set up a local development environment for me.
-
-The agent will handle Kind cluster creation, image builds, Helm installation, and test resource deployment automatically.
-
-## Manual Setup
-
-### Step 1: Clone and Create Cluster
+### Install from OCI Registry
 
 ```bash
-# Clone the repository
-git clone https://github.com/kubeopencode/kubeopencode.git
-cd kubeopencode
+kubectl create namespace kubeopencode-system
 
-# Create a Kind cluster
-kind create cluster --name kubeopencode
-```
-
-### Step 2: Build and Load Images
-
-```bash
-# Build the controller image
-make docker-build
-
-# Build all agent images (opencode, devbox, attach)
-make agent-build-all
-
-# Load images into Kind
-kind load docker-image ghcr.io/kubeopencode/kubeopencode:latest --name kubeopencode
-for img in opencode devbox attach; do
-  kind load docker-image ghcr.io/kubeopencode/kubeopencode-agent-${img}:latest --name kubeopencode
-done
-```
-
-### Step 3: Deploy
-
-```bash
-# Install with Helm (UI enabled)
-helm upgrade --install kubeopencode ./charts/kubeopencode \
+helm install kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
   --namespace kubeopencode-system \
-  --create-namespace \
-  --set controller.image.pullPolicy=Never \
-  --set agent.image.pullPolicy=Never \
   --set server.enabled=true
-
-# Deploy local-dev resources (AgentTemplate + Agents, no API key needed)
-kubectl apply -k deploy/local-dev/
 ```
 
-Verify everything is running:
+### Verify Deployment
 
 ```bash
 # Controller and UI server
 kubectl get pods -n kubeopencode-system
-
-# Agents in test namespace
-kubectl get agent -n test
 ```
 
-### Step 4: Access the Web UI
+Expected output:
+
+```
+NAME                                       READY   STATUS    RESTARTS   AGE
+kubeopencode-controller-xxxxxxxxx-xxxxx    1/1     Running   0          30s
+kubeopencode-server-xxxxxxxxx-xxxxx        1/1     Running   0          30s
+```
+
+Check CRDs are installed:
+
+```bash
+kubectl get crds | grep kubeopencode
+```
+
+## Access the Web UI
 
 ```bash
 kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746
@@ -101,11 +65,27 @@ Open [http://localhost:2746](http://localhost:2746). The UI provides:
 - **Task Create** — Submit new Tasks to Agents
 - **Agent Browser** — View Agents and AgentTemplates
 
-### Step 5: Try It Out
+## Try It Out
+
+### Create an Agent
+
+Create a namespace and a simple Agent:
+
+```bash
+kubectl create namespace test
+
+kubectl apply -n test -f - <<EOF
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: dev-agent
+spec:
+  profile: "A lightweight development agent"
+  workspaceDir: /workspace
+EOF
+```
 
 ### Submit a Task
-
-The local-dev setup includes two pre-configured Agents. Submit a task to one:
 
 ```bash
 kubectl apply -n test -f - <<EOF
@@ -123,21 +103,19 @@ EOF
 kubectl get task -n test -w
 ```
 
-### Explore the Pre-configured Resources
-
-The `deploy/local-dev/` directory sets up:
-
-| Resource | Name | Description |
-|----------|------|-------------|
-| AgentTemplate | `local-dev-base` | Shared base configuration (images, model, workspace) |
-| Agent | `persistent-agent` | Persistent agent with session + workspace storage, standby, concurrency control |
-| Agent | `dev-agent` | Lightweight agent with ephemeral storage |
-
-These demonstrate key features: template inheritance, persistence, suspend/resume, and concurrency control. See [Features](features/index.md) for details.
-
 ### Using a Paid Model
 
-The default setup uses the free `opencode/big-pickle` model. To switch to a paid model (Anthropic, Google, etc.), see `deploy/local-dev/secrets.yaml.example` for instructions.
+The default setup uses the free `opencode/big-pickle` model. To switch to a paid model (Anthropic, Google, etc.), create a Secret with your API key and reference it in the Agent's `credentials` field. See [Security](security.md) for details.
+
+## Upgrade
+
+```bash
+helm upgrade kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
+  --namespace kubeopencode-system \
+  --set server.enabled=true
+```
+
+See [Operations](operations/upgrading.md) for upgrade and maintenance guides.
 
 ## Next Steps
 
@@ -145,17 +123,3 @@ The default setup uses the free `opencode/big-pickle` model. To switch to a paid
 - [Features](features/index.md) — Learn about Live Agents (human-in-the-loop) and automated workflows
 - [Security](security.md) — RBAC, credential management, and best practices
 - [Architecture](architecture.md) — System design and API reference
-
-## Production Installation
-
-For production clusters, install from the OCI registry:
-
-```bash
-kubectl create namespace kubeopencode-system
-
-helm install kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
-  --namespace kubeopencode-system \
-  --set server.enabled=true
-```
-
-See [Operations](operations/upgrading.md) for upgrade and maintenance guides.

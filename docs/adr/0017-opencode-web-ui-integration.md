@@ -384,7 +384,7 @@ that bypass the fetch monkey-patch (because `import()` is a language-level const
 **Solution**: Use self-hosted mode (`BUILD_OPENCODE_UI=true`) which embeds all static assets
 in the binary. For local development, assets can also be downloaded from the CDN:
 ```bash
-# See deploy/local-dev/local-development.md for the full download script
+# See CONTRIBUTING.md "Local Development Environment" for the full setup
 ```
 
 ### Problem 6: OpenCode Frontend Connects to localhost:4096 Instead of Proxy
@@ -566,4 +566,4 @@ To upgrade:
 | `Makefile` | `opencode-app-build`, `opencode-app-clean`, `BUILD_OPENCODE_UI` flag |
 | `Dockerfile` | Multi-stage build with OpenCode Web UI builder stage |
 | `.github/workflows/*.yaml` | CI workflows with `BUILD_OPENCODE_UI=true` |
-| `deploy/local-dev/local-development.md` | Troubleshooting guide for local Kind clusters |
+| `CONTRIBUTING.md` | Local development guide (Kind cluster setup, troubleshooting) |

@@ -108,7 +108,7 @@ spec:
 
 The `lifecycle.postStart` hook starts code-server automatically when the Pod starts, running in parallel with the OpenCode server. This eliminates the need to manually `kubectl exec` the startup script or wait for the first Task to trigger it via `bashrc`.
 
-> **Try it locally**: Ready-to-use examples are available in [`deploy/local-dev/`](https://github.com/kubeopencode/kubeopencode/tree/main/deploy/local-dev) — see [`Dockerfile.devbox-vscode`](https://github.com/kubeopencode/kubeopencode/blob/main/deploy/local-dev/Dockerfile.devbox-vscode) for the image and [`agent-vscode.yaml`](https://github.com/kubeopencode/kubeopencode/blob/main/deploy/local-dev/agent-vscode.yaml) for the Agent configuration. Follow the [Local Development Guide](https://github.com/kubeopencode/kubeopencode/blob/main/deploy/local-dev/local-development.md) to set up a Kind cluster.
+> **Try it locally**: Ready-to-use examples are available in [`deploy/local-dev/`](https://github.com/kubeopencode/kubeopencode/tree/main/deploy/local-dev) — see [`Dockerfile.devbox-vscode`](https://github.com/kubeopencode/kubeopencode/blob/main/deploy/local-dev/Dockerfile.devbox-vscode) for the image and [`agent-vscode.yaml`](https://github.com/kubeopencode/kubeopencode/blob/main/deploy/local-dev/agent-vscode.yaml) for the Agent configuration. Follow the [Local Development Environment](https://github.com/kubeopencode/kubeopencode/blob/main/CONTRIBUTING.md#local-development-environment) section in CONTRIBUTING.md to set up a Kind cluster.
 
 ## Accessing VS Code
 
