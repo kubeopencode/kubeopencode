@@ -1012,8 +1012,12 @@ var _ = Describe("AgentController", func() {
 
 	Context("ServerURL helper function", func() {
 		It("Should generate correct in-cluster URL", func() {
-			url := ServerURL("my-agent", "my-namespace", 4096)
+			url := ServerURL("my-agent", "my-namespace", 4096, "cluster.local")
 			Expect(url).To(Equal("http://my-agent.my-namespace.svc.cluster.local:4096"))
+		})
+		It("Should generate correct in-cluster URL with custom cluster domain", func() {
+			url := ServerURL("my-agent", "my-namespace", 4096, "custom.local")
+			Expect(url).To(Equal("http://my-agent.my-namespace.svc.custom.local:4096"))
 		})
 	})
 

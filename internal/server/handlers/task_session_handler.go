@@ -28,11 +28,12 @@ const sessionProxyTimeout = 30 * time.Second
 // requiring direct access to the Agent's OpenCode API.
 type TaskSessionHandler struct {
 	defaultClient client.Client
+	clusterDomain string
 }
 
 // NewTaskSessionHandler creates a new TaskSessionHandler.
-func NewTaskSessionHandler(c client.Client) *TaskSessionHandler {
-	return &TaskSessionHandler{defaultClient: c}
+func NewTaskSessionHandler(c client.Client, clusterDomain string) *TaskSessionHandler {
+	return &TaskSessionHandler{defaultClient: c, clusterDomain: clusterDomain}
 }
 
 // resolveTaskSessionURL looks up a Task, finds its session info and Agent server URL,
@@ -71,7 +72,7 @@ func (h *TaskSessionHandler) resolveTaskSessionURL(ctx context.Context, namespac
 		return "", "", fmt.Errorf("agent %q has no server URL in status", agentName)
 	}
 
-	if err := validateServerURL(agent.Status.URL); err != nil {
+	if err := validateServerURL(agent.Status.URL, h.clusterDomain); err != nil {
 		return "", "", fmt.Errorf("agent %q has invalid server URL: %w", agentName, err)
 	}
 

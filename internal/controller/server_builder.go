@@ -68,8 +68,8 @@ func ServerServiceName(agentName string) string {
 }
 
 // ServerURL returns the in-cluster URL for a Server-mode Agent.
-func ServerURL(agentName, namespace string, port int32) string {
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", agentName, namespace, port)
+func ServerURL(agentName, namespace string, port int32, clusterDomain string) string {
+	return fmt.Sprintf("http://%s.%s.svc.%s:%d", agentName, namespace, clusterDomain, port)
 }
 
 // ServerSessionPVCName returns the PVC name for session persistence.
@@ -482,7 +482,7 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 
 	// Add HTTP/HTTPS proxy environment variables to all containers if configured
 	if agentCfg.proxy != nil {
-		proxyEnvs := buildProxyEnvVars(agentCfg.proxy)
+		proxyEnvs := buildProxyEnvVars(agentCfg.proxy, sysCfg.clusterDomain)
 		// Add to all init containers
 		for i := range initContainers {
 			initContainers[i].Env = append(initContainers[i].Env, proxyEnvs...)
@@ -605,7 +605,7 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 	}
 	var proxyEnvs []corev1.EnvVar
 	if agentCfg.proxy != nil {
-		proxyEnvs = buildProxyEnvVars(agentCfg.proxy)
+		proxyEnvs = buildProxyEnvVars(agentCfg.proxy, sysCfg.clusterDomain)
 	}
 
 	for i, gm := range ctxGitMounts {

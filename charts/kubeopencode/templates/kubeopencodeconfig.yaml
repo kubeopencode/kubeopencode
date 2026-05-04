@@ -6,6 +6,9 @@ metadata:
   labels:
     {{- include "kubeopencode.labels" . | nindent 4 }}
 spec:
+  {{- if .Values.kubeopencodeConfig.clusterDomain }}
+  clusterDomain: {{ .Values.kubeopencodeConfig.clusterDomain | quote }}
+  {{- end }}
   {{- if .Values.kubeopencodeConfig.systemImage }}
   systemImage:
     {{- if .Values.kubeopencodeConfig.systemImage.image }}

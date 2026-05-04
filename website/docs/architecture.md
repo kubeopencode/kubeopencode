@@ -375,6 +375,7 @@ spec:
 | `cleanup.ttlSecondsAfterFinished` | *int32 | TTL for finished Tasks. nil = disabled |
 | `cleanup.maxRetainedTasks` | *int32 | Max completed Tasks per namespace. nil = unlimited |
 | `proxy` | *ProxyConfig | Cluster-wide proxy. See [Enterprise](features/enterprise.md#httphttps-proxy-configuration) |
+| `clusterDomain` | string | Cluster domain name for in-cluster service URLs (default: "cluster.local") |
 
 **Task Cleanup behavior:**
 - **TTL-based**: Tasks deleted after `ttlSecondsAfterFinished` seconds from completion

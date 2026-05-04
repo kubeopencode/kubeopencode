@@ -83,6 +83,12 @@ spec:
                     minimum: 0
                     type: integer
                 type: object
+              clusterDomain:
+                description: |-
+                  ClusterDomain specifies the cluster domain name (e.g., "cluster.local").
+                  This is used for constructing in-cluster service URLs.
+                  If not specified, "cluster.local" is used as the default.
+                type: string
               proxy:
                 description: |-
                   Proxy configures cluster-wide HTTP/HTTPS proxy settings for all generated Pods.

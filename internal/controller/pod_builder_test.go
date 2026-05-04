@@ -2561,14 +2561,16 @@ func TestSessionTitle(t *testing.T) {
 
 func TestBuildProxyEnvVars(t *testing.T) {
 	tests := []struct {
-		name     string
-		proxy    *kubeopenv1alpha1.ProxyConfig
-		wantEnvs map[string]string // expected env var name -> value
-		wantNil  bool
+		name          string
+		proxy         *kubeopenv1alpha1.ProxyConfig
+		clusterDomain string
+		wantEnvs      map[string]string // expected env var name -> value
+		wantNil       bool
 	}{
 		{
 			name:    "nil proxy returns nil",
 			proxy:   nil,
+			clusterDomain: "cluster.local",
 			wantNil: true,
 		},
 		{
@@ -2576,6 +2578,7 @@ func TestBuildProxyEnvVars(t *testing.T) {
 			proxy: &kubeopenv1alpha1.ProxyConfig{
 				HttpProxy: "http://proxy:8080",
 			},
+			clusterDomain: "cluster.local",
 			wantEnvs: map[string]string{
 				"HTTP_PROXY": "http://proxy:8080",
 				"http_proxy": "http://proxy:8080",
@@ -2584,15 +2587,42 @@ func TestBuildProxyEnvVars(t *testing.T) {
 			},
 		},
 		{
+			name: "only httpProxy set with custom cluster domain",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+			},
+			clusterDomain: "custom.local",
+			wantEnvs: map[string]string{
+				"HTTP_PROXY": "http://proxy:8080",
+				"http_proxy": "http://proxy:8080",
+				"NO_PROXY":   ".svc,.custom.local",
+				"no_proxy":   ".svc,.custom.local",
+			},
+		},
+		{
 			name: "only httpsProxy set",
 			proxy: &kubeopenv1alpha1.ProxyConfig{
 				HttpsProxy: "http://proxy:8443",
 			},
+			clusterDomain: "cluster.local",
 			wantEnvs: map[string]string{
 				"HTTPS_PROXY": "http://proxy:8443",
 				"https_proxy": "http://proxy:8443",
 				"NO_PROXY":    ".svc,.cluster.local",
 				"no_proxy":    ".svc,.cluster.local",
+			},
+		},
+		{
+			name: "only httpsProxy set with custom cluster domain",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpsProxy: "http://proxy:8443",
+			},
+			clusterDomain: "custom.local",
+			wantEnvs: map[string]string{
+				"HTTPS_PROXY": "http://proxy:8443",
+				"https_proxy": "http://proxy:8443",
+				"NO_PROXY":    ".svc,.custom.local",
+				"no_proxy":    ".svc,.custom.local",
 			},
 		},
 		{
@@ -2602,6 +2632,7 @@ func TestBuildProxyEnvVars(t *testing.T) {
 				HttpsProxy: "http://proxy:8443",
 				NoProxy:    "localhost,127.0.0.1",
 			},
+			clusterDomain: "cluster.local",
 			wantEnvs: map[string]string{
 				"HTTP_PROXY":  "http://proxy:8080",
 				"http_proxy":  "http://proxy:8080",
@@ -2612,14 +2643,44 @@ func TestBuildProxyEnvVars(t *testing.T) {
 			},
 		},
 		{
+			name: "full config with all three fields and custom cluster domain",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy:  "http://proxy:8080",
+				HttpsProxy: "http://proxy:8443",
+				NoProxy:    "localhost,127.0.0.1",
+			},
+			clusterDomain: "custom.local",
+			wantEnvs: map[string]string{
+				"HTTP_PROXY":  "http://proxy:8080",
+				"http_proxy":  "http://proxy:8080",
+				"HTTPS_PROXY": "http://proxy:8443",
+				"https_proxy": "http://proxy:8443",
+				"NO_PROXY":    "localhost,127.0.0.1,.svc,.custom.local",
+				"no_proxy":    "localhost,127.0.0.1,.svc,.custom.local",
+			},
+		},
+		{
 			name: "noProxy auto-appends .svc,.cluster.local when not present",
 			proxy: &kubeopenv1alpha1.ProxyConfig{
 				HttpProxy: "http://proxy:8080",
 				NoProxy:   "10.0.0.0/8,172.16.0.0/12",
 			},
+			clusterDomain: "cluster.local",
 			wantEnvs: map[string]string{
 				"NO_PROXY": "10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local",
 				"no_proxy": "10.0.0.0/8,172.16.0.0/12,.svc,.cluster.local",
+			},
+		},
+		{
+			name: "noProxy auto-appends .svc,.custom.local when not present and custom cluster domain specified",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+				NoProxy:   "10.0.0.0/8,172.16.0.0/12",
+			},
+			clusterDomain: "custom.local",
+			wantEnvs: map[string]string{
+				"NO_PROXY": "10.0.0.0/8,172.16.0.0/12,.svc,.custom.local",
+				"no_proxy": "10.0.0.0/8,172.16.0.0/12,.svc,.custom.local",
 			},
 		},
 		{
@@ -2628,9 +2689,22 @@ func TestBuildProxyEnvVars(t *testing.T) {
 				HttpProxy: "http://proxy:8080",
 				NoProxy:   "localhost,.svc,.cluster.local",
 			},
+			clusterDomain: "cluster.local",
 			wantEnvs: map[string]string{
 				"NO_PROXY": "localhost,.svc,.cluster.local",
 				"no_proxy": "localhost,.svc,.cluster.local",
+			},
+		},
+		{
+			name: "noProxy does not duplicate .svc if already present and custom cluster domain specified",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+				NoProxy:   "localhost,.svc,.custom.local",
+			},
+			clusterDomain: "custom.local",
+			wantEnvs: map[string]string{
+				"NO_PROXY": "localhost,.svc,.custom.local",
+				"no_proxy": "localhost,.svc,.custom.local",
 			},
 		},
 		{
@@ -2639,9 +2713,22 @@ func TestBuildProxyEnvVars(t *testing.T) {
 				HttpProxy: "http://proxy:8080",
 				NoProxy:   "localhost,.cluster.local",
 			},
+			clusterDomain: "cluster.local",
 			wantEnvs: map[string]string{
 				"NO_PROXY": "localhost,.cluster.local,.svc",
 				"no_proxy": "localhost,.cluster.local,.svc",
+			},
+		},
+		{
+			name: "noProxy has .custom.local but not .svc appends only .svc when custom cluster domain specified",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+				NoProxy:   "localhost,.custom.local",
+			},
+			clusterDomain: "custom.local",
+			wantEnvs: map[string]string{
+				"NO_PROXY": "localhost,.custom.local,.svc",
+				"no_proxy": "localhost,.custom.local,.svc",
 			},
 		},
 		{
@@ -2650,16 +2737,29 @@ func TestBuildProxyEnvVars(t *testing.T) {
 				HttpProxy: "http://proxy:8080",
 				NoProxy:   "",
 			},
+			clusterDomain: "cluster.local",
 			wantEnvs: map[string]string{
 				"NO_PROXY": ".svc,.cluster.local",
 				"no_proxy": ".svc,.cluster.local",
+			},
+		},
+		{
+			name: "empty noProxy defaults to .svc,.custom.local when custom cluster domain specified",
+			proxy: &kubeopenv1alpha1.ProxyConfig{
+				HttpProxy: "http://proxy:8080",
+				NoProxy:   "",
+			},
+			clusterDomain: "custom.local",
+			wantEnvs: map[string]string{
+				"NO_PROXY": ".svc,.custom.local",
+				"no_proxy": ".svc,.custom.local",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildProxyEnvVars(tt.proxy)
+			got := buildProxyEnvVars(tt.proxy, tt.clusterDomain)
 			if tt.wantNil {
 				if got != nil {
 					t.Errorf("buildProxyEnvVars() = %v, want nil", got)

@@ -321,9 +321,10 @@ func (r *AgentReconciler) reconcileService(ctx context.Context, agent *kubeopenv
 // already check the server's /session/status endpoint).
 func (r *AgentReconciler) updateAgentStatus(ctx context.Context, agent *kubeopenv1alpha1.Agent) error {
 	deploymentName := ServerDeploymentName(agent.Name)
+	sysCfg := r.getSystemConfig(ctx)
 	agent.Status.DeploymentName = deploymentName
 	agent.Status.ServiceName = ServerServiceName(agent.Name)
-	agent.Status.URL = ServerURL(agent.Name, agent.Namespace, GetServerPort(agent))
+	agent.Status.URL = ServerURL(agent.Name, agent.Namespace, GetServerPort(agent), sysCfg.clusterDomain)
 
 	// Capture previous state for event emission
 	wasSuspended := agent.Status.Suspended

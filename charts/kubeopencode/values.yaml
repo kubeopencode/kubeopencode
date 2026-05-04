@@ -230,6 +230,10 @@ server:
 kubeopencodeConfig:
   # Whether to create the default KubeOpenCodeConfig
   create: true
+  # Cluster domain name (e.g., "cluster.local")
+  # This is used for constructing in-cluster service URLs.
+  # If not specified, "cluster.local" is used as the default.
+  clusterDomain: ""
   # System image configuration for internal components (git-init, context-init)
   systemImage:
     # Image to use (empty = use controller image)

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"net/http"
 	"strings"
 	"time"
@@ -56,12 +57,13 @@ type Options struct {
 
 // Server is the KubeOpenCode UI server
 type Server struct {
-	opts       Options
-	httpServer *http.Server
-	k8sClient  client.Client
-	clientset  kubernetes.Interface
-	restConfig *rest.Config
-	startTime  time.Time
+	opts          Options
+	httpServer    *http.Server
+	k8sClient     client.Client
+	clientset     kubernetes.Interface
+	restConfig    *rest.Config
+	startTime     time.Time
+	clusterDomain string
 }
 
 // New creates a new Server instance
@@ -84,13 +86,29 @@ func New(opts Options) (*Server, error) {
 	}
 
 	s := &Server{
-		opts:       opts,
-		k8sClient:  k8sClient,
-		clientset:  clientset,
-		restConfig: cfg,
-		startTime:  time.Now(),
+		opts:          opts,
+		k8sClient:     k8sClient,
+		clientset:     clientset,
+		restConfig:    cfg,
+		startTime:     time.Now(),
+		clusterDomain: "cluster.local", // Default value
 	}
 
+	// Try to get cluster-scoped KubeOpenCodeConfig to set clusterDomain
+	config := &kubeopenv1alpha1.KubeOpenCodeConfig{}
+	configKey := client.ObjectKey{Name: "cluster"}
+
+	if err := k8sClient.Get(context.Background(), configKey, config); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Error(err, "unable to get KubeOpenCodeConfig for server, using default cluster domain")
+		} else {
+			log.Error(err, "failed to get KubeOpenCodeConfig")
+		}
+	} else {
+		if config.Spec.ClusterDomain != "" {
+			s.clusterDomain = config.Spec.ClusterDomain
+		}
+	}
 	return s, nil
 }
 
@@ -188,7 +206,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 		r.Get("/tasks", taskHandler.ListAll)
 
 		// Task endpoints (namespace-scoped)
-		taskSessionHandler := handlers.NewTaskSessionHandler(s.k8sClient)
+		taskSessionHandler := handlers.NewTaskSessionHandler(s.k8sClient, s.clusterDomain)
 		r.Route("/namespaces/{namespace}/tasks", func(r chi.Router) {
 			r.Get("/", taskHandler.List)
 			r.Post("/", taskHandler.Create)
@@ -249,7 +267,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 
 			// Agent proxy - reverse proxy to OpenCode agent servers
 			// Supports HTTP REST and SSE streaming for opencode attach
-			agentProxyHandler := handlers.NewAgentProxyHandler(s.k8sClient)
+			agentProxyHandler := handlers.NewAgentProxyHandler(s.k8sClient, s.clusterDomain)
 			r.Route("/{name}/proxy", func(r chi.Router) {
 				r.HandleFunc("/*", agentProxyHandler.ServeProxy)
 				r.HandleFunc("/", agentProxyHandler.ServeProxy)
