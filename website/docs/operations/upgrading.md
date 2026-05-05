@@ -27,7 +27,7 @@ helm list -n kubeopencode-system
 Before upgrading, review the release notes for the target version:
 
 ```bash
-gh release view vNEW_VERSION
+gh release view NEW_VERSION
 ```
 
 > **IMPORTANT**: Pay attention to the **Breaking Changes** section. If CRD changes are listed, you **must** manually apply CRDs after the Helm upgrade (see Step 4).
@@ -36,7 +36,7 @@ gh release view vNEW_VERSION
 
 ```bash
 helm upgrade kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
-  --version NEW_VERSION \
+  --version NEW_VERSION_BARE \
   --namespace kubeopencode-system
 ```
 
@@ -47,7 +47,7 @@ helm upgrade kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
 **Option A**: Apply from the Helm chart (if you have the repo checked out at the release tag):
 
 ```bash
-git checkout vNEW_VERSION
+git checkout NEW_VERSION
 kubectl apply -f charts/kubeopencode/crds/
 ```
 
@@ -55,7 +55,7 @@ kubectl apply -f charts/kubeopencode/crds/
 
 ```bash
 helm pull oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
-  --version NEW_VERSION --untar
+  --version NEW_VERSION_BARE --untar
 kubectl apply -f kubeopencode/crds/
 rm -rf kubeopencode/
 ```

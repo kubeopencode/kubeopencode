@@ -177,7 +177,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VERSION=${{ needs.prepare.outputs.version }}
+            VERSION=${{ needs.prepare.outputs.tag }}
             GIT_COMMIT=${{ github.sha }}
             BUILD_TIME=${{ github.event.head_commit.timestamp }}
           tags: |
