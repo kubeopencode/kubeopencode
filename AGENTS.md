@@ -113,6 +113,23 @@ All Go files must include:
 - Write all comments in English
 - Use godoc format for exported types/functions
 
+## Local Development Environment
+
+> **IMPORTANT FOR AI ASSISTANTS**: When the user mentions "local", "local dev", "local development", "Kind cluster", "local setup", or asks to set up/debug/fix their local environment, refer to **`CONTRIBUTING.md` → "Local Development Environment" section** for the canonical guide. Key commands:
+
+| Task | Command |
+|------|---------|
+| **Full setup (recommended)** | `make local-dev-setup` |
+| **Rebuild + reload after code changes** | `make local-dev-reload` |
+| **Teardown** | `make local-dev-teardown` |
+
+The `deploy/local-dev/` directory contains **manifests and examples only** (AgentTemplate, Agents, RBAC, Kustomization). It does NOT contain setup instructions — those live in `CONTRIBUTING.md`.
+
+**Image tag workflow summary** (critical for debugging image pull errors):
+- Controller image: tagged as both `:<VERSION>` and `:latest`. Loaded into Kind as `:latest`. Helm must set `controller.image.tag=latest` and `server.image.tag=latest`.
+- Agent images: tagged as `:<VERSION>`, then re-tagged to `:dev` by the Makefile. Loaded into Kind as `:dev`. The `:latest` tag MUST NOT be used for agents in Kind (causes `ErrImagePull` due to `imagePullPolicy: Always`).
+- `imagePullPolicy` must be `Never` for all locally-built images in Kind.
+
 ## Development Workflow
 
 ### Building and Testing
@@ -201,7 +218,7 @@ cmd/kubeopencode/         # Unified binary (controller, git-init, context-init, 
 cmd/kubeoc/               # CLI client (kubeoc get agents, kubeoc agent attach, etc.)
 internal/controller/      # Reconcilers (task, agent, agenttemplate, pod_builder, context_resolver, template_merge)
 deploy/crds/              # Generated CRD YAMLs
-deploy/local-dev/         # Local development environment
+deploy/local-dev/         # Local development manifests and examples (setup instructions in CONTRIBUTING.md)
 charts/kubeopencode/      # Helm chart
 agents/                   # Agent images (opencode/, devbox/)
 e2e/                      # E2E tests
@@ -315,7 +332,8 @@ Three-tier strategy: unit (`make test`), integration (`make integration-test`, u
 | File | When to Update |
 |------|----------------|
 | `README.md` | User-facing changes, new features |
-| `website/docs/getting-started.md` | Installation, examples |
+| `website/docs/getting-started.md` | Helm installation, first-use examples |
+| `CONTRIBUTING.md` | Local development setup, contributor workflow |
 | `website/docs/features.md` | Context, concurrency, quota, pod config, server mode |
 | `docs/agent-images.md` | Agent image changes |
 | `website/docs/security.md` | RBAC, credentials |
@@ -357,4 +375,4 @@ Three-tier strategy: unit (`make test`), integration (`make integration-test`, u
 
 ---
 
-**Last Updated**: 2026-04-14
+**Last Updated**: 2026-05-03

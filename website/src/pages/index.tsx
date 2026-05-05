@@ -69,7 +69,7 @@ function AlphaBanner(): ReactNode {
   return (
     <div className={styles.alphaBanner}>
       <div className="container">
-        This project is in <strong>early alpha</strong> (v0.0.x). Not recommended for production use. API may change without backward compatibility.
+        This project is in <strong>early alpha</strong> (v0.1.x). Not recommended for production use. API may change without backward compatibility.
       </div>
     </div>
   );
@@ -393,7 +393,7 @@ const faqItems: FaqItem[] = [
   {
     question: 'Can I use it in production?',
     answer:
-      'KubeOpenCode is currently in early alpha (v0.0.x). The API may change without backward compatibility. We recommend using it for development, testing, and evaluation while we work toward a stable release.',
+      'KubeOpenCode is currently in early alpha (v0.1.x). The API may change without backward compatibility. We recommend using it for development, testing, and evaluation while we work toward a stable release.',
   },
 ];
 
