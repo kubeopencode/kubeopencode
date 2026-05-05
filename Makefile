@@ -475,6 +475,8 @@ local-dev-setup: ## One-command local dev setup: cluster, images, helm, test res
 .PHONY: local-dev-setup
 
 local-dev-reload: ## Rebuild and reload all images into local dev cluster
+	@# Note: KubeOpenCodeConfig.systemImage is set during local-dev-setup via Helm
+	@# and persists across reloads. No need to re-run helm upgrade here.
 	@echo "=== Rebuilding and reloading images ==="
 	@$(MAKE) docker-build
 	@for agent in $(LOCAL_DEV_AGENTS); do \
