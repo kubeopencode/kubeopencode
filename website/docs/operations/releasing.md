@@ -27,6 +27,8 @@ All container images are built for `linux/amd64` and `linux/arm64`.
 
 - **Git tag**: `v{MAJOR}.{MINOR}.{PATCH}` (e.g., `v0.1.0`)
 - **Image tag**: Same as git tag (e.g., `v0.1.0`), following the Kubernetes ecosystem convention
+- **Makefile VERSION**: Same as git tag, with `v` prefix (e.g., `v0.1.0`)
+- **Go binary version**: Same as git tag, with `v` prefix (e.g., `v0.1.0`), following `kubectl version` convention
 - **Helm chart version**: `{MAJOR}.{MINOR}.{PATCH}` without `v` prefix (e.g., `0.1.0`), following Helm convention
 - **Helm chart appVersion**: Same as git tag with `v` prefix (e.g., `v0.1.0`), used to resolve default image tags
 
@@ -39,7 +41,7 @@ Decide the new version number based on [Semantic Versioning](https://semver.org/
 - **MINOR**: New features, backward-compatible
 - **PATCH**: Bug fixes, backward-compatible
 
-For the rest of this document, `NEW_VERSION` refers to the version **without** the `v` prefix (e.g., `0.1.0`), and `NEW_TAG` refers to the version **with** the `v` prefix (e.g., `v0.1.0`).
+For the rest of this document, `NEW_VERSION` refers to the version **with** the `v` prefix (e.g., `v0.1.0`). The Helm chart `version` field uses the bare number without `v` (e.g., `0.1.0`), following Helm convention.
 
 ### Step 2: Update Version References
 
@@ -48,7 +50,7 @@ Update the following files on a release branch:
 ```bash
 git checkout main
 git pull origin main
-git checkout -b release/vNEW_VERSION
+git checkout -b release/NEW_VERSION
 ```
 
 #### 2.1 `Makefile` (line 8)
@@ -57,25 +59,29 @@ git checkout -b release/vNEW_VERSION
 VERSION ?= NEW_VERSION
 ```
 
+Note: `VERSION` includes the `v` prefix (e.g., `v0.2.0`). This value is used for image tags and Go ldflags.
+
 #### 2.2 `agents/Makefile` (line 21)
 
 ```makefile
 VERSION ?= NEW_VERSION
 ```
 
+Same as above — includes the `v` prefix.
+
 #### 2.3 `charts/kubeopencode/Chart.yaml`
 
 ```yaml
-version: NEW_VERSION
-appVersion: "vNEW_VERSION"
+version: NEW_VERSION_BARE    # e.g., 0.2.0 (no v prefix, Helm convention)
+appVersion: "NEW_VERSION"    # e.g., v0.2.0 (with v prefix, matches image tags)
 ```
 
-Note: `version` has no `v` prefix, `appVersion` has the `v` prefix.
+Note: Helm chart `version` uses bare number (Helm convention); `appVersion` includes the `v` prefix and must match the image tags.
 
 #### 2.4 `AGENTS.md` (Project Status section)
 
 ```markdown
-- **Version**: vNEW_VERSION
+- **Version**: NEW_VERSION
 ```
 
 ### Step 3: Verify Locally
@@ -93,23 +99,24 @@ make lint
 
 # Verify version command works
 go run -ldflags "-X main.Version=NEW_VERSION" ./cmd/kubeopencode version
+# Expected output: kubeopencode version NEW_VERSION (e.g., v0.2.0)
 
 # Verify Helm chart renders correct image tags
 helm template kubeopencode charts/kubeopencode | grep 'image:'
-# Expected: ghcr.io/kubeopencode/kubeopencode:vNEW_VERSION
+# Expected: ghcr.io/kubeopencode/kubeopencode:NEW_VERSION (e.g., v0.2.0)
 ```
 
 ### Step 4: Commit and Create PR
 
 ```bash
 git add Makefile agents/Makefile charts/kubeopencode/Chart.yaml AGENTS.md
-git commit -s -m "chore: prepare vNEW_VERSION release
+git commit -s -m "chore: prepare NEW_VERSION release
 
 - Update VERSION to NEW_VERSION in Makefile and agents/Makefile
-- Update Chart.yaml version to NEW_VERSION and appVersion to vNEW_VERSION
+- Update Chart.yaml version and appVersion to match NEW_VERSION
 - Update AGENTS.md project status version"
 
-git push origin release/vNEW_VERSION
+git push origin release/NEW_VERSION
 ```
 
 Create a PR targeting `main`, get it reviewed and merged.
@@ -121,8 +128,8 @@ After the PR is merged:
 ```bash
 git checkout main
 git pull origin main
-git tag -a vNEW_VERSION -m "Release vNEW_VERSION"
-git push origin vNEW_VERSION
+git tag -a NEW_VERSION -m "Release NEW_VERSION"
+git push origin NEW_VERSION
 ```
 
 This triggers the `.github/workflows/release.yaml` workflow, which:
@@ -149,16 +156,16 @@ Go to the GitHub Actions tab and monitor the `Release` workflow. Ensure all jobs
 
 ```bash
 # Verify container images
-docker pull ghcr.io/kubeopencode/kubeopencode:vNEW_VERSION
-docker run --rm ghcr.io/kubeopencode/kubeopencode:vNEW_VERSION version
+docker pull ghcr.io/kubeopencode/kubeopencode:NEW_VERSION
+docker run --rm ghcr.io/kubeopencode/kubeopencode:NEW_VERSION version
 # Expected output: kubeopencode version NEW_VERSION
 
-# Verify Helm chart
-helm pull oci://ghcr.io/kubeopencode/helm-charts/kubeopencode --version NEW_VERSION
+# Verify Helm chart (Helm chart version uses bare number without v prefix)
+helm pull oci://ghcr.io/kubeopencode/helm-charts/kubeopencode --version NEW_VERSION_BARE
 
 # Test Helm install (dry-run)
 helm install kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
-  --version NEW_VERSION \
+  --version NEW_VERSION_BARE \
   --namespace kubeopencode-system \
   --create-namespace \
   --dry-run
@@ -169,7 +176,7 @@ helm install kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
 Update the GitHub Release notes using the `gh` CLI. The release notes **must** follow this standard format:
 
 ```bash
-gh release edit vNEW_VERSION --notes "$(cat <<'EOF'
+gh release edit NEW_VERSION --notes "$(cat <<'EOF'
 ## Highlights
 
 <1-2 sentence summary of the most important changes in this release.>
@@ -199,13 +206,13 @@ gh release edit vNEW_VERSION --notes "$(cat <<'EOF'
 \```bash
 # Helm install
 helm install kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
-  --version NEW_VERSION \
+  --version NEW_VERSION_BARE \
   --namespace kubeopencode-system \
   --create-namespace
 
 # Or upgrade
 helm upgrade kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
-  --version NEW_VERSION \
+  --version NEW_VERSION_BARE \
   --namespace kubeopencode-system
 \```
 
@@ -213,7 +220,7 @@ helm upgrade kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
 
 <Keep the auto-generated changelog from GitHub Actions as-is.>
 
-**Full Changelog**: https://github.com/kubeopencode/kubeopencode/compare/vPREV_VERSION...vNEW_VERSION
+**Full Changelog**: https://github.com/kubeopencode/kubeopencode/compare/PREV_VERSION...NEW_VERSION
 EOF
 )"
 ```
@@ -231,8 +238,8 @@ EOF
 The `Chart.yaml` `appVersion` does not match the git tag. Ensure `appVersion` is set to the tag value (e.g., `v0.1.0`). You need to fix it, merge, delete the tag, and re-tag.
 
 ```bash
-git tag -d vNEW_VERSION
-git push origin :refs/tags/vNEW_VERSION
+git tag -d NEW_VERSION
+git push origin :refs/tags/NEW_VERSION
 # Fix Chart.yaml, commit, merge, then re-tag
 ```
 
