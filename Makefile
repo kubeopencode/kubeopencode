@@ -123,7 +123,8 @@ verify: check-env
 ##@ Docker
 
 # Build the docker image (includes UI build)
-# Always tags as both :VERSION and :latest so Kind/local-dev clusters work without extra steps
+# Tags as :VERSION, :latest, and :dev so Kind/local-dev clusters work without extra steps.
+# :latest is the production default; :dev is used in Kind clusters (avoids PullAlways).
 docker-build: ui-build
 	docker build \
 		--build-arg VERSION=$(VERSION) \
@@ -131,6 +132,7 @@ docker-build: ui-build
 		--build-arg BUILD_TIME=$(BUILD_DATE) \
 		-t $(IMG) \
 		-t $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):latest \
+		-t $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):dev \
 		.
 .PHONY: docker-build
 
@@ -295,13 +297,10 @@ e2e-docker-build: ## Build docker image for e2e testing
 .PHONY: e2e-docker-build
 
 # Load docker image into kind cluster
-# Also tags and loads :latest for init containers (git-init, save-session) that use DefaultKubeOpenCodeImage
+# System image (git-init, context-init) is overridden via KubeOpenCodeConfig in e2e-deploy,
+# so we only need to load the :dev tag — no :latest workaround needed.
 e2e-kind-load: ## Load docker image into kind cluster
 	kind load docker-image $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(E2E_IMG_TAG) --name $(E2E_CLUSTER_NAME)
-	@if [ "$(E2E_IMG_TAG)" != "latest" ]; then \
-		docker tag $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(E2E_IMG_TAG) $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):latest; \
-		kind load docker-image $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):latest --name $(E2E_CLUSTER_NAME); \
-	fi
 .PHONY: e2e-kind-load
 
 # Verify image in kind cluster
@@ -326,6 +325,8 @@ e2e-deploy: ## Deploy controller and CRDs to kind cluster using Helm
 		--set server.image.repository=$(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME) \
 		--set server.image.tag=$(E2E_IMG_TAG) \
 		--set server.image.pullPolicy=Never \
+		--set kubeopencodeConfig.systemImage.image=$(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(E2E_IMG_TAG) \
+		--set kubeopencodeConfig.systemImage.imagePullPolicy=Never \
 		--set webhook.enabled=true \
 		--set webhook.service.type=NodePort \
 		--set webhook.service.nodePort=30082 \
@@ -442,23 +443,25 @@ local-dev-setup: ## One-command local dev setup: cluster, images, helm, test res
 		echo "  Building agent: $$agent"; \
 		$(MAKE) agent-build AGENT=$$agent; \
 	done
-	@# Step 3: Load images into Kind
+	@# Step 3: Load images into Kind (all images use :dev tag uniformly)
 	@echo "[3/5] Loading images into Kind..."
-	@kind load docker-image $(LOCAL_DEV_CONTROLLER_IMG):latest --name $(LOCAL_DEV_CLUSTER)
+	@kind load docker-image $(LOCAL_DEV_CONTROLLER_IMG):$(LOCAL_DEV_IMG_TAG) --name $(LOCAL_DEV_CLUSTER)
 	@for img in $(LOCAL_DEV_AGENT_IMGS); do \
 		docker tag $$img:$(VERSION) $$img:$(LOCAL_DEV_IMG_TAG) 2>/dev/null || true; \
 		kind load docker-image $$img:$(LOCAL_DEV_IMG_TAG) --name $(LOCAL_DEV_CLUSTER); \
 	done
-	@# Step 4: Deploy with Helm
+	@# Step 4: Deploy with Helm (all images use :dev tag; systemImage overrides DefaultKubeOpenCodeImage for init containers)
 	@echo "[4/5] Deploying KubeOpenCode with Helm..."
 	@helm upgrade --install kubeopencode ./charts/kubeopencode \
 		--namespace kubeopencode-system \
 		--create-namespace \
 		--set controller.image.pullPolicy=Never \
-		--set controller.image.tag=latest \
+		--set controller.image.tag=$(LOCAL_DEV_IMG_TAG) \
 		--set agent.image.pullPolicy=Never \
 		--set server.enabled=true \
-		--set server.image.tag=latest \
+		--set server.image.tag=$(LOCAL_DEV_IMG_TAG) \
+		--set kubeopencodeConfig.systemImage.image=$(LOCAL_DEV_CONTROLLER_IMG):$(LOCAL_DEV_IMG_TAG) \
+		--set kubeopencodeConfig.systemImage.imagePullPolicy=Never \
 		--wait --timeout 120s
 	@# Step 5: Deploy local-dev test resources
 	@echo "[5/5] Deploying test resources..."
@@ -477,7 +480,7 @@ local-dev-reload: ## Rebuild and reload all images into local dev cluster
 	@for agent in $(LOCAL_DEV_AGENTS); do \
 		$(MAKE) agent-build AGENT=$$agent; \
 	done
-	@kind load docker-image $(LOCAL_DEV_CONTROLLER_IMG):latest --name $(LOCAL_DEV_CLUSTER)
+	@kind load docker-image $(LOCAL_DEV_CONTROLLER_IMG):$(LOCAL_DEV_IMG_TAG) --name $(LOCAL_DEV_CLUSTER)
 	@for img in $(LOCAL_DEV_AGENT_IMGS); do \
 		docker tag $$img:$(VERSION) $$img:$(LOCAL_DEV_IMG_TAG) 2>/dev/null || true; \
 		kind load docker-image $$img:$(LOCAL_DEV_IMG_TAG) --name $(LOCAL_DEV_CLUSTER); \

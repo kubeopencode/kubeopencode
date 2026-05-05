@@ -298,7 +298,7 @@ echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u $GITHUB_ACTOR --password-s
 
 ## Notes
 
-- The `DefaultKubeOpenCodeImage` in `internal/controller/pod_builder.go` stays as `:latest` intentionally. Users who want pinned versions configure it via `KubeOpenCodeConfig.spec.systemImage`.
+- The `DefaultKubeOpenCodeImage` in `internal/controller/pod_builder.go` stays as `:latest` intentionally. Users who want pinned versions configure it via `KubeOpenCodeConfig.spec.systemImage`. For local-dev (Kind), the Makefile sets `systemImage` to `:dev` via Helm to avoid `PullAlways`.
 - Agent image defaults (`DefaultAgentImage`, `DefaultExecutorImage`) also stay as `:latest`. Production users set explicit images in Agent CRDs.
 - No "development version" reset is needed after a release. The Go code defaults to `Version = "dev"` for untagged builds.
 - The `:latest` tag is also updated on every release, keeping it in sync with the most recent version.
