@@ -51,11 +51,11 @@ ADRs document significant architectural and design decisions along with their co
 
 | # | Title | Date |
 |---|-------|------|
-| 0015 | [Repo as Agent — Dynamic Image Building](0015-repo-as-agent-dynamic-image-building.md) | |
 | 0020 | [Enterprise Readiness Roadmap](0020-enterprise-readiness-roadmap.md) | CA certs, metrics, proxy, imagePullSecrets, pod security done; rest pending |
 | 0030 | [Graceful Task Termination on Deletion](0030-task-deletion-graceful-stop.md) | |
 | 0031 | [OpenTelemetry Observability for Tasks and Agents](0031-opentelemetry-observability.md) | |
 | 0032 | [Harness Strategy — Lessons from Anthropic Managed Agents](0032-harness-strategy-managed-agents-analysis.md) | 2026-04-11 |
+| 0036 | [Agent Registry — Enterprise Agent Asset Management and Visual Agent Assembly](0036-agent-registry.md) | 2026-05-05 |
 
 ### Superseded
 
@@ -63,4 +63,5 @@ ADRs document significant architectural and design decisions along with their co
 |---|-------|---------------|
 | 0002 | [Task CRD vs Kubernetes Job](0002-task-crd-vs-kubernetes-job.md) | [ADR 0009](0009-job-to-pod-migration.md) |
 | 0011 | [Agent Server Mode for Persistent OpenCode Servers](0011-agent-server-mode.md) | [ADR 0022](0022-agent-always-running.md) |
+| 0015 | [Repo as Agent — Dynamic Image Building](0015-repo-as-agent-dynamic-image-building.md) | [ADR 0036](0036-agent-registry.md) |
 | 0017 | [OpenCode Web UI Integration via Self-Hosted Reverse Proxy](0017-opencode-web-ui-integration.md) | [ADR 0018](0018-web-terminal-replaces-web-ui.md) |
