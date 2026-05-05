@@ -138,7 +138,7 @@ make local-dev-setup
 This single command performs all of the steps below automatically:
 1. Creates a Kind cluster named `kubeopencode`
 2. Builds the controller image and all agent images
-3. Tags and loads images into Kind (controller as `:latest`, agents as `:dev`)
+3. Tags and loads all images into Kind with the `:dev` tag
 4. Installs via Helm with correct image tags and pull policies
 5. Deploys test resources (`deploy/local-dev/`) via Kustomize
 
@@ -198,8 +198,8 @@ make agent-build AGENT=attach      # Attach image (required for agentRef Tasks)
 #### 3. Load Images to Kind
 
 ```bash
-# Load controller image
-kind load docker-image ghcr.io/kubeopencode/kubeopencode:latest --name kubeopencode
+# Load controller image (use :dev tag, not :latest, to avoid PullAlways in Kind)
+kind load docker-image ghcr.io/kubeopencode/kubeopencode:dev --name kubeopencode
 
 # Tag and load all agent images with :dev tag
 for img in opencode devbox attach; do
@@ -208,7 +208,7 @@ for img in opencode devbox attach; do
 done
 ```
 
-> **Important: Avoid `:latest` tag for agent images.** The controller sets `imagePullPolicy: Always` for images with the `:latest` tag (standard Kubernetes convention). In Kind, this causes `ErrImagePull` because the cluster cannot pull from remote registries. The local-dev agent YAML files use the `:dev` tag to avoid this.
+> **Important: Avoid `:latest` tag in Kind clusters.** The controller sets `imagePullPolicy: Always` for images with the `:latest` tag (standard Kubernetes convention). In Kind, this causes `ErrImagePull` because the cluster cannot pull from remote registries. All local-dev images use the `:dev` tag to avoid this.
 
 #### 4. Deploy with Helm
 
@@ -216,15 +216,17 @@ done
 helm upgrade --install kubeopencode ./charts/kubeopencode \
   --namespace kubeopencode-system \
   --create-namespace \
-  --set controller.image.tag=latest \
+  --set controller.image.tag=dev \
   --set controller.image.pullPolicy=Never \
   --set agent.image.pullPolicy=Never \
   --set server.enabled=true \
-  --set server.image.tag=latest \
-  --set server.image.pullPolicy=Never
+  --set server.image.tag=dev \
+  --set server.image.pullPolicy=Never \
+  --set kubeopencodeConfig.systemImage.image=ghcr.io/kubeopencode/kubeopencode:dev \
+  --set kubeopencodeConfig.systemImage.imagePullPolicy=Never
 ```
 
-> **Important:** The Helm chart defaults to `v<VERSION>` image tags, but `make docker-build` tags images as `<VERSION>` (without `v` prefix) and `latest`. You must explicitly set `controller.image.tag=latest` and `server.image.tag=latest` to match locally built images. Without this, pods will fail with `ErrImageNeverPull`.
+> **Important:** All images in Kind must use the `:dev` tag with `imagePullPolicy=Never`. The `systemImage` override ensures init containers (git-init, context-init) also use the local `:dev` image instead of the default `:latest`.
 
 #### 5. Deploy Test Resources
 

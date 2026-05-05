@@ -126,8 +126,10 @@ All Go files must include:
 The `deploy/local-dev/` directory contains **manifests and examples only** (AgentTemplate, Agents, RBAC, Kustomization). It does NOT contain setup instructions — those live in `CONTRIBUTING.md`.
 
 **Image tag workflow summary** (critical for debugging image pull errors):
-- Controller image: tagged as both `:<VERSION>` and `:latest`. Loaded into Kind as `:latest`. Helm must set `controller.image.tag=latest` and `server.image.tag=latest`.
-- Agent images: tagged as `:<VERSION>`, then re-tagged to `:dev` by the Makefile. Loaded into Kind as `:dev`. The `:latest` tag MUST NOT be used for agents in Kind (causes `ErrImagePull` due to `imagePullPolicy: Always`).
+- All images (controller, server, agents) use the `:dev` tag uniformly in Kind clusters. The `:latest` tag MUST NOT be used in Kind (causes `ErrImagePull` due to `imagePullPolicy: Always`).
+- Controller image: `docker-build` tags as `:<VERSION>`, `:latest`, and `:dev`. Loaded into Kind as `:dev`.
+- Agent images: tagged as `:<VERSION>`, then re-tagged to `:dev` by the Makefile. Loaded into Kind as `:dev`.
+- System image (git-init, context-init): overridden via `KubeOpenCodeConfig.spec.systemImage` to use `:dev` with `imagePullPolicy: Never` in Kind.
 - `imagePullPolicy` must be `Never` for all locally-built images in Kind.
 
 ## Development Workflow
@@ -165,12 +167,12 @@ make e2e-reload     # Rebuild + reload controller image + run e2e-test
 > ```bash
 > make local-dev-reload
 > ```
-> This rebuilds the image (with both `:VERSION` and `:latest` tags), loads into Kind, and restarts all deployments. Never manually run `docker-build` + `kind load` for local-dev — use `local-dev-reload` to avoid tag mismatches.
+> This rebuilds images (tagged `:dev`), loads into Kind, and restarts all deployments. Never manually run `docker-build` + `kind load` for local-dev — use `local-dev-reload` to avoid tag mismatches.
 >
-> **Known issue: Kind image cache stale after reload.** `make local-dev-reload` does `kind load docker-image` + `kubectl rollout restart`, but Kind nodes cache images by digest. If the `:latest` tag digest on the node matches, `kind load` skips the actual load. The restarted Pod then pulls the stale cached image. **Workaround:**
+> **Known issue: Kind image cache stale after reload.** `make local-dev-reload` does `kind load docker-image` + `kubectl rollout restart`, but Kind nodes cache images by digest. If the `:dev` tag digest on the node matches, `kind load` skips the actual load. The restarted Pod then pulls the stale cached image. **Workaround:**
 > ```bash
 > # 1. Tag with a unique name to force Kind to re-tag on the node
-> docker tag ghcr.io/kubeopencode/kubeopencode:latest ghcr.io/kubeopencode/kubeopencode:dev-$(date +%s)
+> docker tag ghcr.io/kubeopencode/kubeopencode:dev ghcr.io/kubeopencode/kubeopencode:dev-$(date +%s)
 > kind load docker-image ghcr.io/kubeopencode/kubeopencode:dev-$(date +%s) --name kubeopencode
 > # 2. Patch the deployment to use the new tag
 > kubectl set image deployment/kubeopencode-controller controller=ghcr.io/kubeopencode/kubeopencode:dev-$(date +%s) -n kubeopencode-system

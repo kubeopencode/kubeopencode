@@ -41,8 +41,7 @@ var (
 
 	// agentImage is the OpenCode init container image used to copy the opencode
 	// binary to /tools. All E2E Agent/AgentTemplate specs must set AgentImage
-	// to this value to avoid the controller falling back to DefaultAgentImage
-	// (which uses :latest and triggers PullAlways in Kind).
+	// to this value to ensure the correct :dev-tagged image is used in Kind.
 	agentImage string
 
 	// OpenCode test configuration (for LabelOpenCode tests)
