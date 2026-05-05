@@ -21,6 +21,8 @@ All container images are built for `linux/amd64` and `linux/arm64`.
 
 - **Git tag**: `v{MAJOR}.{MINOR}.{PATCH}` (e.g., `v0.1.0`)
 - **Image tag**: Same as git tag (e.g., `v0.1.0`), following the Kubernetes ecosystem convention
+- **Makefile VERSION**: Same as git tag, with `v` prefix (e.g., `v0.1.0`)
+- **Go binary version**: Same as git tag, with `v` prefix (e.g., `v0.1.0`), following `kubectl version` convention
 - **Helm chart version**: `{MAJOR}.{MINOR}.{PATCH}` without `v` prefix (e.g., `0.1.0`), following Helm convention
 - **Helm chart appVersion**: Same as git tag with `v` prefix (e.g., `v0.1.0`), used to resolve default image tags
 
@@ -33,7 +35,7 @@ Decide the new version number based on [Semantic Versioning](https://semver.org/
 - **MINOR**: New features, backward-compatible
 - **PATCH**: Bug fixes, backward-compatible
 
-For the rest of this document, `NEW_VERSION` refers to the version **without** the `v` prefix (e.g., `0.1.0`), and `NEW_TAG` refers to the version **with** the `v` prefix (e.g., `v0.1.0`).
+For the rest of this document, `NEW_VERSION` refers to the version **with** the `v` prefix (e.g., `v0.1.0`). The Helm chart `version` field uses the bare number without `v` (e.g., `0.1.0`), following Helm convention.
 
 ### Step 2: Update Version References
 
@@ -51,25 +53,29 @@ git checkout -b release/vNEW_VERSION
 VERSION ?= NEW_VERSION
 ```
 
+Note: `VERSION` includes the `v` prefix (e.g., `v0.2.0`). This value is used for image tags and Go ldflags.
+
 #### 2.2 `agents/Makefile` (line 21)
 
 ```makefile
 VERSION ?= NEW_VERSION
 ```
 
+Same as above — includes the `v` prefix.
+
 #### 2.3 `charts/kubeopencode/Chart.yaml`
 
 ```yaml
-version: NEW_VERSION
-appVersion: "vNEW_VERSION"
+version: NEW_VERSION_BARE    # e.g., 0.2.0 (no v prefix, Helm convention)
+appVersion: "NEW_VERSION"    # e.g., v0.2.0 (with v prefix, matches image tags)
 ```
 
-Note: `version` has no `v` prefix, `appVersion` has the `v` prefix.
+Note: Helm chart `version` uses bare number (Helm convention); `appVersion` includes the `v` prefix and must match the image tags.
 
 #### 2.4 `AGENTS.md` (Project Status section)
 
 ```markdown
-- **Version**: vNEW_VERSION
+- **Version**: NEW_VERSION
 ```
 
 ### Step 3: Verify Locally
@@ -89,10 +95,11 @@ make lint
 
 # Verify version command works
 go run -ldflags "-X main.Version=NEW_VERSION" ./cmd/kubeopencode version
+# Expected output: kubeopencode version NEW_VERSION (e.g., v0.2.0)
 
 # Verify Helm chart renders correct image tags
 helm template kubeopencode charts/kubeopencode | grep 'image:'
-# Expected: ghcr.io/kubeopencode/kubeopencode:vNEW_VERSION
+# Expected: ghcr.io/kubeopencode/kubeopencode:NEW_VERSION (e.g., v0.2.0)
 ```
 
 > **IMPORTANT**: `make lint` must report **0 issues** before proceeding to Step 4. The lint version is auto-detected from Go version (see `ci/lint/run-lint.sh`), so upgrading Go may surface new lint findings. Fix all issues on the release branch before creating the PR.
@@ -101,10 +108,10 @@ helm template kubeopencode charts/kubeopencode | grep 'image:'
 
 ```bash
 git add Makefile agents/Makefile charts/kubeopencode/Chart.yaml AGENTS.md
-git commit -s -m "chore: prepare vNEW_VERSION release
+git commit -s -m "chore: prepare NEW_VERSION release
 
 - Update VERSION to NEW_VERSION in Makefile and agents/Makefile
-- Update Chart.yaml version to NEW_VERSION and appVersion to vNEW_VERSION
+- Update Chart.yaml version and appVersion to match NEW_VERSION
 - Update AGENTS.md project status version"
 
 git push origin release/vNEW_VERSION
@@ -176,7 +183,7 @@ Expected jobs:
 ```bash
 # Verify container images
 docker pull ghcr.io/kubeopencode/kubeopencode:vNEW_VERSION
-docker run --rm ghcr.io/kubeopencode/kubeopencode:vNEW_VERSION version
+docker run --rm ghcr.io/kubeopencode/kubeopencode:NEW_VERSION version
 # Expected output: kubeopencode version NEW_VERSION
 
 # Verify Helm chart (download to .output to avoid polluting the project directory)
