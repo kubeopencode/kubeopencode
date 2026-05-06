@@ -47,7 +47,7 @@ function Layout() {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Logo / Brand */}
-      <div className="flex items-center justify-between px-4 h-14 border-b border-sidebar-border flex-shrink-0">
+      <div className="flex items-center justify-between px-4 h-14 shadow-[0_1px_0_0_rgba(0,0,0,0.06)] flex-shrink-0">
         <NavLink to="/" className="flex items-center gap-2.5 group">
           <img src={logoImg} alt="KubeOpenCode" className="w-7 h-7 rounded-lg" />
           <span className="font-display font-semibold text-sm text-sidebar-text tracking-tight">
@@ -190,7 +190,7 @@ function Layout() {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-sidebar-border flex-shrink-0">
+      <div className="px-4 py-3 shadow-[0_-1px_0_0_rgba(0,0,0,0.06)] flex-shrink-0">
         <div className="flex items-center gap-2 text-[11px] text-sidebar-muted">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
           <span className="font-display">{serverVersion}</span>
@@ -212,7 +212,7 @@ function Layout() {
       {/* Sidebar */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-sidebar-border
+          fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar shadow-[1px_0_0_0_rgba(0,0,0,0.06)]
           transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
           lg:static lg:z-auto
           ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -220,7 +220,7 @@ function Layout() {
         `}
       >
         {sidebarOpen ? sidebarContent : (
-          <div className="hidden lg:flex flex-col items-center py-3 gap-2 h-full border-r border-sidebar-border">
+          <div className="hidden lg:flex flex-col items-center py-3 gap-2 h-full shadow-[1px_0_0_0_rgba(0,0,0,0.06)]">
             {/* Collapsed sidebar */}
             <NavLink to="/" className="w-9 h-9 rounded-lg flex items-center justify-center mb-2">
               <img src={logoImg} alt="KubeOpenCode" className="w-7 h-7 rounded-lg" />
@@ -344,7 +344,7 @@ function Layout() {
       {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar - mobile only + breadcrumb area */}
-        <header className="h-14 flex items-center justify-between px-4 lg:px-6 border-b border-slate-200/80 bg-white/60 backdrop-blur-sm flex-shrink-0 relative z-20">
+        <header className="h-14 flex items-center justify-between px-4 lg:px-6 shadow-[0_1px_0_0_rgba(0,0,0,0.06)] bg-white/60 backdrop-blur-sm flex-shrink-0 relative z-20">
           <button
             onClick={() => setMobileSidebarOpen(true)}
             className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"

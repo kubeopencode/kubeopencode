@@ -66,7 +66,7 @@ function AgentTemplatesPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-stone-200 p-5">
+            <div key={i} className="bg-white rounded-xl border-0 shadow-card p-5">
               <Skeleton className="h-5 w-32 mb-2" />
               <Skeleton className="h-3 w-20 mb-4" />
               <Skeleton className="h-3 w-full mb-2" />
@@ -97,7 +97,7 @@ function AgentTemplatesPage() {
               <Link
                 key={`${tmpl.namespace}/${tmpl.name}`}
                 to={`/templates/${tmpl.namespace}/${tmpl.name}`}
-                className="bg-white rounded-xl border border-stone-200 overflow-hidden hover:border-stone-300 hover:shadow-md transition-all group"
+                className="bg-white rounded-xl border-0 overflow-hidden shadow-card hover:shadow-card-hover transition-all group"
               >
                 <div className="p-5">
                   <div>

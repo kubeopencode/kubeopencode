@@ -39,6 +39,13 @@ module.exports = {
         body: ['"DM Sans"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'monospace'],
       },
+      boxShadow: {
+        'ring': '0px 0px 0px 1px rgba(0, 0, 0, 0.06)',
+        'card': '0px 0px 0px 1px rgba(0, 0, 0, 0.06), 0px 1px 2px rgba(0, 0, 0, 0.04)',
+        'card-hover': '0px 0px 0px 1px rgba(0, 0, 0, 0.06), 0px 2px 4px rgba(0, 0, 0, 0.04), 0px 8px 16px rgba(0, 0, 0, 0.06)',
+        'elevated': '0px 0px 0px 1px rgba(0, 0, 0, 0.06), 0px 4px 8px rgba(0, 0, 0, 0.04), 0px 12px 24px rgba(0, 0, 0, 0.06)',
+        'modal': '0px 0px 0px 1px rgba(0, 0, 0, 0.06), 0px 8px 16px rgba(0, 0, 0, 0.08), 0px 24px 48px rgba(0, 0, 0, 0.12)',
+      },
       animation: {
         'slide-in': 'slide-in 0.3s ease-out',
         'fade-in': 'fade-in 0.2s ease-out',

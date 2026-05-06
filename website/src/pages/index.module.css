@@ -17,8 +17,9 @@
 
 .heroTitle {
   font-size: 3.5rem;
-  font-weight: 800;
+  font-weight: 700;
   margin-bottom: 0.5rem;
+  letter-spacing: -2px;
 }
 
 .heroTagline {
@@ -111,8 +112,9 @@
 
 .sectionHeader h2 {
   font-size: 2.2rem;
-  font-weight: 700;
+  font-weight: 600;
   margin-bottom: 0.75rem;
+  letter-spacing: -1.2px;
 }
 
 .sectionSubtitle {
@@ -131,11 +133,17 @@
   height: 0;
   overflow: hidden;
   border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0px 0px 0px 1px rgba(0, 0, 0, 0.06),
+    0px 4px 8px rgba(0, 0, 0, 0.04),
+    0px 12px 24px rgba(0, 0, 0, 0.08);
 }
 
 [data-theme='dark'] .demoVideoContainer {
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0px 0px 0px 1px rgba(255, 255, 255, 0.06),
+    0px 4px 8px rgba(0, 0, 0, 0.2),
+    0px 12px 24px rgba(0, 0, 0, 0.3);
 }
 
 .demoVideo {
@@ -159,20 +167,34 @@
 
 .featureCard {
   background: var(--ifm-background-color);
-  border: 1px solid var(--ifm-color-emphasis-200);
+  border: none;
   border-radius: 12px;
   padding: 2rem 1.5rem;
   text-align: center;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease;
+  box-shadow:
+    0px 0px 0px 1px rgba(0, 0, 0, 0.08),
+    0px 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .featureCard:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0px 0px 0px 1px rgba(0, 0, 0, 0.08),
+    0px 2px 4px rgba(0, 0, 0, 0.04),
+    0px 8px 16px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='dark'] .featureCard {
+  box-shadow:
+    0px 0px 0px 1px rgba(255, 255, 255, 0.08),
+    0px 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 [data-theme='dark'] .featureCard:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0px 0px 0px 1px rgba(255, 255, 255, 0.12),
+    0px 2px 4px rgba(0, 0, 0, 0.2),
+    0px 8px 16px rgba(0, 0, 0, 0.3);
 }
 
 .featureIconArea {
@@ -194,6 +216,8 @@
 .featureTitle {
   font-size: 1.15rem;
   margin-bottom: 0.75rem;
+  letter-spacing: -0.3px;
+  font-weight: 600;
 }
 
 .featureDescription {
@@ -261,14 +285,33 @@
   text-align: center;
   padding: 1.5rem 2rem;
   background: var(--ifm-background-color);
-  border: 2px solid var(--ifm-color-primary);
+  border: none;
   border-radius: 12px;
   min-width: 160px;
-  transition: transform 0.2s ease;
+  transition: box-shadow 0.2s ease;
+  box-shadow:
+    0px 0px 0px 1.5px rgba(50, 108, 229, 0.25),
+    0px 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .archNode:hover {
-  transform: translateY(-2px);
+  box-shadow:
+    0px 0px 0px 1.5px rgba(50, 108, 229, 0.35),
+    0px 2px 4px rgba(0, 0, 0, 0.04),
+    0px 6px 12px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='dark'] .archNode {
+  box-shadow:
+    0px 0px 0px 1.5px rgba(91, 155, 245, 0.3),
+    0px 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .archNode:hover {
+  box-shadow:
+    0px 0px 0px 1.5px rgba(91, 155, 245, 0.45),
+    0px 2px 4px rgba(0, 0, 0, 0.2),
+    0px 6px 12px rgba(0, 0, 0, 0.3);
 }
 
 .archNode h4 {
@@ -392,6 +435,8 @@
   color: white;
   font-size: 2rem;
   margin-bottom: 1rem;
+  letter-spacing: -1px;
+  font-weight: 600;
 }
 
 .ctaDescription {
@@ -425,6 +470,7 @@
 
   .heroTitle {
     font-size: 2.5rem;
+    letter-spacing: -1.5px;
   }
 
   .featuresGrid {
@@ -456,6 +502,7 @@
 @media screen and (max-width: 640px) {
   .heroTitle {
     font-size: 2rem;
+    letter-spacing: -1px;
   }
 
   .heroTagline {
@@ -468,6 +515,7 @@
 
   .sectionHeader h2 {
     font-size: 1.75rem;
+    letter-spacing: -0.8px;
   }
 
   .featuresGrid {

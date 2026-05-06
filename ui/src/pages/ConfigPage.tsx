@@ -65,7 +65,7 @@ function ConfigPage() {
     <div className="animate-fade-in">
       <Breadcrumbs items={[{ label: 'Config' }]} />
 
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
         <div className="px-6 py-5 border-b border-stone-100">
           <div className="flex items-center justify-between">
             <div>

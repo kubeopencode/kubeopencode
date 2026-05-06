@@ -81,7 +81,7 @@ function DashboardPage() {
         {statCards.map((stat) => (
           <div
             key={stat.label}
-            className={`rounded-xl p-4 border ${stat.color} transition-all hover:shadow-sm`}
+            className={`rounded-xl p-4 border ${stat.color} transition-all hover:shadow-card`}
           >
             <p className="text-xs font-medium uppercase tracking-wider opacity-70">{stat.label}</p>
             <p className={`text-2xl font-display font-bold mt-1 ${stat.accent}`}>
@@ -93,7 +93,7 @@ function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Tasks */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+        <div className="lg:col-span-2 bg-white rounded-xl border-0 overflow-hidden shadow-card">
           <div className="px-5 py-4 border-b border-stone-100 flex items-center justify-between">
             <h2 className="font-display text-sm font-semibold text-stone-900">Recent Tasks</h2>
             <Link to="/tasks" className="text-xs text-stone-500 hover:text-primary-600 transition-colors font-medium">
@@ -147,7 +147,7 @@ function DashboardPage() {
         </div>
 
         {/* Agents */}
-        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
           <div className="px-5 py-4 border-b border-stone-100 flex items-center justify-between">
             <h2 className="font-display text-sm font-semibold text-stone-900">Agents</h2>
             <Link to="/agents" className="text-xs text-stone-500 hover:text-primary-600 transition-colors font-medium">

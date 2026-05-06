@@ -124,7 +124,7 @@ function CronTaskDetailPage() {
         { label: name! },
       ]} />
 
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
         <div className="px-6 py-5 border-b border-stone-100">
           <div className="flex items-center justify-between">
             <div>
@@ -348,7 +348,7 @@ function CronTaskDetailPage() {
       />
 
       {/* Execution History */}
-      <div className="mt-6 bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+      <div className="mt-6 bg-white rounded-xl border-0 overflow-hidden shadow-card">
         <div className="px-6 py-4 border-b border-stone-100">
           <h3 className="font-display text-base font-semibold text-stone-900">Execution History</h3>
           <p className="text-xs text-stone-400 mt-0.5">Tasks created by this CronTask</p>

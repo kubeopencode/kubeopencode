@@ -13,6 +13,18 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: 'JetBrains Mono', monospace;
   }
+
+  h1 {
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    letter-spacing: -0.015em;
+  }
+
+  h3 {
+    letter-spacing: -0.01em;
+  }
 }
 
 /* Scrollbar styling for sidebar */

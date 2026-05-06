@@ -56,13 +56,13 @@ function ConfirmDialog({
           className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={onCancel}
         />
-        <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-stone-200 animate-fade-in">
+        <div className="relative bg-white rounded-2xl shadow-modal max-w-md w-full p-6 border-0 animate-fade-in">
           <h3 className="font-display text-lg font-semibold text-stone-900 mb-2">{title}</h3>
           <p className="text-sm text-stone-500 mb-6 leading-relaxed">{message}</p>
           <div className="flex justify-end space-x-3">
             <button
               onClick={onCancel}
-              className="px-4 py-2 text-sm font-medium text-stone-600 bg-stone-100 rounded-lg hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-stone-400 transition-colors"
+              className="px-4 py-2 text-sm font-medium text-stone-600 bg-white shadow-ring rounded-lg hover:shadow-card focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-stone-400 transition-all"
             >
               {cancelLabel}
             </button>

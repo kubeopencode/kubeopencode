@@ -93,7 +93,7 @@ function TaskDetailPage() {
         { label: name! },
       ]} />
 
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
         <div className="px-6 py-5 border-b border-stone-100">
           <div className="flex items-center justify-between">
             <div>
@@ -115,14 +115,14 @@ function TaskDetailPage() {
               )}
               <Link
                 to={`/tasks/create?rerun=${name}&namespace=${namespace}`}
-                className="px-3 py-1.5 text-xs font-medium text-stone-600 bg-stone-50 border border-stone-200 rounded-lg hover:bg-stone-100 transition-colors"
+                className="px-3 py-1.5 text-xs font-medium text-stone-600 bg-white shadow-ring rounded-lg hover:shadow-card transition-all"
               >
                 Rerun
               </Link>
               <button
                 onClick={() => setShowDeleteDialog(true)}
                 disabled={deleteMutation.isPending}
-                className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 shadow-[0px_0px_0px_1px_rgba(239,68,68,0.2)] rounded-lg hover:bg-red-100 transition-colors"
               >
                 Delete
               </button>

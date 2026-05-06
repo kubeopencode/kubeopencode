@@ -37,7 +37,7 @@ export function TableSkeleton({ rows = 5, cols = 4 }: { rows?: number; cols?: nu
 
 export function DetailSkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm animate-fade-in">
+    <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card animate-fade-in">
       <div className="px-6 py-5 border-b border-stone-100">
         <Skeleton className="h-6 w-48 mb-2" />
         <Skeleton className="h-4 w-32" />
@@ -65,7 +65,7 @@ export function DashboardSkeleton() {
       <Skeleton className="h-8 w-48 mb-6" />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-stone-200 p-4">
+          <div key={i} className="bg-white rounded-xl border-0 shadow-card p-4">
             <Skeleton className="h-3 w-20 mb-2" />
             <Skeleton className="h-8 w-12" />
           </div>

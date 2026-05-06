@@ -122,7 +122,7 @@ function CronTasksPage() {
       </div>
 
       {isLoading ? (
-        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
           <TableSkeleton rows={5} cols={isAllNamespaces ? 7 : 6} />
         </div>
       ) : error ? (
@@ -136,7 +136,7 @@ function CronTasksPage() {
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
           <table className="min-w-full divide-y divide-stone-100">
             <thead className="bg-stone-50/60">
               <tr>

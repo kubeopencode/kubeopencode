@@ -248,7 +248,7 @@ function TasksPage() {
       </div>
 
       {isLoading ? (
-        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
           <TableSkeleton rows={5} cols={isAllNamespaces ? 7 : 6} />
         </div>
       ) : error ? (
@@ -262,7 +262,7 @@ function TasksPage() {
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
           {/* Batch action bar */}
           {selectedTasks.size > 0 && (
             <div className="bg-primary-50 border-b border-primary-200 px-5 py-2.5 flex items-center justify-between">

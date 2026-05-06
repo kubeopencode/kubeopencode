@@ -192,7 +192,7 @@ function TaskCreatePage() {
         { label: 'Create Task' },
       ]} />
 
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm max-w-3xl">
+      <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card max-w-3xl">
         <div className="px-6 py-5 border-b border-stone-100">
           <h2 className="font-display text-xl font-bold text-stone-900">Create Task</h2>
           <p className="text-sm text-stone-400 mt-0.5">Create a new AI agent task</p>
@@ -372,7 +372,7 @@ function TaskCreatePage() {
           <div className="flex justify-end space-x-3 pt-2">
             <Link
               to="/tasks"
-              className="px-4 py-2.5 text-sm font-medium text-stone-600 bg-stone-100 rounded-lg hover:bg-stone-200 transition-colors"
+              className="px-4 py-2.5 text-sm font-medium text-stone-600 bg-white shadow-ring rounded-lg hover:shadow-card transition-all"
             >
               Cancel
             </Link>
