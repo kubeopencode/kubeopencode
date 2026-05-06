@@ -88,6 +88,8 @@ spec:
                   ClusterDomain specifies the cluster domain name (e.g., "cluster.local").
                   This is used for constructing in-cluster service URLs.
                   If not specified, "cluster.local" is used as the default.
+                maxLength: 253
+                pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
                 type: string
               proxy:
                 description: |-

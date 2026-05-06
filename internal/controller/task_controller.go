@@ -155,8 +155,16 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return r.handleTaskCleanup(ctx, task)
 	}
 
-	// Check for user-initiated stop (only for Running tasks)
+	// For Running tasks: check timeout, user-initiated stop, and Pod status
 	if task.Status.Phase == kubeopenv1alpha1.TaskPhaseRunning {
+		// Check timeout before user stop — if both apply, timeout is the cause
+		if task.Spec.Timeout != nil && task.Status.StartTime != nil {
+			elapsed := time.Since(task.Status.StartTime.Time)
+			if elapsed >= task.Spec.Timeout.Duration {
+				return r.handleTimeout(ctx, task)
+			}
+		}
+
 		if isTaskStoppedByUser(task) {
 			return r.handleStop(ctx, task)
 		}
@@ -166,6 +174,15 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if err := r.updateTaskStatusFromPod(ctx, task); err != nil {
 		log.Error(err, "unable to update task status")
 		return ctrl.Result{}, err
+	}
+
+	// Schedule requeue at timeout expiry for Running tasks with timeout
+	if task.Status.Phase == kubeopenv1alpha1.TaskPhaseRunning &&
+		task.Spec.Timeout != nil && task.Status.StartTime != nil {
+		remaining := task.Spec.Timeout.Duration - time.Since(task.Status.StartTime.Time)
+		if remaining > 0 {
+			return ctrl.Result{RequeueAfter: remaining}, nil
+		}
 	}
 
 	return ctrl.Result{}, nil
@@ -1239,6 +1256,54 @@ func (r *TaskReconciler) handleStop(ctx context.Context, task *kubeopenv1alpha1.
 	r.resolveSessionInfo(ctx, task)
 
 	r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "Stopped", "Stopped", "Task stopped by user")
+
+	if err := r.Status().Update(ctx, task); err != nil {
+		log.Error(err, "failed to update task status")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// handleTimeout handles automatic task stop when the execution timeout is exceeded.
+// It reuses the same Pod deletion and status update logic as handleStop,
+// but with reason "Timeout" instead of "UserStopped".
+func (r *TaskReconciler) handleTimeout(ctx context.Context, task *kubeopenv1alpha1.Task) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+	timeoutDuration := task.Spec.Timeout.Duration
+	log.Info("task timeout exceeded", "task", task.Name, "timeout", timeoutDuration)
+
+	// Delete the Pod if it exists
+	if task.Status.PodName != "" {
+		pod := &corev1.Pod{}
+		podKey := types.NamespacedName{Name: task.Status.PodName, Namespace: task.Namespace}
+		if err := r.Get(ctx, podKey, pod); err == nil {
+			if err := r.Delete(ctx, pod); err != nil {
+				log.Error(err, "failed to delete pod")
+				return ctrl.Result{}, err
+			}
+			log.Info("deleted pod for timed out task", "pod", task.Status.PodName)
+		}
+	}
+
+	// Update Task status to Completed with Stopped condition (reason: Timeout)
+	task.Status.Phase = kubeopenv1alpha1.TaskPhaseCompleted
+	task.Status.ObservedGeneration = task.Generation
+	now := metav1.Now()
+	task.Status.CompletionTime = &now
+
+	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
+		Type:    kubeopenv1alpha1.ConditionTypeStopped,
+		Status:  metav1.ConditionTrue,
+		Reason:  kubeopenv1alpha1.ReasonTimeout,
+		Message: fmt.Sprintf("Task timed out after %s", timeoutDuration),
+	})
+
+	// Resolve session info from Agent's OpenCode server (best-effort)
+	r.resolveSessionInfo(ctx, task)
+
+	r.Recorder.Eventf(task, nil, corev1.EventTypeNormal, "Timeout", "Timeout",
+		"Task timed out after %s", timeoutDuration)
 
 	if err := r.Status().Update(ctx, task); err != nil {
 		log.Error(err, "failed to update task status")

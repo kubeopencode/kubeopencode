@@ -61,6 +61,8 @@ const (
 	ReasonAgentSuspended = "AgentSuspended"
 	// ReasonAgentServerNotReady is the reason when agent server is not yet ready
 	ReasonAgentServerNotReady = "AgentServerNotReady"
+	// ReasonTimeout is the reason when a task is stopped due to exceeding its timeout
+	ReasonTimeout = "Timeout"
 )
 
 // +genclient
@@ -144,6 +146,20 @@ type TaskSpec struct {
 	// Exactly one of agentRef or templateRef must be set.
 	// +optional
 	TemplateRef *AgentTemplateReference `json:"templateRef,omitempty"`
+
+	// Timeout specifies the maximum duration for task execution.
+	// The timeout clock starts when the Task enters the Running phase (status.startTime),
+	// not when the Task is created. Queue time (Pending/Queued phases) is excluded.
+	//
+	// If the Task is still running after this duration, the controller stops it
+	// by deleting the Pod (SIGTERM). The Task transitions to Completed with
+	// condition Stopped, reason "Timeout".
+	//
+	// If not set, the Task runs indefinitely (no timeout).
+	//
+	// Example: "30m", "1h", "2h30m"
+	// +optional
+	Timeout *metav1.Duration `json:"timeout,omitempty"`
 }
 
 // SessionInfo contains information about the OpenCode session associated with a Task.

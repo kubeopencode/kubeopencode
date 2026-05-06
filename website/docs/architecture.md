@@ -233,6 +233,7 @@ type TaskSpec struct {
     AgentRef    *AgentReference         // Agent reference (same namespace)
     TemplateRef *AgentTemplateReference // AgentTemplate reference (alternative to agentRef)
     // Exactly one of AgentRef or TemplateRef must be set
+    Timeout     *metav1.Duration        // Max execution duration (from Running phase, excludes queue time)
 }
 
 // AgentReference references an Agent in the same namespace

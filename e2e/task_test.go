@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -524,6 +525,130 @@ var _ = Describe("Task E2E Tests", Label(LabelTask), func() {
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, longRunAgent)).Should(Succeed())
+		})
+	})
+
+	Context("Task timeout", func() {
+		It("should stop a running task when timeout is exceeded", func() {
+			taskName := uniqueName("task-timeout")
+
+			By("Creating an Agent with a long-running command")
+			timeoutAgentName := uniqueName("timeout-agent")
+			timeoutAgent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      timeoutAgentName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					AgentImage:         agentImage,
+					ExecutorImage:      echoImage,
+					ServiceAccountName: testServiceAccount,
+					WorkspaceDir:       "/workspace",
+					Command:            []string{"sh", "-c", "echo 'Starting long task' && sleep 300"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, timeoutAgent)).Should(Succeed())
+
+			taskContent := "# Long Running Task for Timeout Test"
+			By("Creating a Task with a short timeout")
+			timeoutDuration := metav1.Duration{Duration: 10 * time.Second}
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: timeoutAgentName},
+					Description: &taskContent,
+					Timeout:     &timeoutDuration,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+
+			By("Waiting for Task to be Running")
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				t := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
+					return ""
+				}
+				return t.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseRunning))
+
+			By("Waiting for Task to be stopped by timeout")
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				t := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
+					return ""
+				}
+				return t.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying Stopped condition with Timeout reason")
+			timedOutTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskKey, timedOutTask)).Should(Succeed())
+
+			var hasStoppedCondition bool
+			for _, cond := range timedOutTask.Status.Conditions {
+				if cond.Type == "Stopped" && cond.Status == "True" {
+					hasStoppedCondition = true
+					Expect(cond.Reason).Should(Equal("Timeout"))
+					Expect(cond.Message).Should(ContainSubstring("timed out"))
+					break
+				}
+			}
+			Expect(hasStoppedCondition).Should(BeTrue(), "Task should have Stopped condition with Timeout reason")
+
+			By("Verifying CompletionTime is set")
+			Expect(timedOutTask.Status.CompletionTime).ShouldNot(BeNil())
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, timeoutAgent)).Should(Succeed())
+		})
+
+		It("should not stop a task that completes before timeout", func() {
+			taskName := uniqueName("task-no-timeout")
+			taskContent := "# Quick Task"
+
+			By("Creating a Task with a generous timeout using the shared echo agent")
+			timeoutDuration := metav1.Duration{Duration: 5 * time.Minute}
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: testNS,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					Description: &taskContent,
+					Timeout:     &timeoutDuration,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Waiting for Task to complete normally")
+			taskKey := types.NamespacedName{Name: taskName, Namespace: testNS}
+			Eventually(func() kubeopenv1alpha1.TaskPhase {
+				t := &kubeopenv1alpha1.Task{}
+				if err := k8sClient.Get(ctx, taskKey, t); err != nil {
+					return ""
+				}
+				return t.Status.Phase
+			}, timeout, interval).Should(Equal(kubeopenv1alpha1.TaskPhaseCompleted))
+
+			By("Verifying no Stopped condition exists")
+			completedTask := &kubeopenv1alpha1.Task{}
+			Expect(k8sClient.Get(ctx, taskKey, completedTask)).Should(Succeed())
+
+			for _, cond := range completedTask.Status.Conditions {
+				if cond.Type == "Stopped" {
+					Fail("Task should NOT have Stopped condition when completing before timeout")
+				}
+			}
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 		})
 	})
 

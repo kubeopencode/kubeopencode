@@ -423,6 +423,20 @@ spec:
                         required:
                         - name
                         type: object
+                      timeout:
+                        description: |-
+                          Timeout specifies the maximum duration for task execution.
+                          The timeout clock starts when the Task enters the Running phase (status.startTime),
+                          not when the Task is created. Queue time (Pending/Queued phases) is excluded.
+
+                          If the Task is still running after this duration, the controller stops it
+                          by deleting the Pod (SIGTERM). The Task transitions to Completed with
+                          condition Stopped, reason "Timeout".
+
+                          If not set, the Task runs indefinitely (no timeout).
+
+                          Example: "30m", "1h", "2h30m"
+                        type: string
                     type: object
                     x-kubernetes-validations:
                     - message: either agentRef or templateRef must be specified

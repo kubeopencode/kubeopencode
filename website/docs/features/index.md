@@ -16,6 +16,7 @@ KubeOpenCode brings Agentic AI capabilities into the Kubernetes ecosystem. Here'
 
 - **[CronTask](crontask.md)** - Scheduled and recurring task execution
 - **[Git Auto-Sync](git-auto-sync.md)** - Automatic sync with remote Git repositories
+- **[Task Timeout](task-timeout.md)** - Automatic timeout for long-running tasks
 - **[Task Stop](task-stop.md)** - Stop running tasks via annotation
 - **[Concurrency & Quota](concurrency-quota.md)** - Limit concurrent tasks and rate of task starts
 
