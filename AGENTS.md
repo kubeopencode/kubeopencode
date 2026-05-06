@@ -75,6 +75,10 @@ Agent always creates a Deployment + Service running `opencode serve`. Supports p
 
 Agents support shareable terminal links for users without Kubernetes credentials. When `spec.share.enabled: true`, the controller generates a cryptographic token (32-byte, base64url) stored in a Secret `{agent-name}-share`. The server exposes a standalone terminal page at `/s/{token}` outside the auth middleware. Options: `expiresAt` (expiry time), `allowedIPs` (CIDR allowlist). CLI: `kubeoc agent share/unshare`. See ADR 0033.
 
+### Task Timeout
+
+Tasks support an optional `timeout` field (Go duration string, e.g., `"30m"`, `"1h"`, `"2h30m"`). The timeout clock starts when the Task enters the Running phase (`status.startTime`), not at creation time. Queue time (Pending/Queued phases) is excluded. When the timeout is exceeded, the controller deletes the Pod (SIGTERM) and sets `Phase=Completed` with condition `Stopped`, reason `Timeout`. If not set, the Task runs indefinitely (backward compatible). See ADR 0037.
+
 ### Task Stop
 
 Stop running Tasks via annotation: `kubectl annotate task <name> kubeopencode.io/stop=true`. Prefer this over `kubectl delete task`. Logs are lost when stopped.
