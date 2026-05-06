@@ -35,7 +35,7 @@ all: build
 
 .PHONY: base-build
 base-build: ## Build the universal base image
-	docker build $(NO_CACHE_FLAG) -t $(BASE_IMG) base/
+	docker build --network=host $(NO_CACHE_FLAG) -t $(BASE_IMG) base/
 
 .PHONY: base-push
 base-push: ## Push the base image to registry
@@ -65,9 +65,9 @@ build: ## Build agent docker image (AGENT=opencode|devbox|attach)
 		exit 1; \
 	fi
 	@if [ "$(AGENT)" = "opencode" ]; then \
-		docker build $(NO_CACHE_FLAG) --build-arg OPENCODE_VERSION=$(OPENCODE_VERSION) -t $(IMG) $(AGENT)/; \
+		docker build --network=host $(NO_CACHE_FLAG) --build-arg OPENCODE_VERSION=$(OPENCODE_VERSION) -t $(IMG) $(AGENT)/; \
 	else \
-		docker build $(NO_CACHE_FLAG) --build-arg BASE_IMAGE=$(BASE_IMG) -t $(IMG) $(AGENT)/; \
+		docker build --network=host $(NO_CACHE_FLAG) --build-arg BASE_IMAGE=$(BASE_IMG) -t $(IMG) $(AGENT)/; \
 	fi
 
 .PHONY: push
