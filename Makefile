@@ -127,6 +127,7 @@ verify: check-env
 # :latest is the production default; :dev is used in Kind clusters (avoids PullAlways).
 docker-build: ui-build
 	docker build \
+		--network=host \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg BUILD_TIME=$(BUILD_DATE) \
@@ -293,7 +294,7 @@ e2e-kind-delete: ## Delete kind cluster
 
 # Build docker image for e2e testing
 e2e-docker-build: ## Build docker image for e2e testing
-	docker build --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_TIME=$(BUILD_DATE) -t $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(E2E_IMG_TAG) .
+	docker build --network=host --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_TIME=$(BUILD_DATE) -t $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME):$(E2E_IMG_TAG) .
 .PHONY: e2e-docker-build
 
 # Load docker image into kind cluster
@@ -359,7 +360,7 @@ e2e-reload: e2e-docker-build e2e-kind-load e2e-verify-image ## Rebuild and reloa
 # Build agent images for e2e testing
 # Uses E2E_IMG_TAG (default: dev) to avoid :latest which triggers PullAlways in Kind
 e2e-agent-build: ## Build agent images for e2e testing (echo + opencode)
-	docker build -t ghcr.io/kubeopencode/kubeopencode-agent-echo:$(E2E_IMG_TAG) agents/echo/
+	docker build --network=host -t ghcr.io/kubeopencode/kubeopencode-agent-echo:$(E2E_IMG_TAG) agents/echo/
 	$(MAKE) -C agents AGENT=opencode build IMG=ghcr.io/kubeopencode/kubeopencode-agent-opencode:$(E2E_IMG_TAG)
 .PHONY: e2e-agent-build
 
