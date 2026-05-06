@@ -322,7 +322,7 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		})
 
 		// Mount /tools volume so context-init can write config file
-		if !configIsEmpty(agentCfg.config) {
+		if !configIsEmpty(agentCfg.config) || len(agentCfg.skills) > 0 || hasServerPlugins(agentCfg.plugins) {
 			contextInit.VolumeMounts = append(contextInit.VolumeMounts, corev1.VolumeMount{
 				Name:      ToolsVolumeName,
 				MountPath: ToolsMountPath,
