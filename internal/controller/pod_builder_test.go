@@ -3657,3 +3657,343 @@ func TestApplySystemDefaults(t *testing.T) {
 		}
 	})
 }
+
+// hasEnvVar checks if a container has an env var with the given name and value.
+func hasEnvVar(envs []corev1.EnvVar, name, value string) bool {
+	for _, e := range envs {
+		if e.Name == name && e.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+// findInitContainer returns the init container with the given name, or nil.
+func findInitContainer(pod *corev1.Pod, name string) *corev1.Container {
+	for i := range pod.Spec.InitContainers {
+		if pod.Spec.InitContainers[i].Name == name {
+			return &pod.Spec.InitContainers[i]
+		}
+	}
+	return nil
+}
+
+// hasVolumeMount checks if a container has a volume mount with the given name and mountPath.
+func hasVolumeMount(mounts []corev1.VolumeMount, name, mountPath string) bool {
+	for _, m := range mounts {
+		if m.Name == name && m.MountPath == mountPath {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBuildGitInitContainer_HomeEnv(t *testing.T) {
+	gm := gitMount{
+		repository: "https://gitlab.example.com/repo.git",
+		ref:        "main",
+		mountPath:  "/workspace",
+	}
+	sysCfg := defaultSystemConfig()
+	c := buildGitInitContainer(gm, "git-context-0", 0, sysCfg)
+
+	if !hasEnvVar(c.Env, "HOME", DefaultHomeDir) {
+		t.Errorf("git-init container missing HOME=%s env var for SCC compatibility", DefaultHomeDir)
+	}
+	if !hasEnvVar(c.Env, "SHELL", DefaultShell) {
+		t.Errorf("git-init container missing SHELL=%s env var for SCC compatibility", DefaultShell)
+	}
+}
+
+func TestBuildGitSyncSidecar_HomeEnv(t *testing.T) {
+	gm := gitMount{
+		repository: "https://gitlab.example.com/repo.git",
+		ref:        "main",
+		mountPath:  "/workspace",
+	}
+	sysCfg := defaultSystemConfig()
+	c := buildGitSyncSidecar(gm, "git-context-0", 0, sysCfg)
+
+	if !hasEnvVar(c.Env, "HOME", DefaultHomeDir) {
+		t.Errorf("git-sync sidecar missing HOME=%s env var for SCC compatibility", DefaultHomeDir)
+	}
+	if !hasEnvVar(c.Env, "SHELL", DefaultShell) {
+		t.Errorf("git-sync sidecar missing SHELL=%s env var for SCC compatibility", DefaultShell)
+	}
+}
+
+func TestApplyInitContainerOverrides_Nil(t *testing.T) {
+	c := corev1.Container{Name: "test", Env: []corev1.EnvVar{{Name: "FOO", Value: "bar"}}}
+	applyInitContainerOverrides(&c, nil)
+	if len(c.Env) != 1 {
+		t.Errorf("expected 1 env var after nil overrides, got %d", len(c.Env))
+	}
+}
+
+func TestApplyInitContainerOverrides_ExtraEnv(t *testing.T) {
+	c := corev1.Container{Name: "test"}
+	overrides := &kubeopenv1alpha1.InitContainerOverrides{
+		ExtraEnv: []corev1.EnvVar{
+			{Name: "HOME", Value: "/tmp"},
+			{Name: "MY_VAR", Value: "my-value"},
+		},
+	}
+	applyInitContainerOverrides(&c, overrides)
+	if !hasEnvVar(c.Env, "HOME", "/tmp") {
+		t.Error("expected HOME=/tmp in container env after overrides")
+	}
+	if !hasEnvVar(c.Env, "MY_VAR", "my-value") {
+		t.Error("expected MY_VAR=my-value in container env after overrides")
+	}
+}
+
+func TestApplyInitContainerOverrides_ExtraVolumeMounts(t *testing.T) {
+	c := corev1.Container{Name: "test"}
+	overrides := &kubeopenv1alpha1.InitContainerOverrides{
+		ExtraVolumeMounts: []corev1.VolumeMount{
+			{Name: "corp-ca", MountPath: "/etc/ssl/corp", ReadOnly: true},
+		},
+	}
+	applyInitContainerOverrides(&c, overrides)
+	if !hasVolumeMount(c.VolumeMounts, "corp-ca", "/etc/ssl/corp") {
+		t.Error("expected corp-ca volume mount in container after overrides")
+	}
+}
+
+func TestBuildPod_ExtraEnvAllContainers(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-task", Namespace: "default"},
+	}
+	extraEnv := []corev1.EnvVar{
+		{Name: "CORP_REGISTRY", Value: "registry.corp.example.com"},
+		{Name: "MY_FLAG", Value: "enabled"},
+	}
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		extraEnv:           extraEnv,
+	}
+
+	pod := buildPod(task, "test-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+	// Verify extraEnv is on the executor container
+	executor := pod.Spec.Containers[0]
+	for _, e := range extraEnv {
+		if !hasEnvVar(executor.Env, e.Name, e.Value) {
+			t.Errorf("executor container missing extraEnv %s=%s", e.Name, e.Value)
+		}
+	}
+
+	// Verify extraEnv is on ALL init containers (opencode-init at minimum)
+	for _, ic := range pod.Spec.InitContainers {
+		for _, e := range extraEnv {
+			if !hasEnvVar(ic.Env, e.Name, e.Value) {
+				t.Errorf("init container %q missing extraEnv %s=%s", ic.Name, e.Name, e.Value)
+			}
+		}
+	}
+}
+
+func TestBuildPod_SystemContainers_GitInit(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-task", Namespace: "default"},
+	}
+	gitMounts := []gitMount{
+		{
+			repository: "https://gitlab.example.com/repo.git",
+			ref:        "main",
+			mountPath:  "/workspace/repo",
+			secretName: "",
+		},
+	}
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		systemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+			GitInit: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraEnv: []corev1.EnvVar{
+					{Name: "GIT_SSL_NO_VERIFY", Value: "false"},
+					{Name: "EXTRA_GIT_VAR", Value: "custom"},
+				},
+			},
+		},
+	}
+
+	pod := buildPod(task, "test-pod", cfg, nil, nil, nil, gitMounts, defaultSystemConfig(), "")
+
+	gitInit := findInitContainer(pod, "git-init-0")
+	if gitInit == nil {
+		t.Fatal("git-init-0 container not found")
+	}
+	if !hasEnvVar(gitInit.Env, "GIT_SSL_NO_VERIFY", "false") {
+		t.Error("git-init-0 missing GIT_SSL_NO_VERIFY from systemContainers.gitInit.extraEnv")
+	}
+	if !hasEnvVar(gitInit.Env, "EXTRA_GIT_VAR", "custom") {
+		t.Error("git-init-0 missing EXTRA_GIT_VAR from systemContainers.gitInit.extraEnv")
+	}
+
+	// Verify the override did NOT bleed into opencode-init
+	openCodeInit := findInitContainer(pod, "opencode-init")
+	if openCodeInit == nil {
+		t.Fatal("opencode-init container not found")
+	}
+	if hasEnvVar(openCodeInit.Env, "EXTRA_GIT_VAR", "custom") {
+		t.Error("opencode-init should NOT have git-init-specific env vars")
+	}
+}
+
+func TestBuildPod_SystemContainers_OpenCodeInit(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-task", Namespace: "default"},
+	}
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		systemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+			OpenCodeInit: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraEnv: []corev1.EnvVar{
+					{Name: "OPENCODE_INIT_EXTRA", Value: "yes"},
+				},
+			},
+		},
+	}
+
+	pod := buildPod(task, "test-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+	openCodeInit := findInitContainer(pod, "opencode-init")
+	if openCodeInit == nil {
+		t.Fatal("opencode-init container not found")
+	}
+	if !hasEnvVar(openCodeInit.Env, "OPENCODE_INIT_EXTRA", "yes") {
+		t.Error("opencode-init missing OPENCODE_INIT_EXTRA from systemContainers.openCodeInit.extraEnv")
+	}
+}
+
+func TestBuildPod_SystemContainers_ExtraVolumeMounts(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-task", Namespace: "default"},
+	}
+	gitMounts := []gitMount{
+		{
+			repository: "https://gitlab.example.com/repo.git",
+			ref:        "main",
+			mountPath:  "/workspace/repo",
+		},
+	}
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		podSpec: &kubeopenv1alpha1.AgentPodSpec{
+			ExtraVolumes: []corev1.Volume{
+				{Name: "corp-ca", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+			},
+		},
+		systemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+			GitInit: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraVolumeMounts: []corev1.VolumeMount{
+					{Name: "corp-ca", MountPath: "/etc/ssl/corp", ReadOnly: true},
+				},
+			},
+		},
+	}
+
+	pod := buildPod(task, "test-pod", cfg, nil, nil, nil, gitMounts, defaultSystemConfig(), "")
+
+	gitInit := findInitContainer(pod, "git-init-0")
+	if gitInit == nil {
+		t.Fatal("git-init-0 container not found")
+	}
+	if !hasVolumeMount(gitInit.VolumeMounts, "corp-ca", "/etc/ssl/corp") {
+		t.Error("git-init-0 missing corp-ca volume mount from systemContainers.gitInit.extraVolumeMounts")
+	}
+
+	// Executor should NOT have the corp-ca mount (only in podSpec.extraVolumeMounts)
+	executor := pod.Spec.Containers[0]
+	if hasVolumeMount(executor.VolumeMounts, "corp-ca", "/etc/ssl/corp") {
+		t.Error("executor should not have corp-ca mount unless declared in podSpec.extraVolumeMounts")
+	}
+}
+
+func TestBuildPod_ExtraEnvNilWhenNotSet(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-task", Namespace: "default"},
+	}
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		// extraEnv and systemContainers are nil — must not panic
+	}
+
+	pod := buildPod(task, "test-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+	if pod == nil {
+		t.Fatal("buildPod returned nil")
+	}
+	if len(pod.Spec.Containers) == 0 {
+		t.Fatal("no containers in pod")
+	}
+}
+
+func TestResolveAgentConfig_ExtraEnvFromPodSpec(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-agent", Namespace: "default"},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			WorkspaceDir:       "/workspace",
+			ServiceAccountName: "test-sa",
+			PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+				ExtraEnv: []corev1.EnvVar{
+					{Name: "MY_VAR", Value: "my-value"},
+				},
+				SystemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+					GitInit: &kubeopenv1alpha1.InitContainerOverrides{
+						ExtraEnv: []corev1.EnvVar{{Name: "HOME", Value: "/tmp"}},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := ResolveAgentConfig(agent)
+
+	if len(cfg.extraEnv) != 1 || cfg.extraEnv[0].Name != "MY_VAR" {
+		t.Errorf("expected extraEnv to contain MY_VAR, got %v", cfg.extraEnv)
+	}
+	if cfg.systemContainers == nil {
+		t.Fatal("expected systemContainers to be non-nil")
+	}
+	if cfg.systemContainers.GitInit == nil {
+		t.Fatal("expected systemContainers.GitInit to be non-nil")
+	}
+	if !hasEnvVar(cfg.systemContainers.GitInit.ExtraEnv, "HOME", "/tmp") {
+		t.Error("expected systemContainers.GitInit.ExtraEnv to contain HOME=/tmp")
+	}
+}
+
+func TestResolveAgentConfig_NilPodSpec_NoExtraEnv(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-agent", Namespace: "default"},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			WorkspaceDir:       "/workspace",
+			ServiceAccountName: "test-sa",
+			// PodSpec is nil
+		},
+	}
+
+	cfg := ResolveAgentConfig(agent)
+
+	if cfg.extraEnv != nil {
+		t.Errorf("expected extraEnv to be nil when PodSpec is nil, got %v", cfg.extraEnv)
+	}
+	if cfg.systemContainers != nil {
+		t.Errorf("expected systemContainers to be nil when PodSpec is nil")
+	}
+}

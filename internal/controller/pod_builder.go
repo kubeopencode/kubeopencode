@@ -34,19 +34,21 @@ type agentConfig struct {
 	serviceAccountName string
 	maxConcurrentTasks *int32
 	quota              *kubeopenv1alpha1.QuotaConfig
-	caBundle           *kubeopenv1alpha1.CABundleConfig    // Custom CA bundle configuration (nil = no custom CA)
-	proxy              *kubeopenv1alpha1.ProxyConfig       // HTTP/HTTPS proxy configuration (nil = no proxy)
-	imagePullSecrets   []corev1.LocalObjectReference       // Image pull secrets for private registries
-	port               int32                               // Server port (default 4096)
-	extraPorts         []kubeopenv1alpha1.ExtraPort        // Additional ports to expose on Service/Deployment
-	persistence        *kubeopenv1alpha1.PersistenceConfig // Persistence configuration
-	suspend            bool                                // Whether Agent is suspended
-	serverReady        bool                                // Whether Agent server is ready (from status)
+	caBundle           *kubeopenv1alpha1.CABundleConfig         // Custom CA bundle configuration (nil = no custom CA)
+	proxy              *kubeopenv1alpha1.ProxyConfig            // HTTP/HTTPS proxy configuration (nil = no proxy)
+	imagePullSecrets   []corev1.LocalObjectReference            // Image pull secrets for private registries
+	port               int32                                    // Server port (default 4096)
+	extraPorts         []kubeopenv1alpha1.ExtraPort             // Additional ports to expose on Service/Deployment
+	persistence        *kubeopenv1alpha1.PersistenceConfig      // Persistence configuration
+	suspend            bool                                     // Whether Agent is suspended
+	serverReady        bool                                     // Whether Agent server is ready (from status)
+	extraEnv           []corev1.EnvVar                          // Extra env vars injected into ALL containers
+	systemContainers   *kubeopenv1alpha1.SystemContainerOverrides // Per-container-type env/mount overrides
 }
 
 // ResolveAgentConfig extracts configuration from the Agent spec.
 func ResolveAgentConfig(agent *kubeopenv1alpha1.Agent) agentConfig {
-	return agentConfig{
+	cfg := agentConfig{
 		agentImage:         defaultString(agent.Spec.AgentImage, DefaultAgentImage),
 		executorImage:      defaultString(agent.Spec.ExecutorImage, DefaultExecutorImage),
 		attachImage:        defaultString(agent.Spec.AttachImage, DefaultAttachImage),
@@ -70,6 +72,11 @@ func ResolveAgentConfig(agent *kubeopenv1alpha1.Agent) agentConfig {
 		suspend:            agent.Spec.Suspend,
 		serverReady:        agent.Status.Ready,
 	}
+	if agent.Spec.PodSpec != nil {
+		cfg.extraEnv = agent.Spec.PodSpec.ExtraEnv
+		cfg.systemContainers = agent.Spec.PodSpec.SystemContainers
+	}
+	return cfg
 }
 
 // ResolveTemplateToConfig extracts configuration from an AgentTemplate spec
@@ -78,7 +85,7 @@ func ResolveAgentConfig(agent *kubeopenv1alpha1.Agent) agentConfig {
 // templateRef tasks have no persistent Agent to enforce limits against.
 // port, persistence, and suspend are also not applicable for ephemeral Pods.
 func ResolveTemplateToConfig(tmpl *kubeopenv1alpha1.AgentTemplate) agentConfig {
-	return agentConfig{
+	cfg := agentConfig{
 		agentImage:         defaultString(tmpl.Spec.AgentImage, DefaultAgentImage),
 		executorImage:      defaultString(tmpl.Spec.ExecutorImage, DefaultExecutorImage),
 		attachImage:        defaultString(tmpl.Spec.AttachImage, DefaultAttachImage),
@@ -96,6 +103,11 @@ func ResolveTemplateToConfig(tmpl *kubeopenv1alpha1.AgentTemplate) agentConfig {
 		imagePullSecrets:   tmpl.Spec.ImagePullSecrets,
 		extraPorts:         tmpl.Spec.ExtraPorts,
 	}
+	if tmpl.Spec.PodSpec != nil {
+		cfg.extraEnv = tmpl.Spec.PodSpec.ExtraEnv
+		cfg.systemContainers = tmpl.Spec.PodSpec.SystemContainers
+	}
+	return cfg
 }
 
 // systemConfig holds resolved system-level configuration from KubeOpenCodeConfig.
@@ -403,7 +415,15 @@ func buildGitInitContainer(gm gitMount, volumeName string, index int, sysCfg sys
 	// Set default ref to HEAD if not specified
 	ref := defaultString(gm.ref, DefaultGitRef)
 
+	// HOME and SHELL are set for SCC (Security Context Constraints) compatibility.
+	// In SCC environments, containers run with random UIDs that have no /etc/passwd entry,
+	// causing HOME=/ (not writable) and SHELL=/sbin/nologin.
+	// git-init calls os.UserHomeDir() and then runs "git config --global" which writes
+	// to $HOME/.gitconfig — this fails with exit 255 if HOME is not writable.
+	// See ADR 0006 and ADR 0038 for details.
 	envVars := []corev1.EnvVar{
+		{Name: "HOME", Value: DefaultHomeDir},
+		{Name: "SHELL", Value: DefaultShell},
 		{Name: "GIT_REPO", Value: gm.repository},
 		{Name: "GIT_REF", Value: ref},
 		{Name: "GIT_DEPTH", Value: strconv.Itoa(depth)},
@@ -493,7 +513,11 @@ func buildGitSyncSidecar(gm gitMount, volumeName string, index int, sysCfg syste
 		intervalSeconds = 300 // default 5 minutes
 	}
 
+	// HOME and SHELL are set for SCC compatibility — same reason as buildGitInitContainer.
+	// git-sync also calls git credential helpers that require a writable home directory.
 	envVars := []corev1.EnvVar{
+		{Name: "HOME", Value: DefaultHomeDir},
+		{Name: "SHELL", Value: DefaultShell},
 		{Name: "GIT_REPO", Value: gm.repository},
 		{Name: "GIT_REF", Value: ref},
 		{Name: "GIT_ROOT", Value: DefaultGitRoot},
@@ -862,6 +886,18 @@ func defaultSecurityContext() *corev1.SecurityContext {
 	}
 }
 
+// applyInitContainerOverrides appends extra env vars and volume mounts from
+// InitContainerOverrides to a container. It is a no-op when overrides is nil.
+// Overrides are appended after controller-managed values so users can override
+// controller defaults (e.g., HOME, SHELL) when needed.
+func applyInitContainerOverrides(c *corev1.Container, overrides *kubeopenv1alpha1.InitContainerOverrides) {
+	if overrides == nil {
+		return
+	}
+	c.Env = append(c.Env, overrides.ExtraEnv...)
+	c.VolumeMounts = append(c.VolumeMounts, overrides.ExtraVolumeMounts...)
+}
+
 // buildPod creates a Pod object for the task with context mounts.
 // The Pod is created in the same namespace as the Task.
 // The serverURL parameter is used for Server-mode Agents: when non-empty, the Pod will use
@@ -1224,6 +1260,35 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		}
 		// Add to worker container env vars
 		envVars = append(envVars, proxyEnvs...)
+	}
+
+	// Apply user-defined extra env vars to ALL containers (init + executor).
+	// These are applied last so they can override any controller-managed defaults.
+	if len(cfg.extraEnv) > 0 {
+		for i := range initContainers {
+			initContainers[i].Env = append(initContainers[i].Env, cfg.extraEnv...)
+		}
+		envVars = append(envVars, cfg.extraEnv...)
+	}
+
+	// Apply per-container-type overrides from systemContainers.
+	// These are applied after global extraEnv for maximum specificity.
+	if cfg.systemContainers != nil {
+		sc := cfg.systemContainers
+		for i := range initContainers {
+			switch initContainers[i].Name {
+			case "opencode-init":
+				applyInitContainerOverrides(&initContainers[i], sc.OpenCodeInit)
+			case "context-init":
+				applyInitContainerOverrides(&initContainers[i], sc.ContextInit)
+			case "plugin-init":
+				applyInitContainerOverrides(&initContainers[i], sc.PluginInit)
+			}
+			// git-init-* containers: match by prefix
+			if strings.HasPrefix(initContainers[i].Name, "git-init-") {
+				applyInitContainerOverrides(&initContainers[i], sc.GitInit)
+			}
+		}
 	}
 
 	// Build pod labels - start with base labels

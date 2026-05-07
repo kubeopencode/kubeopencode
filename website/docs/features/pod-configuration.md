@@ -140,3 +140,219 @@ kubectl port-forward svc/dev-agent 3000:3000 8080:8080
 ```
 
 `extraPorts` can also be defined on `AgentTemplate`. When an Agent references a template, the Agent's `extraPorts` replaces the template's list (same merge strategy as `credentials` and `contexts`).
+
+## Extra Environment Variables
+
+Inject custom environment variables into agent pod containers using `podSpec.extraEnv` (all containers)
+or `podSpec.systemContainers` (per-container-type targeting).
+
+### Global Extra Env (All Containers)
+
+`podSpec.extraEnv` injects env vars into **every container** in the pod — all init containers and
+the executor container. These are appended after controller-managed env vars, so they can override
+controller defaults when necessary.
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: corp-agent
+spec:
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  podSpec:
+    extraEnv:
+      # Plain value
+      - name: CORPORATE_REGISTRY
+        value: registry.corp.example.com
+      # From a Secret key
+      - name: NPM_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: npm-credentials
+            key: token
+      # From a ConfigMap key
+      - name: ENVIRONMENT
+        valueFrom:
+          configMapKeyRef:
+            name: cluster-config
+            key: environment
+```
+
+### Per-Container-Type Overrides
+
+`podSpec.systemContainers` provides fine-grained control over specific KubeOpenCode-managed
+containers. Use this when you need different env vars or volume mounts on specific container types.
+
+Available container targets:
+
+| Field | Container | Role |
+|-------|-----------|------|
+| `openCodeInit` | `opencode-init` | Copies OpenCode binary from `agentImage` to `/tools` |
+| `contextInit` | `context-init` | Copies ConfigMap content into workspace |
+| `gitInit` | `git-init-*` | Clones Git repositories (all git-init containers) |
+| `gitSync` | `git-sync-*` | Periodically syncs Git repos (HotReload policy sidecars) |
+| `pluginInit` | `plugin-init` | Installs OpenCode plugins via npm |
+
+#### OpenShift SCC Compatibility Fix
+
+On OpenShift with `restricted-v2` SCC, containers run with random UIDs that have no writable home
+directory in `/etc/passwd`. This caused `git-init` containers to crash with
+`"failed to setup authentication: exit status 255"` when trying to write `~/.gitconfig`.
+
+KubeOpenCode v0.2.0+ automatically sets `HOME=/tmp` and `SHELL=/bin/bash` on `git-init` and
+`git-sync` containers (the same fix already applied to the executor container since v0.1.0).
+
+If you are running an older version or a custom system image, you can apply the fix via
+`podSpec.systemContainers`:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: AgentTemplate
+metadata:
+  name: ocp-base
+spec:
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  podSpec:
+    systemContainers:
+      gitInit:
+        extraEnv:
+          - name: HOME
+            value: /tmp
+      gitSync:
+        extraEnv:
+          - name: HOME
+            value: /tmp
+```
+
+#### Mounting Corporate CA Bundles into Git Containers
+
+If your GitLab/GitHub uses a private CA that is not covered by `caBundle` (e.g., a different
+CA per container type), you can mount it specifically into git containers:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: corp-git-agent
+spec:
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  podSpec:
+    extraVolumes:
+      - name: corp-ca
+        configMap:
+          name: corp-ca-bundle
+          items:
+            - key: ca-certificates.crt
+              path: tls.crt
+    systemContainers:
+      gitInit:
+        extraEnv:
+          - name: HOME
+            value: /tmp
+          - name: GIT_SSL_CAINFO
+            value: /etc/ssl/corp/tls.crt
+        extraVolumeMounts:
+          - name: corp-ca
+            mountPath: /etc/ssl/corp
+            readOnly: true
+      gitSync:
+        extraEnv:
+          - name: HOME
+            value: /tmp
+          - name: GIT_SSL_CAINFO
+            value: /etc/ssl/corp/tls.crt
+        extraVolumeMounts:
+          - name: corp-ca
+            mountPath: /etc/ssl/corp
+            readOnly: true
+    # Also mount on the executor if needed
+    extraVolumeMounts:
+      - name: corp-ca
+        mountPath: /etc/ssl/corp
+        readOnly: true
+```
+
+#### Private npm Registry for Plugin Init
+
+Inject npm authentication only into the `plugin-init` container without exposing it to the executor:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: plugin-agent
+spec:
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  plugins:
+    - name: "@corp/opencode-plugin@1.0.0"
+  podSpec:
+    systemContainers:
+      pluginInit:
+        extraEnv:
+          - name: NPM_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: npm-credentials
+                key: token
+          - name: NPM_CONFIG_REGISTRY
+            value: https://npm.corp.example.com
+```
+
+### Merge Strategy with AgentTemplate
+
+`extraEnv` and `systemContainers` live inside `podSpec`, which follows the same merge strategy
+as all other `podSpec` fields: **Agent wins entirely if it defines a `podSpec`**. If only the
+template defines `podSpec`, those values are inherited.
+
+```yaml
+# Template defines base systemContainers
+apiVersion: kubeopencode.io/v1alpha1
+kind: AgentTemplate
+metadata:
+  name: ocp-base
+spec:
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  podSpec:
+    systemContainers:
+      gitInit:
+        extraEnv:
+          - name: HOME
+            value: /tmp
+
+---
+# Agent inherits the template's podSpec (including systemContainers)
+# because Agent has no podSpec of its own
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: my-agent
+spec:
+  templateRef:
+    name: ocp-base
+  # No podSpec here — template's podSpec is inherited in full
+
+---
+# Agent overrides podSpec entirely — must repeat systemContainers if needed
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: my-agent-custom
+spec:
+  templateRef:
+    name: ocp-base
+  podSpec:
+    resources:
+      limits:
+        memory: "8Gi"
+    # Must re-declare systemContainers if template's values are still needed
+    systemContainers:
+      gitInit:
+        extraEnv:
+          - name: HOME
+            value: /tmp
+```
