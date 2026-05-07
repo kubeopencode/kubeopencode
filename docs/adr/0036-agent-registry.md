@@ -100,7 +100,8 @@ spec:
 
     - name: custom-ml
       dockerfile:
-        # Inline Dockerfile (stored in ConfigMap by controller)
+        # Inline Dockerfile — controller creates a ConfigMap with the content,
+        # mounts it into the Kaniko Job as /workspace/Dockerfile
         inline: |
           FROM python:3.12-slim
           RUN pip install torch transformers
@@ -207,6 +208,13 @@ status:
     - name: otel-observability
       phase: Unavailable
       message: "npm registry: package not found"
+
+  summary:
+    images: 3
+    skills: 2
+    plugins: 2
+    readyCount: 4
+    totalCount: 7
 ```
 
 ### What the Registry Controller Does
@@ -346,6 +354,11 @@ securityContext:
 ```
 User uploads Dockerfile (via UI or Registry spec)
        ↓
+Registry Controller prepares build context:
+  → Git context: Kaniko clones directly (--context=git://...)
+  → Inline: Controller creates a ConfigMap with the Dockerfile content,
+    mounted into the Kaniko Job at /workspace/Dockerfile (--context=dir:///workspace)
+       ↓
 Registry Controller creates Kaniko Job
   → --destination={target or prefix/name}
   → --digest-file=/dev/termination-log
@@ -424,7 +437,8 @@ Registry Controller actions:
 // +kubebuilder:printcolumn:name="Images",type=integer,JSONPath=`.status.summary.images`
 // +kubebuilder:printcolumn:name="Skills",type=integer,JSONPath=`.status.summary.skills`
 // +kubebuilder:printcolumn:name="Plugins",type=integer,JSONPath=`.status.summary.plugins`
-// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.summary.ready`
+// +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=`.status.summary.readyCount`
+// +kubebuilder:printcolumn:name="Total",type=integer,JSONPath=`.status.summary.totalCount`
 type Registry struct {
     metav1.TypeMeta   `json:",inline"`
     metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -442,9 +456,9 @@ type RegistryList struct {
 
 type RegistrySpec struct {
     // CheckInterval defines how often the controller re-validates
-    // skill and plugin availability. Defaults to "10m".
+    // skill and plugin availability.
+    // If not specified, the controller defaults to 10 minutes.
     // +optional
-    // +kubebuilder:default="10m"
     CheckInterval *metav1.Duration `json:"checkInterval,omitempty"`
 
     // ImageRegistry configures the external container registry for built images.
@@ -479,6 +493,11 @@ type ImageRegistryConfig struct {
 }
 
 // RegistrySecretReference references a Secret for container registry authentication.
+// This is a separate type from GitSecretReference intentionally:
+// - GitSecretReference expects username/password or ssh-privatekey (Git credentials)
+// - RegistrySecretReference expects kubernetes.io/dockerconfigjson (Docker credentials)
+// Keeping them separate allows independent evolution (e.g., adding namespace or
+// credential rotation fields) without affecting Git credential semantics.
 type RegistrySecretReference struct {
     // Name of the Secret containing registry credentials.
     // +required
@@ -565,12 +584,17 @@ type RegistrySkill struct {
 }
 
 // RegistryPlugin wraps PluginSpec with catalog metadata.
+// Note: PluginSpec includes an Options field (runtime configuration).
+// In the Registry context, Options is ignored — it exists only because
+// we reuse the PluginSpec type as-is. Plugin options are runtime concerns
+// and belong in Agent/AgentTemplate, not in the catalog.
 type RegistryPlugin struct {
     // Name is a unique identifier for this plugin within the Registry.
     // +required
     // +kubebuilder:validation:MinLength=1
     Name string `json:"name"`
     // Plugin specifies the plugin package (reuses existing PluginSpec).
+    // Only name and target are meaningful in the Registry; options is ignored.
     Plugin PluginSpec `json:"plugin"`
     // Metadata provides human-readable information for the UI.
     // +optional
@@ -591,6 +615,26 @@ type CredentialRequirement struct {
     Env         string `json:"env"`
     Description string `json:"description,omitempty"`
 }
+
+// ImagePhase represents the build lifecycle phase of a Registry image.
+// +kubebuilder:validation:Enum=Pending;Building;Ready;Failed
+type ImagePhase string
+
+const (
+    ImagePhasePending  ImagePhase = "Pending"
+    ImagePhaseBuilding ImagePhase = "Building"
+    ImagePhaseReady    ImagePhase = "Ready"
+    ImagePhaseFailed   ImagePhase = "Failed"
+)
+
+// AssetPhase represents the availability status of a skill or plugin.
+// +kubebuilder:validation:Enum=Ready;Unavailable
+type AssetPhase string
+
+const (
+    AssetPhaseReady       AssetPhase = "Ready"
+    AssetPhaseUnavailable AssetPhase = "Unavailable"
+)
 
 // RegistryStatus tracks the status of all assets.
 type RegistryStatus struct {
@@ -629,10 +673,11 @@ type PluginStatus struct {
 }
 
 type StatusSummary struct {
-    Images  int    `json:"images"`
-    Skills  int    `json:"skills"`
-    Plugins int    `json:"plugins"`
-    Ready   string `json:"ready"`  // e.g., "8/10"
+    Images     int `json:"images"`
+    Skills     int `json:"skills"`
+    Plugins    int `json:"plugins"`
+    ReadyCount int `json:"readyCount"`
+    TotalCount int `json:"totalCount"`
 }
 ```
 
