@@ -1,0 +1,34 @@
+# Copyright Contributors to the KubeOpenCode project
+name: PR Website
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "website/**"
+
+jobs:
+  build:
+    name: Website Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: website
+        run: pnpm install --frozen-lockfile
+
+      - name: Build website
+        working-directory: website
+        run: pnpm build
