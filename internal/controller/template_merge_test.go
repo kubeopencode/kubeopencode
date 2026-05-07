@@ -714,3 +714,147 @@ func TestResolveTemplateToConfig(t *testing.T) {
 		})
 	}
 }
+
+// --- Tests for extraEnv / systemContainers merge behaviour ---
+
+func TestMergeAgentWithTemplate_ExtraEnv_AgentWins(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		Spec: kubeopenv1alpha1.AgentSpec{
+			WorkspaceDir:       "/workspace",
+			ServiceAccountName: "agent-sa",
+			PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+				ExtraEnv: []corev1.EnvVar{
+					{Name: "FROM_AGENT", Value: "yes"},
+				},
+			},
+		},
+	}
+	tmpl := &kubeopenv1alpha1.AgentTemplate{
+		Spec: kubeopenv1alpha1.AgentTemplateSpec{
+			WorkspaceDir:       "/tmpl-workspace",
+			ServiceAccountName: "tmpl-sa",
+			PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+				ExtraEnv: []corev1.EnvVar{
+					{Name: "FROM_TEMPLATE", Value: "yes"},
+				},
+			},
+		},
+	}
+
+	cfg := MergeAgentWithTemplate(agent, tmpl)
+
+	// Agent podSpec wins entirely — FROM_AGENT present, FROM_TEMPLATE absent
+	found := false
+	for _, e := range cfg.extraEnv {
+		if e.Name == "FROM_AGENT" {
+			found = true
+		}
+		if e.Name == "FROM_TEMPLATE" {
+			t.Error("FROM_TEMPLATE should not be present when Agent has its own podSpec")
+		}
+	}
+	if !found {
+		t.Error("expected FROM_AGENT in merged extraEnv")
+	}
+}
+
+func TestMergeAgentWithTemplate_ExtraEnv_TemplateInheritedWhenAgentHasNoPodSpec(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		Spec: kubeopenv1alpha1.AgentSpec{
+			WorkspaceDir:       "/workspace",
+			ServiceAccountName: "agent-sa",
+			// No PodSpec — should inherit from template
+		},
+	}
+	tmpl := &kubeopenv1alpha1.AgentTemplate{
+		Spec: kubeopenv1alpha1.AgentTemplateSpec{
+			WorkspaceDir:       "/tmpl-workspace",
+			ServiceAccountName: "tmpl-sa",
+			PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+				ExtraEnv: []corev1.EnvVar{
+					{Name: "FROM_TEMPLATE", Value: "inherited"},
+				},
+				SystemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+					GitInit: &kubeopenv1alpha1.InitContainerOverrides{
+						ExtraEnv: []corev1.EnvVar{{Name: "HOME", Value: "/tmp"}},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := MergeAgentWithTemplate(agent, tmpl)
+
+	found := false
+	for _, e := range cfg.extraEnv {
+		if e.Name == "FROM_TEMPLATE" && e.Value == "inherited" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected FROM_TEMPLATE to be inherited from template when Agent has no podSpec")
+	}
+
+	if cfg.systemContainers == nil {
+		t.Fatal("expected systemContainers to be inherited from template")
+	}
+	if cfg.systemContainers.GitInit == nil {
+		t.Fatal("expected systemContainers.GitInit to be inherited from template")
+	}
+	foundHome := false
+	for _, e := range cfg.systemContainers.GitInit.ExtraEnv {
+		if e.Name == "HOME" && e.Value == "/tmp" {
+			foundHome = true
+		}
+	}
+	if !foundHome {
+		t.Error("expected HOME=/tmp in systemContainers.GitInit.ExtraEnv from template")
+	}
+}
+
+func TestMergeAgentWithTemplate_SystemContainers_AgentWins(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		Spec: kubeopenv1alpha1.AgentSpec{
+			WorkspaceDir:       "/workspace",
+			ServiceAccountName: "agent-sa",
+			PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+				SystemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+					GitInit: &kubeopenv1alpha1.InitContainerOverrides{
+						ExtraEnv: []corev1.EnvVar{{Name: "FROM_AGENT_SC", Value: "agent"}},
+					},
+				},
+			},
+		},
+	}
+	tmpl := &kubeopenv1alpha1.AgentTemplate{
+		Spec: kubeopenv1alpha1.AgentTemplateSpec{
+			WorkspaceDir:       "/tmpl-workspace",
+			ServiceAccountName: "tmpl-sa",
+			PodSpec: &kubeopenv1alpha1.AgentPodSpec{
+				SystemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+					GitInit: &kubeopenv1alpha1.InitContainerOverrides{
+						ExtraEnv: []corev1.EnvVar{{Name: "FROM_TMPL_SC", Value: "template"}},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := MergeAgentWithTemplate(agent, tmpl)
+
+	if cfg.systemContainers == nil || cfg.systemContainers.GitInit == nil {
+		t.Fatal("expected systemContainers.GitInit from agent")
+	}
+	foundAgent := false
+	for _, e := range cfg.systemContainers.GitInit.ExtraEnv {
+		if e.Name == "FROM_AGENT_SC" {
+			foundAgent = true
+		}
+		if e.Name == "FROM_TMPL_SC" {
+			t.Error("FROM_TMPL_SC should not be present when Agent has its own podSpec")
+		}
+	}
+	if !foundAgent {
+		t.Error("expected FROM_AGENT_SC in merged systemContainers.GitInit.ExtraEnv")
+	}
+}

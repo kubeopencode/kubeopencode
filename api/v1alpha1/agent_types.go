@@ -646,6 +646,96 @@ type ExtraPort struct {
 	Protocol corev1.Protocol `json:"protocol,omitempty"`
 }
 
+// InitContainerOverrides allows injecting extra environment variables and
+// volume mounts into a specific KubeOpenCode-managed init or sidecar container.
+// This is useful for enterprise environments (e.g., OpenShift with SCC) that
+// require custom env vars such as HOME, or need to mount additional secrets
+// into specific system containers.
+type InitContainerOverrides struct {
+	// ExtraEnv defines additional environment variables for this container.
+	// These are appended after the controller-managed env vars, so they can
+	// override controller defaults (e.g., HOME, SHELL) if needed.
+	//
+	// Supports all Kubernetes EnvVar sources: raw values, SecretKeyRef, ConfigMapKeyRef,
+	// and fieldRef.
+	//
+	// Example — fix HOME for OpenShift SCC compatibility:
+	//   extraEnv:
+	//     - name: HOME
+	//       value: /tmp
+	//
+	// Example — inject a secret value:
+	//   extraEnv:
+	//     - name: GIT_TOKEN
+	//       valueFrom:
+	//         secretKeyRef:
+	//           name: my-git-secret
+	//           key: token
+	//
+	// +optional
+	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
+
+	// ExtraVolumeMounts defines additional volume mounts for this container.
+	// Referenced volumes must be declared in podSpec.extraVolumes.
+	//
+	// Example — mount a corporate CA bundle into git-init:
+	//   extraVolumeMounts:
+	//     - name: corp-ca
+	//       mountPath: /etc/ssl/corp
+	//       readOnly: true
+	//
+	// +optional
+	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
+}
+
+// SystemContainerOverrides configures per-container-type overrides for
+// KubeOpenCode-managed system containers (init containers and git-sync sidecars).
+// Use this when you need different env vars or volume mounts on specific
+// container types rather than all containers.
+//
+// Container types and their roles:
+//   - openCodeInit: copies the OpenCode binary from agentImage to /tools
+//   - contextInit: copies ConfigMap content into the writable workspace
+//   - gitInit: clones Git repositories for Git contexts (all git-init-* containers)
+//   - gitSync: periodically syncs Git repositories (HotReload policy sidecars)
+//   - pluginInit: installs OpenCode plugins via npm
+type SystemContainerOverrides struct {
+	// OpenCodeInit configures overrides for the opencode-init init container.
+	// This container copies the OpenCode binary from agentImage to /tools volume.
+	// +optional
+	OpenCodeInit *InitContainerOverrides `json:"openCodeInit,omitempty"`
+
+	// ContextInit configures overrides for the context-init init container.
+	// This container copies ConfigMap content into the writable workspace directory.
+	// +optional
+	ContextInit *InitContainerOverrides `json:"contextInit,omitempty"`
+
+	// GitInit configures overrides applied to ALL git-init-* init containers.
+	// These containers clone Git repositories for Git-type contexts.
+	//
+	// This is the recommended place to fix HOME for OpenShift SCC environments,
+	// as git-init containers need a writable home directory for git credential helpers.
+	//
+	// Example:
+	//   gitInit:
+	//     extraEnv:
+	//       - name: HOME
+	//         value: /tmp
+	//
+	// +optional
+	GitInit *InitContainerOverrides `json:"gitInit,omitempty"`
+
+	// GitSync configures overrides applied to ALL git-sync-* sidecar containers.
+	// These containers periodically pull Git repositories when sync.policy is HotReload.
+	// +optional
+	GitSync *InitContainerOverrides `json:"gitSync,omitempty"`
+
+	// PluginInit configures overrides for the plugin-init init container.
+	// This container installs OpenCode plugins via npm into the shared /plugins volume.
+	// +optional
+	PluginInit *InitContainerOverrides `json:"pluginInit,omitempty"`
+}
+
 // AgentPodSpec defines advanced Pod configuration for agent pods.
 // This groups all Pod-level settings that control how the agent container runs.
 // These settings apply to the Agent's Deployment and to Task Pods.
@@ -776,6 +866,7 @@ type AgentPodSpec struct {
 	// Each mount must reference a volume defined in ExtraVolumes by name.
 	//
 	// Mounts are applied to the main executor container only (not init containers).
+	// To mount volumes into init containers, use podSpec.systemContainers.*.extraVolumeMounts.
 	//
 	// Example — mount shared skills into the OpenCode skills directory:
 	//   extraVolumeMounts:
@@ -785,6 +876,50 @@ type AgentPodSpec struct {
 	//
 	// +optional
 	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
+
+	// ExtraEnv defines additional environment variables injected into ALL containers
+	// in the agent pod — every init container and the executor container.
+	// These are appended after controller-managed env vars, so they can override
+	// controller defaults (e.g., HOME, SHELL) when necessary.
+	//
+	// Supports all Kubernetes EnvVar sources: raw values, SecretKeyRef, ConfigMapKeyRef,
+	// and fieldRef.
+	//
+	// For per-container-type targeting, use podSpec.systemContainers instead.
+	//
+	// Example — inject a corporate registry URL into all containers:
+	//   extraEnv:
+	//     - name: CORPORATE_REGISTRY
+	//       value: registry.corp.example.com
+	//     - name: MY_API_KEY
+	//       valueFrom:
+	//         secretKeyRef:
+	//           name: api-keys
+	//           key: my-api-key
+	//
+	// +optional
+	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
+
+	// SystemContainers configures per-container-type overrides for KubeOpenCode-managed
+	// system containers (init containers and git-sync sidecars).
+	// Use this for fine-grained control when you need different env vars or volume mounts
+	// on specific container types rather than all containers.
+	//
+	// This is particularly useful for OpenShift SCC environments where git-init and
+	// git-sync containers need HOME=/tmp set explicitly:
+	//
+	//   systemContainers:
+	//     gitInit:
+	//       extraEnv:
+	//         - name: HOME
+	//           value: /tmp
+	//     gitSync:
+	//       extraEnv:
+	//         - name: HOME
+	//           value: /tmp
+	//
+	// +optional
+	SystemContainers *SystemContainerOverrides `json:"systemContainers,omitempty"`
 }
 
 // PodScheduling defines scheduling configuration for agent pods.

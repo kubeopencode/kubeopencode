@@ -491,6 +491,34 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		envVars = append(envVars, proxyEnvs...)
 	}
 
+	// Apply user-defined extra env vars to ALL containers (init + executor).
+	// These are applied last so they can override any controller-managed defaults.
+	if len(agentCfg.extraEnv) > 0 {
+		for i := range initContainers {
+			initContainers[i].Env = append(initContainers[i].Env, agentCfg.extraEnv...)
+		}
+		envVars = append(envVars, agentCfg.extraEnv...)
+	}
+
+	// Apply per-container-type overrides from systemContainers.
+	// These are applied after global extraEnv for maximum specificity.
+	if agentCfg.systemContainers != nil {
+		sc := agentCfg.systemContainers
+		for i := range initContainers {
+			switch initContainers[i].Name {
+			case "opencode-init":
+				applyInitContainerOverrides(&initContainers[i], sc.OpenCodeInit)
+			case "context-init":
+				applyInitContainerOverrides(&initContainers[i], sc.ContextInit)
+			case "plugin-init":
+				applyInitContainerOverrides(&initContainers[i], sc.PluginInit)
+			}
+			if strings.HasPrefix(initContainers[i].Name, "git-init-") {
+				applyInitContainerOverrides(&initContainers[i], sc.GitInit)
+			}
+		}
+	}
+
 	// Build the serve command.
 	// When context-init handles config file writing, we don't need inline heredoc.
 	hasContextInit := len(ctxFileMounts) > 0 || len(ctxDirMounts) > 0
@@ -617,6 +645,14 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 			}
 			if len(proxyEnvs) > 0 {
 				sidecar.Env = append(sidecar.Env, proxyEnvs...)
+			}
+			// Apply global extraEnv to git-sync sidecars
+			if len(agentCfg.extraEnv) > 0 {
+				sidecar.Env = append(sidecar.Env, agentCfg.extraEnv...)
+			}
+			// Apply per-container git-sync overrides
+			if agentCfg.systemContainers != nil {
+				applyInitContainerOverrides(&sidecar, agentCfg.systemContainers.GitSync)
 			}
 			sidecars = append(sidecars, sidecar)
 		}

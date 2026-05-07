@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -2297,5 +2298,177 @@ func TestBuildServerDeployment_WithGitWorkspaceRoot(t *testing.T) {
 		if vm.Name == "git-context-0" && vm.MountPath == "/workspace" {
 			t.Error("workspace root git mount should not add separate volume mount on main container")
 		}
+	}
+}
+
+// --- Tests for extraEnv and systemContainers ---
+
+func findServerInitContainer(deployment *appsv1.Deployment, name string) *corev1.Container {
+	for i := range deployment.Spec.Template.Spec.InitContainers {
+		if deployment.Spec.Template.Spec.InitContainers[i].Name == name {
+			return &deployment.Spec.Template.Spec.InitContainers[i]
+		}
+	}
+	return nil
+}
+
+func serverHasEnvVar(envs []corev1.EnvVar, name, value string) bool {
+	for _, e := range envs {
+		if e.Name == name && e.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBuildServerDeployment_GitInitContainer_HomeEnv(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-agent", Namespace: "default"},
+		Spec:       kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+	}
+	gitMounts := []gitMount{
+		{repository: "https://gitlab.example.com/repo.git", ref: "main", mountPath: "/workspace/repo"},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, gitMounts, nil)
+
+	gitInit := findServerInitContainer(deployment, "git-init-0")
+	if gitInit == nil {
+		t.Fatal("git-init-0 container not found")
+	}
+	if !serverHasEnvVar(gitInit.Env, "HOME", DefaultHomeDir) {
+		t.Errorf("git-init-0 missing HOME=%s for SCC compatibility", DefaultHomeDir)
+	}
+	if !serverHasEnvVar(gitInit.Env, "SHELL", DefaultShell) {
+		t.Errorf("git-init-0 missing SHELL=%s for SCC compatibility", DefaultShell)
+	}
+}
+
+func TestBuildServerDeployment_ExtraEnvAllContainers(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-agent", Namespace: "default"},
+		Spec:       kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		extraEnv: []corev1.EnvVar{
+			{Name: "CORP_REGISTRY", Value: "registry.corp.example.com"},
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+	podSpec := deployment.Spec.Template.Spec
+
+	// Executor container must have extraEnv
+	mainContainer := podSpec.Containers[0]
+	if !serverHasEnvVar(mainContainer.Env, "CORP_REGISTRY", "registry.corp.example.com") {
+		t.Error("executor container missing CORP_REGISTRY from extraEnv")
+	}
+
+	// All init containers must have extraEnv
+	for _, ic := range podSpec.InitContainers {
+		if !serverHasEnvVar(ic.Env, "CORP_REGISTRY", "registry.corp.example.com") {
+			t.Errorf("init container %q missing CORP_REGISTRY from extraEnv", ic.Name)
+		}
+	}
+}
+
+func TestBuildServerDeployment_SystemContainers_GitInit(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-agent", Namespace: "default"},
+		Spec:       kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		systemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+			GitInit: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraEnv: []corev1.EnvVar{
+					{Name: "GIT_EXTRA", Value: "git-only"},
+				},
+			},
+		},
+	}
+	gitMounts := []gitMount{
+		{repository: "https://gitlab.example.com/repo.git", ref: "main", mountPath: "/workspace/repo"},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, gitMounts, nil)
+
+	gitInit := findServerInitContainer(deployment, "git-init-0")
+	if gitInit == nil {
+		t.Fatal("git-init-0 not found")
+	}
+	if !serverHasEnvVar(gitInit.Env, "GIT_EXTRA", "git-only") {
+		t.Error("git-init-0 missing GIT_EXTRA from systemContainers.gitInit")
+	}
+
+	// opencode-init must NOT have the git-specific env var
+	openCodeInit := findServerInitContainer(deployment, "opencode-init")
+	if openCodeInit == nil {
+		t.Fatal("opencode-init not found")
+	}
+	if serverHasEnvVar(openCodeInit.Env, "GIT_EXTRA", "git-only") {
+		t.Error("opencode-init should NOT have GIT_EXTRA (git-init-specific)")
+	}
+}
+
+func TestBuildServerDeployment_SystemContainers_GitSync(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-agent", Namespace: "default"},
+		Spec:       kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		systemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+			GitSync: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraEnv: []corev1.EnvVar{
+					{Name: "SYNC_EXTRA", Value: "sync-only"},
+				},
+			},
+		},
+	}
+	gitMounts := []gitMount{
+		{
+			repository:   "https://gitlab.example.com/repo.git",
+			ref:          "main",
+			mountPath:    "/workspace/repo",
+			syncEnabled:  true,
+			syncPolicy:   kubeopenv1alpha1.GitSyncPolicyHotReload,
+			syncInterval: 5 * time.Minute,
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, gitMounts, nil)
+
+	// Find the git-sync sidecar in the main containers list
+	var gitSync *corev1.Container
+	for i := range deployment.Spec.Template.Spec.Containers {
+		if deployment.Spec.Template.Spec.Containers[i].Name == "git-sync-0" {
+			gitSync = &deployment.Spec.Template.Spec.Containers[i]
+			break
+		}
+	}
+	if gitSync == nil {
+		t.Fatal("git-sync-0 sidecar not found")
+	}
+	if !serverHasEnvVar(gitSync.Env, "SYNC_EXTRA", "sync-only") {
+		t.Error("git-sync-0 missing SYNC_EXTRA from systemContainers.gitSync")
+	}
+
+	// The main opencode-server container must NOT have SYNC_EXTRA
+	mainContainer := deployment.Spec.Template.Spec.Containers[0]
+	if serverHasEnvVar(mainContainer.Env, "SYNC_EXTRA", "sync-only") {
+		t.Error("opencode-server should NOT have SYNC_EXTRA (git-sync-specific)")
 	}
 }

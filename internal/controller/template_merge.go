@@ -47,6 +47,12 @@ func ResolveAgentConfigFromTemplate(ctx context.Context, reader client.Reader, a
 //
 // The returned agentConfig has image defaults applied (same as ResolveAgentConfig).
 func MergeAgentWithTemplate(agent *kubeopenv1alpha1.Agent, tmpl *kubeopenv1alpha1.AgentTemplate) agentConfig {
+	// podSpec is merged as a whole (Agent wins if non-nil). When Agent has a podSpec,
+	// its ExtraEnv and SystemContainers take precedence. When only the template has a
+	// podSpec, those values are inherited. This is consistent with all other list/pointer
+	// fields in the merge strategy.
+	mergedPodSpec := firstNonNilPtr(agent.Spec.PodSpec, tmpl.Spec.PodSpec)
+
 	merged := agentConfig{
 		agentImage:    defaultString(agent.Spec.AgentImage, defaultString(tmpl.Spec.AgentImage, DefaultAgentImage)),
 		executorImage: defaultString(agent.Spec.ExecutorImage, defaultString(tmpl.Spec.ExecutorImage, DefaultExecutorImage)),
@@ -65,7 +71,7 @@ func MergeAgentWithTemplate(agent *kubeopenv1alpha1.Agent, tmpl *kubeopenv1alpha
 		plugins:          firstNonNilSlice(agent.Spec.Plugins, tmpl.Spec.Plugins),
 		config:           firstNonNilPtr(agent.Spec.Config, tmpl.Spec.Config),
 		credentials:      firstNonNilSlice(agent.Spec.Credentials, tmpl.Spec.Credentials),
-		podSpec:          firstNonNilPtr(agent.Spec.PodSpec, tmpl.Spec.PodSpec),
+		podSpec:          mergedPodSpec,
 		caBundle:         firstNonNilPtr(agent.Spec.CABundle, tmpl.Spec.CABundle),
 		proxy:            firstNonNilPtr(agent.Spec.Proxy, tmpl.Spec.Proxy),
 		imagePullSecrets: firstNonNilSlice(agent.Spec.ImagePullSecrets, tmpl.Spec.ImagePullSecrets),
@@ -74,6 +80,12 @@ func MergeAgentWithTemplate(agent *kubeopenv1alpha1.Agent, tmpl *kubeopenv1alpha
 		persistence:      agent.Spec.Persistence,
 		suspend:          agent.Spec.Suspend,
 		serverReady:      agent.Status.Ready,
+	}
+
+	// Populate extraEnv and systemContainers from the merged podSpec.
+	if mergedPodSpec != nil {
+		merged.extraEnv = mergedPodSpec.ExtraEnv
+		merged.systemContainers = mergedPodSpec.SystemContainers
 	}
 
 	return merged

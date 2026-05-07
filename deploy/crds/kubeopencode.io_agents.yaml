@@ -770,6 +770,243 @@ spec:
                       - name
                       type: object
                     type: array
+                  extraEnv:
+                    description: |-
+                      ExtraEnv defines additional environment variables injected into ALL containers
+                      in the agent pod — every init container and the executor container.
+                      These are appended after controller-managed env vars, so they can override
+                      controller defaults (e.g., HOME, SHELL) when necessary.
+
+                      Supports all Kubernetes EnvVar sources: raw values, SecretKeyRef, ConfigMapKeyRef,
+                      and fieldRef.
+
+                      For per-container-type targeting, use podSpec.systemContainers instead.
+                    items:
+                      description: EnvVar represents an environment variable present
+                        in a Container.
+                      properties:
+                        name:
+                          description: Name of the environment variable. Must be a
+                            C_IDENTIFIER.
+                          type: string
+                        value:
+                          description: |-
+                            Variable references $(VAR_NAME) are expanded using the previously defined
+                            environment variables in the container and any service environment variables.
+                            If a variable cannot be resolved, the reference in the input string will be
+                            unchanged. Double $$ are reduced to a single $, which allows for escaping the
+                            $(VAR_NAME) syntax: i.e. "$$(VAR_NAME)" will produce the string literal
+                            "$(VAR_NAME)". Escaped references will never be expanded, regardless of
+                            whether the variable exists or not. Defaults to "".
+                          type: string
+                        valueFrom:
+                          description: Source for the environment variable's value.
+                            Cannot be used if value is not empty.
+                          x-kubernetes-preserve-unknown-fields: true
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  systemContainers:
+                    description: |-
+                      SystemContainers configures per-container-type overrides for KubeOpenCode-managed
+                      system containers (init containers and git-sync sidecars).
+                      Use this for fine-grained control when you need different env vars or volume mounts
+                      on specific container types rather than all containers.
+                    properties:
+                      contextInit:
+                        description: ContextInit configures overrides for the context-init
+                          init container.
+                        properties:
+                          extraEnv:
+                            description: ExtraEnv defines additional environment variables
+                              for this container.
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  type: string
+                                valueFrom:
+                                  x-kubernetes-preserve-unknown-fields: true
+                              required:
+                              - name
+                              type: object
+                            type: array
+                          extraVolumeMounts:
+                            description: ExtraVolumeMounts defines additional volume
+                              mounts for this container.
+                            items:
+                              properties:
+                                mountPath:
+                                  type: string
+                                name:
+                                  type: string
+                                readOnly:
+                                  type: boolean
+                                subPath:
+                                  type: string
+                              required:
+                              - mountPath
+                              - name
+                              type: object
+                            type: array
+                        type: object
+                      gitInit:
+                        description: |-
+                          GitInit configures overrides applied to ALL git-init-* init containers.
+                          These containers clone Git repositories for Git-type contexts.
+                          This is the recommended place to fix HOME for OpenShift SCC environments.
+                        properties:
+                          extraEnv:
+                            description: ExtraEnv defines additional environment variables
+                              for this container.
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  type: string
+                                valueFrom:
+                                  x-kubernetes-preserve-unknown-fields: true
+                              required:
+                              - name
+                              type: object
+                            type: array
+                          extraVolumeMounts:
+                            description: ExtraVolumeMounts defines additional volume
+                              mounts for this container.
+                            items:
+                              properties:
+                                mountPath:
+                                  type: string
+                                name:
+                                  type: string
+                                readOnly:
+                                  type: boolean
+                                subPath:
+                                  type: string
+                              required:
+                              - mountPath
+                              - name
+                              type: object
+                            type: array
+                        type: object
+                      gitSync:
+                        description: GitSync configures overrides applied to ALL git-sync-*
+                          sidecar containers.
+                        properties:
+                          extraEnv:
+                            description: ExtraEnv defines additional environment variables
+                              for this container.
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  type: string
+                                valueFrom:
+                                  x-kubernetes-preserve-unknown-fields: true
+                              required:
+                              - name
+                              type: object
+                            type: array
+                          extraVolumeMounts:
+                            description: ExtraVolumeMounts defines additional volume
+                              mounts for this container.
+                            items:
+                              properties:
+                                mountPath:
+                                  type: string
+                                name:
+                                  type: string
+                                readOnly:
+                                  type: boolean
+                                subPath:
+                                  type: string
+                              required:
+                              - mountPath
+                              - name
+                              type: object
+                            type: array
+                        type: object
+                      openCodeInit:
+                        description: OpenCodeInit configures overrides for the opencode-init
+                          init container.
+                        properties:
+                          extraEnv:
+                            description: ExtraEnv defines additional environment variables
+                              for this container.
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  type: string
+                                valueFrom:
+                                  x-kubernetes-preserve-unknown-fields: true
+                              required:
+                              - name
+                              type: object
+                            type: array
+                          extraVolumeMounts:
+                            description: ExtraVolumeMounts defines additional volume
+                              mounts for this container.
+                            items:
+                              properties:
+                                mountPath:
+                                  type: string
+                                name:
+                                  type: string
+                                readOnly:
+                                  type: boolean
+                                subPath:
+                                  type: string
+                              required:
+                              - mountPath
+                              - name
+                              type: object
+                            type: array
+                        type: object
+                      pluginInit:
+                        description: PluginInit configures overrides for the plugin-init
+                          init container.
+                        properties:
+                          extraEnv:
+                            description: ExtraEnv defines additional environment variables
+                              for this container.
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  type: string
+                                valueFrom:
+                                  x-kubernetes-preserve-unknown-fields: true
+                              required:
+                              - name
+                              type: object
+                            type: array
+                          extraVolumeMounts:
+                            description: ExtraVolumeMounts defines additional volume
+                              mounts for this container.
+                            items:
+                              properties:
+                                mountPath:
+                                  type: string
+                                name:
+                                  type: string
+                                readOnly:
+                                  type: boolean
+                                subPath:
+                                  type: string
+                              required:
+                              - mountPath
+                              - name
+                              type: object
+                            type: array
+                        type: object
+                    type: object
                   extraVolumes:
                     description: |-
                       ExtraVolumes defines additional volumes to add to the agent pod.
