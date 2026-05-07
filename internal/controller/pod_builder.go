@@ -815,7 +815,7 @@ func buildProxyEnvVars(proxy *kubeopenv1alpha1.ProxyConfig, clusterDomain string
 		if !strings.Contains(noProxy, ".svc") {
 			noProxy += ",.svc"
 		}
-		if !strings.Contains(noProxy, "." + clusterDomain) {
+		if !strings.Contains(noProxy, "."+clusterDomain) {
 			noProxy += ",." + clusterDomain
 		}
 	}

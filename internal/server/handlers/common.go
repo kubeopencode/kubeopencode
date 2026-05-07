@@ -88,7 +88,7 @@ func validateServerURL(rawURL string, clusterDomain string) error {
 		return fmt.Errorf("URL scheme must be http, got %q", u.Scheme)
 	}
 	host := u.Hostname()
-	if !strings.HasSuffix(host, ".svc." + clusterDomain) {
+	if !strings.HasSuffix(host, ".svc."+clusterDomain) {
 		return fmt.Errorf("URL host must be a cluster-local service, got %q", host)
 	}
 	if u.User != nil {

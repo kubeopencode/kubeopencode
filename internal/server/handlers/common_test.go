@@ -62,16 +62,16 @@ func TestValidateServerURL(t *testing.T) {
 			wantErr:       true,
 		},
 		{
-			name:         "metadata endpoint rejected",
-			url:          "http://169.254.169.254",
+			name:          "metadata endpoint rejected",
+			url:           "http://169.254.169.254",
 			clusterDomain: "cluster.local",
-			wantErr:      true,
+			wantErr:       true,
 		},
 		{
-			name:         "userinfo rejected",
-			url:          "http://user:pass@my-agent.default.svc.cluster.local:4096",
+			name:          "userinfo rejected",
+			url:           "http://user:pass@my-agent.default.svc.cluster.local:4096",
 			clusterDomain: "cluster.local",
-			wantErr:      true,
+			wantErr:       true,
 		},
 		{
 			name:          "empty URL rejected",
