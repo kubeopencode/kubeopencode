@@ -2568,10 +2568,10 @@ func TestBuildProxyEnvVars(t *testing.T) {
 		wantNil       bool
 	}{
 		{
-			name:    "nil proxy returns nil",
-			proxy:   nil,
+			name:          "nil proxy returns nil",
+			proxy:         nil,
 			clusterDomain: "cluster.local",
-			wantNil: true,
+			wantNil:       true,
 		},
 		{
 			name: "only httpProxy set",

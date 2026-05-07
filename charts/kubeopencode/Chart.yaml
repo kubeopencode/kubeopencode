@@ -2,8 +2,8 @@ apiVersion: v2
 name: kubeopencode
 description: A Kubernetes-native system for executing AI agent tasks across multiple repositories
 type: application
-version: 0.1.0
-appVersion: "v0.1.0"
+version: 0.1.1
+appVersion: "v0.1.1"
 keywords:
   - automation
   - ai-agent
