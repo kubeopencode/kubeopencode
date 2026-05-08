@@ -72,7 +72,11 @@ appVersion: "NEW_VERSION"    # e.g., v0.2.0 (with v prefix, matches image tags)
 
 Note: Helm chart `version` uses bare number (Helm convention); `appVersion` includes the `v` prefix and must match the image tags.
 
-#### 2.4 `AGENTS.md` (Project Status section)
+#### 2.4 `ui/package.json` (auto-synced)
+
+> **Note**: `ui/package.json` version is automatically synced by `make ui-build` (via `npm pkg set version=...`). No manual update is needed — the Makefile strips the `v` prefix and sets it before each build. However, you should verify it is correct after running `make verify`.
+
+#### 2.5 `AGENTS.md` (Project Status section)
 
 ```markdown
 - **Version**: NEW_VERSION
@@ -294,6 +298,7 @@ echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u $GITHUB_ACTOR --password-s
 | `cmd/kubeopencode/main.go` | `Version`, `GitCommit`, `BuildDate` variables (set via ldflags) |
 | `Dockerfile` | `ARG VERSION` passed to Go ldflags at build time |
 | `.github/workflows/release.yaml` | Release workflow triggered by `v*` tags |
+| `ui/package.json` | UI version (auto-synced by `make ui-build`) |
 | `AGENTS.md` | Project status version |
 
 ## CRD Change Reminder

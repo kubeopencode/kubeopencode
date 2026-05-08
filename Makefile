@@ -218,6 +218,8 @@ ui-install: ## Install UI dependencies
 
 ui-build: ## Build React UI for production
 	@echo "Building React UI..."
+	@echo "Syncing UI version to $(VERSION)..."
+	@cd ui && npm pkg set version=$(VERSION:v%=%)
 	@rm -rf ui/dist
 	cd ui && $(UI_PACKAGE_MANAGER) run build
 	@echo "UI build complete"
