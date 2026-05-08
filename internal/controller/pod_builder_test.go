@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
@@ -355,11 +356,6 @@ func TestBuildPod_BasicTask(t *testing.T) {
 	}
 }
 
-// stringPtr returns a pointer to the given string value
-func stringPtr(s string) *string {
-	return &s
-}
-
 func TestBuildPod_WithCredentials(t *testing.T) {
 	task := &kubeopenv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
@@ -384,7 +380,7 @@ func TestBuildPod_WithCredentials(t *testing.T) {
 				Name: "api-token",
 				SecretRef: kubeopenv1alpha1.SecretReference{
 					Name: "my-secret",
-					Key:  stringPtr("token"),
+					Key:  ptr.To("token"),
 				},
 				Env: &envName,
 			},
@@ -392,7 +388,7 @@ func TestBuildPod_WithCredentials(t *testing.T) {
 				Name: "ssh-key",
 				SecretRef: kubeopenv1alpha1.SecretReference{
 					Name: "ssh-secret",
-					Key:  stringPtr("private-key"),
+					Key:  ptr.To("private-key"),
 				},
 				MountPath: &mountPath,
 			},
@@ -523,7 +519,7 @@ func TestBuildPod_WithMixedCredentials(t *testing.T) {
 				Name: "github-token",
 				SecretRef: kubeopenv1alpha1.SecretReference{
 					Name: "github-secret",
-					Key:  stringPtr("token"),
+					Key:  ptr.To("token"),
 				},
 				Env: &envName,
 			},
