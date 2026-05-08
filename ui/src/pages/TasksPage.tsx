@@ -5,6 +5,7 @@ import api from '../api/client';
 import StatusBadge from '../components/StatusBadge';
 import Labels from '../components/Labels';
 import TimeAgo from '../components/TimeAgo';
+import { formatTokens, formatCost } from '../components/SessionPanel';
 import ResourceFilter from '../components/ResourceFilter';
 import MultiSelect from '../components/MultiSelect';
 import SortableHeader from '../components/SortableHeader';
@@ -325,6 +326,9 @@ function TasksPage() {
                 <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider hidden sm:table-cell">
                   Duration
                 </th>
+                <th className="px-5 py-3 text-left text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider hidden lg:table-cell">
+                  Cost
+                </th>
                 <SortableHeader
                   label="Created"
                   active={true}
@@ -336,7 +340,7 @@ function TasksPage() {
             <tbody className="bg-white divide-y divide-stone-100">
               {data?.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={isAllNamespaces ? 8 : 7} className="px-5 py-12 text-center text-stone-400 text-sm">
+                  <td colSpan={isAllNamespaces ? 9 : 8} className="px-5 py-12 text-center text-stone-400 text-sm">
                     No tasks found.{' '}
                     {!isAllNamespaces && (
                       <Link to="/tasks/create" className="text-primary-600 hover:text-primary-700 font-medium">
@@ -390,6 +394,13 @@ function TasksPage() {
                     </td>
                     <td className="px-5 py-3.5 whitespace-nowrap text-sm text-stone-400 hidden sm:table-cell font-mono text-xs">
                       {task.duration || '-'}
+                    </td>
+                    <td className="px-5 py-3.5 whitespace-nowrap text-xs text-stone-400 hidden lg:table-cell font-mono">
+                      {task.session?.summary ? (
+                        <span title={task.session.summary.tokenUsage ? `${formatTokens((task.session.summary.tokenUsage.input || 0) + (task.session.summary.tokenUsage.output || 0))} tokens` : ''}>
+                          {formatCost(task.session.summary.cost)}
+                        </span>
+                      ) : '-'}
                     </td>
                     <td className="px-5 py-3.5 whitespace-nowrap text-xs text-stone-400">
                       <TimeAgo date={task.createdAt} />

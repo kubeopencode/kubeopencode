@@ -102,15 +102,12 @@ function CronTasksPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="mb-4 flex flex-col sm:flex-row sm:items-end gap-3">
-        <div className="flex-1">
-          <ResourceFilter
-            filters={filters}
-            onFilterChange={setFilters}
-            placeholder="Filter CronTasks by name..."
-          />
-        </div>
-        <div className="w-40">
+      <div className="mb-4">
+        <ResourceFilter
+          filters={filters}
+          onFilterChange={setFilters}
+          placeholder="Filter CronTasks by name..."
+        >
           <MultiSelect
             label="Status"
             options={STATUS_OPTIONS}
@@ -118,7 +115,7 @@ function CronTasksPage() {
             onChange={setStatusFilter}
             allLabel="All statuses"
           />
-        </div>
+        </ResourceFilter>
       </div>
 
       {isLoading ? (

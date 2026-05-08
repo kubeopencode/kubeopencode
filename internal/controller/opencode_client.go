@@ -47,22 +47,41 @@ type OpenCodeSession struct {
 }
 
 // OpenCodeMessage represents a message returned by the OpenCode API.
-// Used to aggregate token usage and cost from assistant messages.
+// The actual API structure wraps role, cost, and tokens inside an "info" object,
+// with message content in a separate "parts" array.
 type OpenCodeMessage struct {
-	ID   string          `json:"id"`
-	Role string          `json:"role"` // "user" or "assistant"
-	Data json.RawMessage `json:"data"`
+	Info  OpenCodeMessageInfo `json:"info"`
+	Parts json.RawMessage     `json:"parts"`
 }
 
-// AssistantMessageData contains fields from an assistant message's data.
-type AssistantMessageData struct {
+// OpenCodeMessageInfo contains metadata from a message's info field.
+type OpenCodeMessageInfo struct {
+	ID     string  `json:"id"`
+	Role   string  `json:"role"` // "user" or "assistant"
 	Cost   float64 `json:"cost"`
 	Tokens struct {
-		Input     int64 `json:"input"`
-		Output    int64 `json:"output"`
-		Reasoning int64 `json:"reasoning"`
-		Cache     int64 `json:"cache"`
+		Input     int64              `json:"input"`
+		Output    int64              `json:"output"`
+		Reasoning int64              `json:"reasoning"`
+		Cache     OpenCodeCacheUsage `json:"cache"`
 	} `json:"tokens"`
+}
+
+// OpenCodeCacheUsage represents the cache token usage (read/write).
+type OpenCodeCacheUsage struct {
+	Read  int64 `json:"read"`
+	Write int64 `json:"write"`
+}
+
+// AssistantMessageData is the aggregated stats output used by resolveSessionInfo.
+type AssistantMessageData struct {
+	Cost   float64
+	Tokens struct {
+		Input     int64
+		Output    int64
+		Reasoning int64
+		Cache     int64
+	}
 }
 
 // Note: OpenCode API returns sessions as a plain array (not wrapped in {data: [...]}).
@@ -179,20 +198,15 @@ func (c *OpenCodeClient) AggregateMessageStats(ctx context.Context, serverURL, s
 
 	for _, msg := range messages {
 		messageCount++
-		if msg.Role != "assistant" {
+		if msg.Info.Role != "assistant" {
 			continue
 		}
 
-		var data AssistantMessageData
-		if err := json.Unmarshal(msg.Data, &data); err != nil {
-			continue // skip messages that don't have expected structure
-		}
-
-		aggregated.Cost += data.Cost
-		aggregated.Tokens.Input += data.Tokens.Input
-		aggregated.Tokens.Output += data.Tokens.Output
-		aggregated.Tokens.Reasoning += data.Tokens.Reasoning
-		aggregated.Tokens.Cache += data.Tokens.Cache
+		aggregated.Cost += msg.Info.Cost
+		aggregated.Tokens.Input += msg.Info.Tokens.Input
+		aggregated.Tokens.Output += msg.Info.Tokens.Output
+		aggregated.Tokens.Reasoning += msg.Info.Tokens.Reasoning
+		aggregated.Tokens.Cache += msg.Info.Tokens.Cache.Read + msg.Info.Tokens.Cache.Write
 	}
 
 	return &aggregated, messageCount, nil
