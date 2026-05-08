@@ -1018,4 +1018,121 @@ var _ = Describe("AgentController", func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
+
+	Context("When creating an Agent with plugins", func() {
+		It("Should create a Deployment with plugin-init container", func() {
+			agentName := "test-plugin-agent"
+
+			By("Creating an Agent with plugins")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      "ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest",
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "test-agent",
+					Port:               4096,
+					Plugins: []kubeopenv1alpha1.PluginSpec{
+						{Name: "@kubeopencode/plugin-test", Target: "server"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Verifying Deployment has plugin-init container")
+			deploymentName := ServerDeploymentName(agentName)
+			Eventually(func() bool {
+				var deployment appsv1.Deployment
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      deploymentName,
+					Namespace: agentNamespace,
+				}, &deployment); err != nil {
+					return false
+				}
+
+				for _, c := range deployment.Spec.Template.Spec.InitContainers {
+					if c.Name == "plugin-init" {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue(), "expected plugin-init init container in Deployment")
+
+			By("Verifying Deployment has plugins volume")
+			Eventually(func() bool {
+				var deployment appsv1.Deployment
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      deploymentName,
+					Namespace: agentNamespace,
+				}, &deployment); err != nil {
+					return false
+				}
+
+				for _, v := range deployment.Spec.Template.Spec.Volumes {
+					if v.Name == PluginsVolumeName {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue(), "expected plugins volume in Deployment")
+		})
+	})
+
+	Context("When creating an Agent with git sync contexts", func() {
+		It("Should create a Deployment with git-sync sidecar for HotReload policy", func() {
+			agentName := "test-gitsync-agent"
+
+			By("Creating an Agent with git context using sync HotReload")
+			agent := &kubeopenv1alpha1.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentName,
+					Namespace: agentNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentSpec{
+					ExecutorImage:      "ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest",
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "test-agent",
+					Port:               4096,
+					Contexts: []kubeopenv1alpha1.ContextItem{
+						{
+							Name:      "code-repo",
+							Type:      kubeopenv1alpha1.ContextTypeGit,
+							MountPath: "/workspace/code",
+							Git: &kubeopenv1alpha1.GitContext{
+								Repository: "https://github.com/example/repo.git",
+								Ref:        "main",
+								Sync: &kubeopenv1alpha1.GitSync{
+									Enabled: true,
+									Policy:  kubeopenv1alpha1.GitSyncPolicyHotReload,
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+
+			By("Verifying Deployment has git-sync sidecar container")
+			deploymentName := ServerDeploymentName(agentName)
+			Eventually(func() bool {
+				var deployment appsv1.Deployment
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      deploymentName,
+					Namespace: agentNamespace,
+				}, &deployment); err != nil {
+					return false
+				}
+
+				// git-sync sidecar is a regular container, not an init container
+				for _, c := range deployment.Spec.Template.Spec.Containers {
+					if c.Name == "git-sync-0" {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue(), "expected git-sync sidecar container in Deployment")
+		})
+	})
 })
