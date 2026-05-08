@@ -37,7 +37,6 @@ function SuspendResumeButton({ namespace, name, suspended, onSuccess }: { namesp
         await api.suspendAgent(namespace, name);
       }
       setOptimisticSuspended(newState);
-      // Keep button disabled until refetch completes
       timerRef.current = setTimeout(() => {
         onSuccess();
         setOptimisticSuspended(null);
@@ -192,7 +191,6 @@ function ShareLinkSection({ namespace, name, shareStatus }: {
           <p className="text-xs text-stone-500">
             Enable to generate a shareable URL. Anyone with the link can access this agent's terminal without Kubernetes credentials.
           </p>
-          {/* Config options for first-time enable */}
           <div className="mt-3 space-y-2">
             <div>
               <label className="text-xs text-stone-500">Expires in</label>
@@ -218,7 +216,6 @@ function ShareLinkSection({ namespace, name, shareStatus }: {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Status + Token */}
           <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-200">
             <div className="flex items-center gap-2 mb-2">
               <span className={`w-2 h-2 rounded-full ${shareToken?.active ? 'bg-emerald-500' : 'bg-amber-500'}`} />
@@ -267,7 +264,6 @@ function ShareLinkSection({ namespace, name, shareStatus }: {
             )}
           </div>
 
-          {/* Config toggle */}
           <button
             onClick={() => setShowConfig(!showConfig)}
             className="text-xs text-stone-500 hover:text-stone-700 flex items-center gap-1"

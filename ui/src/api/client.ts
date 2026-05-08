@@ -13,6 +13,28 @@ export interface Condition {
   message?: string;
 }
 
+export interface TokenUsage {
+  input?: number;
+  output?: number;
+  reasoning?: number;
+  cache?: number;
+}
+
+export interface SessionSummary {
+  messageCount?: number;
+  tokenUsage?: TokenUsage;
+  cost?: string;
+  filesChanged?: number;
+  additions?: number;
+  deletions?: number;
+}
+
+export interface SessionInfo {
+  id?: string;
+  title?: string;
+  summary?: SessionSummary;
+}
+
 export interface Task {
   name: string;
   namespace: string;
@@ -21,6 +43,7 @@ export interface Task {
   agentRef?: AgentReference;
   templateRef?: AgentReference;
   podName?: string;
+  session?: SessionInfo;
   startTime?: string;
   completionTime?: string;
   duration?: string;
@@ -336,6 +359,8 @@ export interface LogEvent {
   content?: string;
   message?: string;
 }
+
+
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {

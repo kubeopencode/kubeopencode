@@ -5,6 +5,7 @@ import api from '../api/client';
 import StatusBadge from '../components/StatusBadge';
 import Labels from '../components/Labels';
 import LogViewer from '../components/LogViewer';
+import SessionPanel from '../components/SessionPanel';
 import TimeAgo from '../components/TimeAgo';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Breadcrumbs from '../components/Breadcrumbs';
@@ -217,6 +218,11 @@ function TaskDetailPage() {
                 <pre className="text-sm text-stone-700 whitespace-pre-wrap font-body leading-relaxed">{task.description}</pre>
               </dd>
             </div>
+          )}
+
+          {/* Session Summary */}
+          {task.session && (
+            <SessionPanel session={task.session} />
           )}
 
           {task.conditions && task.conditions.length > 0 && (
