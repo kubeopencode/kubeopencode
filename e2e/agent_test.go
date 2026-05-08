@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
@@ -23,11 +24,6 @@ const (
 	// contextHashAnnotationKey mirrors the controller constant for e2e test assertions.
 	contextHashAnnotationKey = "kubeopencode.io/context-hash"
 )
-
-// stringPtr returns a pointer to the given string value
-func stringPtr(s string) *string {
-	return &s
-}
 
 var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 
@@ -204,7 +200,7 @@ var _ = Describe("Agent E2E Tests", Label(LabelAgent), func() {
 							Name: "test-api-key",
 							SecretRef: kubeopenv1alpha1.SecretReference{
 								Name: secretName,
-								Key:  stringPtr("api-key"),
+								Key:  ptr.To("api-key"),
 							},
 							Env: &envName,
 						},

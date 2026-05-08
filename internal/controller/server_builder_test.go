@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
@@ -86,7 +87,7 @@ func TestBuildServerDeployment_WithCredentials(t *testing.T) {
 				Name: "github-token",
 				SecretRef: kubeopenv1alpha1.SecretReference{
 					Name: "github-secret",
-					Key:  stringPtr("token"),
+					Key:  ptr.To("token"),
 				},
 				Env: &envName,
 			},
@@ -94,7 +95,7 @@ func TestBuildServerDeployment_WithCredentials(t *testing.T) {
 				Name: "ssh-key",
 				SecretRef: kubeopenv1alpha1.SecretReference{
 					Name: "ssh-secret",
-					Key:  stringPtr("private-key"),
+					Key:  ptr.To("private-key"),
 				},
 				MountPath: &mountPath,
 			},

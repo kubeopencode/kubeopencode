@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
@@ -208,7 +209,7 @@ var _ = Describe("TaskController", func() {
 							Name: "api-token",
 							SecretRef: kubeopenv1alpha1.SecretReference{
 								Name: secretName,
-								Key:  stringPtr("token"),
+								Key:  ptr.To("token"),
 							},
 							Env: &envName,
 						},
@@ -216,7 +217,7 @@ var _ = Describe("TaskController", func() {
 							Name: "ssh-key",
 							SecretRef: kubeopenv1alpha1.SecretReference{
 								Name: secretName,
-								Key:  stringPtr("key"),
+								Key:  ptr.To("key"),
 							},
 							MountPath: &mountPath,
 						},
@@ -3665,8 +3666,8 @@ var _ = Describe("TaskController", func() {
 							AllowPrivilegeEscalation: boolPtr(false),
 						},
 						PodSecurityContext: &corev1.PodSecurityContext{
-							RunAsUser: int64Ptr(1000),
-							FSGroup:   int64Ptr(1000),
+							RunAsUser: ptr.To[int64](1000),
+							FSGroup:   ptr.To[int64](1000),
 						},
 					},
 				},

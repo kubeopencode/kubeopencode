@@ -12,7 +12,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
@@ -158,11 +157,13 @@ var _ = Describe("AgentController", func() {
 		})
 	})
 
+	// NOTE: ExtraPorts Deployment/Service port details are thoroughly tested in
+	// server_builder_test.go (unit) and e2e/agent_test.go (E2E).
+	// Integration test verifies reconciler creates correct port count.
 	Context("When creating an Agent with ExtraPorts", func() {
 		It("Should create Deployment and Service with extra ports", func() {
 			agentName := "test-extra-ports-agent"
 
-			By("Creating an Agent with ExtraPorts")
 			agent := &kubeopenv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -181,7 +182,7 @@ var _ = Describe("AgentController", func() {
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Expecting Deployment with extra container ports")
+			By("Expecting Deployment with 3 container ports (http + webapp + vscode)")
 			deploymentName := ServerDeploymentName(agentName)
 			Eventually(func() int {
 				var deployment appsv1.Deployment
@@ -195,26 +196,12 @@ var _ = Describe("AgentController", func() {
 					return 0
 				}
 				return len(deployment.Spec.Template.Spec.Containers[0].Ports)
-			}, timeout, interval).Should(Equal(3)) // http + webapp + vscode
+			}, timeout, interval).Should(Equal(3))
 
-			By("Verifying Deployment container port details")
-			var deployment appsv1.Deployment
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      deploymentName,
-				Namespace: agentNamespace,
-			}, &deployment)).Should(Succeed())
-			ports := deployment.Spec.Template.Spec.Containers[0].Ports
-			Expect(ports[0].Name).To(Equal("http"))
-			Expect(ports[0].ContainerPort).To(Equal(int32(4096)))
-			Expect(ports[1].Name).To(Equal("webapp"))
-			Expect(ports[1].ContainerPort).To(Equal(int32(3000)))
-			Expect(ports[2].Name).To(Equal("vscode"))
-			Expect(ports[2].ContainerPort).To(Equal(int32(8080)))
-
-			By("Expecting Service with extra service ports")
+			By("Expecting Service with 3 ports")
 			serviceName := ServerServiceName(agentName)
-			var service corev1.Service
 			Eventually(func() int {
+				var service corev1.Service
 				if err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      serviceName,
 					Namespace: agentNamespace,
@@ -224,19 +211,6 @@ var _ = Describe("AgentController", func() {
 				return len(service.Spec.Ports)
 			}, timeout, interval).Should(Equal(3))
 
-			By("Verifying Service port details")
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      serviceName,
-				Namespace: agentNamespace,
-			}, &service)).Should(Succeed())
-			Expect(service.Spec.Ports[0].Name).To(Equal("http"))
-			Expect(service.Spec.Ports[0].Port).To(Equal(int32(4096)))
-			Expect(service.Spec.Ports[1].Name).To(Equal("webapp"))
-			Expect(service.Spec.Ports[1].Port).To(Equal(int32(3000)))
-			Expect(service.Spec.Ports[2].Name).To(Equal("vscode"))
-			Expect(service.Spec.Ports[2].Port).To(Equal(int32(8080)))
-
-			By("Cleaning up the Agent")
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})
@@ -320,11 +294,13 @@ var _ = Describe("AgentController", func() {
 		})
 	})
 
+	// NOTE: Context hash annotation mechanics (computation, different content types)
+	// are tested in server_builder_test.go and e2e/agent_test.go.
+	// Integration test verifies that updating context triggers a hash change via reconciler.
 	Context("When updating Agent context content", func() {
 		It("Should update the Deployment pod template hash annotation", func() {
 			agentName := "test-context-hash-agent"
 
-			By("Creating an Agent with a text context")
 			agent := &kubeopenv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -345,7 +321,6 @@ var _ = Describe("AgentController", func() {
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Waiting for Deployment to be created with context hash annotation")
 			deploymentName := ServerDeploymentName(agentName)
 			var initialHash string
 			Eventually(func() string {
@@ -363,7 +338,7 @@ var _ = Describe("AgentController", func() {
 				return initialHash
 			}, timeout, interval).ShouldNot(BeEmpty())
 
-			By("Updating the Agent with different text context content")
+			By("Updating context content should change the hash")
 			var updatedAgent kubeopenv1alpha1.Agent
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
 				Name:      agentName,
@@ -372,78 +347,6 @@ var _ = Describe("AgentController", func() {
 			updatedAgent.Spec.Contexts[0].Text = "updated system prompt with new instructions"
 			Expect(k8sClient.Update(ctx, &updatedAgent)).Should(Succeed())
 
-			By("Expecting the Deployment context hash annotation to change")
-			Eventually(func() string {
-				var deployment appsv1.Deployment
-				if err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      deploymentName,
-					Namespace: agentNamespace,
-				}, &deployment); err != nil {
-					return initialHash // return initial to keep waiting
-				}
-				if deployment.Spec.Template.Annotations == nil {
-					return initialHash
-				}
-				return deployment.Spec.Template.Annotations[ContextHashAnnotationKey]
-			}, timeout, interval).ShouldNot(Equal(initialHash))
-
-			By("Cleaning up the Agent")
-			Expect(k8sClient.Delete(ctx, &updatedAgent)).Should(Succeed())
-		})
-
-		It("Should update hash when Agent config content changes with skills", func() {
-			agentName := "test-config-hash-agent"
-
-			By("Creating an Agent with config and a text context")
-			agent := &kubeopenv1alpha1.Agent{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      agentName,
-					Namespace: agentNamespace,
-				},
-				Spec: kubeopenv1alpha1.AgentSpec{
-					ExecutorImage:      "ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest",
-					WorkspaceDir:       "/workspace",
-					ServiceAccountName: "test-agent",
-					Port:               4096,
-					Config:             &runtime.RawExtension{Raw: []byte(`{"model":"claude-sonnet"}`)},
-					Contexts: []kubeopenv1alpha1.ContextItem{
-						{
-							Type: kubeopenv1alpha1.ContextTypeText,
-							Text: "some context",
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
-
-			By("Waiting for Deployment with context hash")
-			deploymentName := ServerDeploymentName(agentName)
-			var initialHash string
-			Eventually(func() string {
-				var deployment appsv1.Deployment
-				if err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      deploymentName,
-					Namespace: agentNamespace,
-				}, &deployment); err != nil {
-					return ""
-				}
-				if deployment.Spec.Template.Annotations == nil {
-					return ""
-				}
-				initialHash = deployment.Spec.Template.Annotations[ContextHashAnnotationKey]
-				return initialHash
-			}, timeout, interval).ShouldNot(BeEmpty())
-
-			By("Updating the Agent config content")
-			var updatedAgent kubeopenv1alpha1.Agent
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      agentName,
-				Namespace: agentNamespace,
-			}, &updatedAgent)).Should(Succeed())
-			updatedAgent.Spec.Config = &runtime.RawExtension{Raw: []byte(`{"model":"claude-opus"}`)}
-			Expect(k8sClient.Update(ctx, &updatedAgent)).Should(Succeed())
-
-			By("Expecting the context hash annotation to change")
 			Eventually(func() string {
 				var deployment appsv1.Deployment
 				if err := k8sClient.Get(ctx, types.NamespacedName{
@@ -458,16 +361,18 @@ var _ = Describe("AgentController", func() {
 				return deployment.Spec.Template.Annotations[ContextHashAnnotationKey]
 			}, timeout, interval).ShouldNot(Equal(initialHash))
 
-			By("Cleaning up the Agent")
 			Expect(k8sClient.Delete(ctx, &updatedAgent)).Should(Succeed())
 		})
 	})
 
+	// NOTE: Session persistence PVC properties (access modes, size, volume mounts,
+	// OPENCODE_DB env var) are thoroughly tested in server_builder_test.go (unit tests)
+	// and e2e/server_test.go (E2E tests). Integration tests focus on verifying the
+	// reconciler creates the PVC when persistence is configured.
 	Context("When creating an Agent with session persistence", func() {
-		It("Should create a PVC for session data", func() {
+		It("Should create a session PVC via reconciler", func() {
 			agentName := "test-session-persist-agent"
 
-			By("Creating an Agent with session persistence")
 			agent := &kubeopenv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -487,7 +392,7 @@ var _ = Describe("AgentController", func() {
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Expecting a PVC to be created for session data")
+			By("Expecting session PVC and Deployment to be created")
 			pvcName := ServerSessionPVCName(agentName)
 			Eventually(func() error {
 				var pvc corev1.PersistentVolumeClaim
@@ -497,17 +402,6 @@ var _ = Describe("AgentController", func() {
 				}, &pvc)
 			}, timeout, interval).Should(Succeed())
 
-			By("Verifying PVC properties")
-			var pvc corev1.PersistentVolumeClaim
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      pvcName,
-				Namespace: agentNamespace,
-			}, &pvc)).Should(Succeed())
-			Expect(pvc.Spec.AccessModes).To(ContainElement(corev1.ReadWriteOnce))
-			storageReq := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-			Expect(storageReq.String()).To(Equal("2Gi"))
-
-			By("Expecting a Deployment to also be created")
 			deploymentName := ServerDeploymentName(agentName)
 			Eventually(func() error {
 				var deployment appsv1.Deployment
@@ -517,35 +411,6 @@ var _ = Describe("AgentController", func() {
 				}, &deployment)
 			}, timeout, interval).Should(Succeed())
 
-			By("Verifying Deployment has session volume and OPENCODE_DB env")
-			var deployment appsv1.Deployment
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      deploymentName,
-				Namespace: agentNamespace,
-			}, &deployment)).Should(Succeed())
-
-			// Check for session PVC volume
-			var foundSessionVolume bool
-			for _, vol := range deployment.Spec.Template.Spec.Volumes {
-				if vol.Name == ServerSessionVolumeName && vol.PersistentVolumeClaim != nil {
-					foundSessionVolume = true
-					Expect(vol.PersistentVolumeClaim.ClaimName).To(Equal(pvcName))
-				}
-			}
-			Expect(foundSessionVolume).To(BeTrue(), "session PVC volume not found in Deployment")
-
-			// Check for OPENCODE_DB env var
-			container := deployment.Spec.Template.Spec.Containers[0]
-			var foundDBEnv bool
-			for _, env := range container.Env {
-				if env.Name == OpenCodeDBEnvVar {
-					foundDBEnv = true
-					Expect(env.Value).To(Equal(ServerSessionDBPath))
-				}
-			}
-			Expect(foundDBEnv).To(BeTrue(), "OPENCODE_DB env var not found in server container")
-
-			By("Cleaning up the Agent")
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})
@@ -554,7 +419,6 @@ var _ = Describe("AgentController", func() {
 		It("Should NOT create a PVC", func() {
 			agentName := "test-no-persist-agent"
 
-			By("Creating an Agent without persistence")
 			agent := &kubeopenv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -569,7 +433,6 @@ var _ = Describe("AgentController", func() {
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Expecting NO PVC to be created")
 			pvcName := ServerSessionPVCName(agentName)
 			Consistently(func() error {
 				var pvc corev1.PersistentVolumeClaim
@@ -579,7 +442,6 @@ var _ = Describe("AgentController", func() {
 				}, &pvc)
 			}, timeout/2, interval).ShouldNot(Succeed())
 
-			By("Cleaning up the Agent")
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})
@@ -916,11 +778,13 @@ var _ = Describe("AgentController", func() {
 		})
 	})
 
+	// NOTE: Workspace persistence PVC properties and Deployment volume wiring are
+	// thoroughly tested in server_builder_test.go and e2e/server_test.go.
+	// Integration test only verifies the reconciler creates the workspace PVC.
 	Context("When creating an Agent with workspace persistence", func() {
-		It("Should create a workspace PVC", func() {
+		It("Should create a workspace PVC via reconciler", func() {
 			agentName := "test-workspace-persist-agent"
 
-			By("Creating an Agent with workspace persistence")
 			agent := &kubeopenv1alpha1.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentName,
@@ -940,7 +804,6 @@ var _ = Describe("AgentController", func() {
 			}
 			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
 
-			By("Expecting a workspace PVC to be created")
 			pvcName := ServerWorkspacePVCName(agentName)
 			Eventually(func() error {
 				var pvc corev1.PersistentVolumeClaim
@@ -950,42 +813,6 @@ var _ = Describe("AgentController", func() {
 				}, &pvc)
 			}, timeout, interval).Should(Succeed())
 
-			By("Verifying workspace PVC properties")
-			var pvc corev1.PersistentVolumeClaim
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      pvcName,
-				Namespace: agentNamespace,
-			}, &pvc)).Should(Succeed())
-			Expect(pvc.Spec.AccessModes).To(ContainElement(corev1.ReadWriteOnce))
-			storageReq := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-			Expect(storageReq.String()).To(Equal("10Gi"))
-
-			By("Verifying Deployment uses PVC for workspace volume")
-			deploymentName := ServerDeploymentName(agentName)
-			Eventually(func() error {
-				var deployment appsv1.Deployment
-				return k8sClient.Get(ctx, types.NamespacedName{
-					Name:      deploymentName,
-					Namespace: agentNamespace,
-				}, &deployment)
-			}, timeout, interval).Should(Succeed())
-
-			var deployment appsv1.Deployment
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      deploymentName,
-				Namespace: agentNamespace,
-			}, &deployment)).Should(Succeed())
-
-			var foundWorkspaceVolume bool
-			for _, vol := range deployment.Spec.Template.Spec.Volumes {
-				if vol.Name == WorkspaceVolumeName && vol.PersistentVolumeClaim != nil {
-					foundWorkspaceVolume = true
-					Expect(vol.PersistentVolumeClaim.ClaimName).To(Equal(pvcName))
-				}
-			}
-			Expect(foundWorkspaceVolume).To(BeTrue(), "workspace PVC volume not found in Deployment")
-
-			By("Cleaning up the Agent")
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
 		})
 	})

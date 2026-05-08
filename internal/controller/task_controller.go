@@ -91,6 +91,17 @@ func isTaskStoppedByUser(task *kubeopenv1alpha1.Task) bool {
 	return task.Annotations != nil && task.Annotations[AnnotationStop] == "true"
 }
 
+// isTaskTimedOut returns true if the task's execution has exceeded its timeout.
+// Returns false if no timeout is configured or if startTime is not set.
+// Queue time (before startTime) is excluded from the calculation.
+func isTaskTimedOut(task *kubeopenv1alpha1.Task) bool {
+	if task.Spec.Timeout == nil || task.Status.StartTime == nil {
+		return false
+	}
+	elapsed := time.Since(task.Status.StartTime.Time)
+	return elapsed >= task.Spec.Timeout.Duration
+}
+
 // TaskReconciler reconciles a Task object
 type TaskReconciler struct {
 	client.Client
@@ -158,11 +169,8 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// For Running tasks: check timeout, user-initiated stop, and Pod status
 	if task.Status.Phase == kubeopenv1alpha1.TaskPhaseRunning {
 		// Check timeout before user stop — if both apply, timeout is the cause
-		if task.Spec.Timeout != nil && task.Status.StartTime != nil {
-			elapsed := time.Since(task.Status.StartTime.Time)
-			if elapsed >= task.Spec.Timeout.Duration {
-				return r.handleTimeout(ctx, task)
-			}
+		if isTaskTimedOut(task) {
+			return r.handleTimeout(ctx, task)
 		}
 
 		if isTaskStoppedByUser(task) {

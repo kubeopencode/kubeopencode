@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -155,7 +156,7 @@ func TestTaskHandler_Get(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "my-task", Namespace: "default"},
 					Spec: kubeopenv1alpha1.TaskSpec{
 						AgentRef:    &kubeopenv1alpha1.AgentReference{Name: "my-agent"},
-						Description: strPtr("do something"),
+						Description: ptr.To("do something"),
 					},
 				},
 			},
@@ -447,9 +448,4 @@ func TestTaskHandler_Stop(t *testing.T) {
 			}
 		})
 	}
-}
-
-// strPtr returns a pointer to a string value.
-func strPtr(s string) *string {
-	return &s
 }

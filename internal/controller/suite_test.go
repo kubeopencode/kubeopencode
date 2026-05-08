@@ -149,16 +149,6 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 })
 
-// stringPtr returns a pointer to the given string value
-func stringPtr(s string) *string {
-	return &s
-}
-
-// int64Ptr returns a pointer to the given int64 value
-func int64Ptr(i int64) *int64 {
-	return &i
-}
-
 // createReadyAgent creates an Agent and simulates its Deployment being ready.
 // In envtest no real pods run, so we must fake Deployment readiness to let the
 // Agent controller set status.ready = true.
