@@ -51,6 +51,7 @@ internal/opencode-app/dist/
 *secret*
 !*.example
 !vendor/
+!vendor/**
 
 # Common secret file patterns (only at root or config directories)
 /*_id
