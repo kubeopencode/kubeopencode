@@ -2453,3 +2453,29 @@ func TestBuildServerDeployment_SystemContainers_GitSync(t *testing.T) {
 		t.Error("opencode-server should NOT have SYNC_EXTRA (git-sync-specific)")
 	}
 }
+
+func TestBuildServerDeployment_DefaultPort(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-default-port-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{
+			// Port not specified — should use DefaultServerPort
+		},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+	container := deployment.Spec.Template.Spec.Containers[0]
+	if container.Ports[0].ContainerPort != DefaultServerPort {
+		t.Errorf("expected default port %d, got %d", DefaultServerPort, container.Ports[0].ContainerPort)
+	}
+}
