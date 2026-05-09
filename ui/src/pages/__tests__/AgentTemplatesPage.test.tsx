@@ -66,7 +66,7 @@ describe('AgentTemplatesPage', () => {
     renderWithProviders(<AgentTemplatesPage />, { initialEntries: ['/templates'] });
 
     await waitFor(() => {
-      expect(screen.getByText(/No agent templates found/)).toBeInTheDocument();
+      expect(screen.getByText(/No templates found/)).toBeInTheDocument();
     });
   });
 });

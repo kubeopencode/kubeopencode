@@ -155,7 +155,7 @@ function AgentCreatePage() {
   const isValid = name && (hasTemplate || (effectiveWorkspaceDir && effectiveServiceAccount));
 
   const labelClass = 'block text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-1.5';
-  const inputClass = 'block w-full rounded-md border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300';
+  const inputClass = 'block w-full px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300';
   const monoInputClass = `${inputClass} font-mono placeholder:font-body`;
   const inheritedHint = hasTemplate ? (
     <span className="normal-case tracking-normal text-stone-300"> (inherited from template)</span>
@@ -357,7 +357,7 @@ function AgentCreatePage() {
                     value={sessionsSize}
                     onChange={(e) => setSessionsSize(e.target.value)}
                     placeholder="1Gi"
-                    className="w-24 rounded-md border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
+                    className="w-24 px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
                   />
                 )}
               </div>
@@ -381,7 +381,7 @@ function AgentCreatePage() {
                     value={workspacePersistSize}
                     onChange={(e) => setWorkspacePersistSize(e.target.value)}
                     placeholder="10Gi"
-                    className="w-24 rounded-md border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
+                    className="w-24 px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
                   />
                 )}
               </div>

@@ -84,7 +84,7 @@ function SearchableSelect({
         id={id}
         onClick={() => setOpen(!open)}
         className={`
-          flex items-center justify-between w-full rounded-md border bg-white shadow-sm text-sm text-left px-3 py-2 transition-colors
+          flex items-center justify-between w-full rounded-lg border bg-white shadow-sm text-sm text-left px-3 py-2 transition-colors
           ${open
             ? 'border-primary-500 ring-1 ring-primary-200'
             : 'border-stone-200 hover:border-stone-300'
@@ -105,7 +105,7 @@ function SearchableSelect({
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-stone-200 rounded-md shadow-lg z-50 animate-fade-in overflow-hidden">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-stone-200 rounded-lg shadow-lg z-50 animate-fade-in overflow-hidden">
           <div className="px-2 pt-2 pb-1">
             <input
               ref={inputRef}

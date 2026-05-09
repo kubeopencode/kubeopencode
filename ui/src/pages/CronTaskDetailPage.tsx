@@ -10,6 +10,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import YamlViewer from '../components/YamlViewer';
 import { DetailSkeleton } from '../components/Skeleton';
 import { useToast } from '../contexts/ToastContext';
+import { describeCronExpression } from '../utils/cron';
 
 function CronTaskDetailPage() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
@@ -240,6 +241,9 @@ function CronTaskDetailPage() {
               <div>
                 <dt className="text-xs text-stone-400">Cron Expression</dt>
                 <dd className="mt-1 text-sm text-stone-800 font-mono">{cronTask.schedule}</dd>
+                {describeCronExpression(cronTask.schedule) && (
+                  <dd className="mt-0.5 text-xs text-primary-600">{describeCronExpression(cronTask.schedule)}</dd>
+                )}
               </div>
               <div>
                 <dt className="text-xs text-stone-400">Timezone</dt>

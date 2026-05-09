@@ -8,12 +8,20 @@ function formatTokens(count: number): string {
   return count.toString();
 }
 
-// Format cost string to display value
+// Format cost string to display value. Returns '-' for missing/zero cost.
 function formatCost(cost?: string): string {
   if (!cost) return '-';
   const num = parseFloat(cost);
   if (isNaN(num)) return cost;
+  if (num === 0) return '-';
   return `$${num.toFixed(4)}`;
+}
+
+// Check if cost has a meaningful (non-zero) value
+function hasCost(cost?: string): boolean {
+  if (!cost) return false;
+  const num = parseFloat(cost);
+  return !isNaN(num) && num > 0;
 }
 
 function SessionSummaryCards({ session }: { session: SessionInfo }) {
@@ -21,9 +29,10 @@ function SessionSummaryCards({ session }: { session: SessionInfo }) {
   if (!summary) return null;
 
   const totalTokens = (summary.tokenUsage?.input || 0) + (summary.tokenUsage?.output || 0);
+  const showCost = hasCost(summary.cost);
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className={`grid ${showCost ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
       {/* Messages */}
       <div className="bg-stone-50 rounded-lg p-3 border border-stone-100">
         <dt className="text-[10px] font-display font-medium text-stone-400 uppercase tracking-wider">Messages</dt>
@@ -41,11 +50,13 @@ function SessionSummaryCards({ session }: { session: SessionInfo }) {
         )}
       </div>
 
-      {/* Cost */}
-      <div className="bg-stone-50 rounded-lg p-3 border border-stone-100">
-        <dt className="text-[10px] font-display font-medium text-stone-400 uppercase tracking-wider">Cost</dt>
-        <dd className="mt-1 text-lg font-semibold text-stone-800 font-mono">{formatCost(summary.cost)}</dd>
-      </div>
+      {/* Cost - only shown when > 0 */}
+      {showCost && (
+        <div className="bg-stone-50 rounded-lg p-3 border border-stone-100">
+          <dt className="text-[10px] font-display font-medium text-stone-400 uppercase tracking-wider">Cost</dt>
+          <dd className="mt-1 text-lg font-semibold text-stone-800 font-mono">{formatCost(summary.cost)}</dd>
+        </div>
+      )}
     </div>
   );
 }
@@ -68,4 +79,4 @@ function SessionPanel({ session }: SessionPanelProps) {
 }
 
 export default SessionPanel;
-export { SessionSummaryCards, formatTokens, formatCost };
+export { SessionSummaryCards, formatTokens, formatCost, hasCost };

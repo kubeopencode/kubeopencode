@@ -5,6 +5,7 @@ import api, { Agent } from '../api/client';
 import Labels from '../components/Labels';
 import AgentStatusBadge from '../components/AgentStatusBadge';
 import Skeleton from '../components/Skeleton';
+import EmptyState, { AgentIcon } from '../components/EmptyState';
 import ResourceFilter from '../components/ResourceFilter';
 import MultiSelect from '../components/MultiSelect';
 import { useFilterState } from '../hooks/useFilterState';
@@ -180,8 +181,14 @@ function AgentsPage() {
         <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {data?.agents.length === 0 ? (
-            <div className="col-span-full text-center py-16 text-stone-400 text-sm">
-              No agents found. Agents are created by platform administrators.
+            <div className="col-span-full bg-white rounded-xl border-0 shadow-card">
+              <EmptyState
+                icon={<AgentIcon />}
+                title="No agents found"
+                description="Agents are persistent AI workers running in your cluster. Create an agent to start executing tasks, or ask your platform administrator to set one up."
+                action={{ label: 'Create Agent', to: '/agents/create' }}
+                secondaryAction={{ label: 'View Templates', to: '/templates' }}
+              />
             </div>
           ) : (
             data?.agents.map((agent) => (

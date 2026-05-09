@@ -6,6 +6,7 @@ import TimeAgo from '../components/TimeAgo';
 import ResourceFilter from '../components/ResourceFilter';
 import MultiSelect from '../components/MultiSelect';
 import SortableHeader from '../components/SortableHeader';
+import EmptyState, { CronIcon } from '../components/EmptyState';
 import { TableSkeleton } from '../components/Skeleton';
 import { useFilterState } from '../hooks/useFilterState';
 import { useNamespace } from '../contexts/NamespaceContext';
@@ -120,7 +121,7 @@ function CronTasksPage() {
 
       {isLoading ? (
         <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
-          <TableSkeleton rows={5} cols={isAllNamespaces ? 7 : 6} />
+          <TableSkeleton rows={5} cols={isAllNamespaces ? 8 : 7} />
         </div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 rounded-xl p-5">
@@ -171,13 +172,13 @@ function CronTasksPage() {
             <tbody className="bg-white divide-y divide-stone-100">
               {data?.cronTasks.length === 0 ? (
                 <tr>
-                  <td colSpan={isAllNamespaces ? 7 : 6} className="px-5 py-12 text-center text-stone-400 text-sm">
-                    No CronTasks found.{' '}
-                    {!isAllNamespaces && (
-                      <Link to="/crontasks/create" className="text-primary-600 hover:text-primary-700 font-medium">
-                        Create your first CronTask
-                      </Link>
-                    )}
+                  <td colSpan={isAllNamespaces ? 8 : 7}>
+                    <EmptyState
+                      icon={<CronIcon />}
+                      title="No CronTasks found"
+                      description="CronTasks run AI agent tasks on a schedule, like daily code scans, weekly reviews, or periodic cleanups. Set up automated workflows with cron expressions."
+                      action={{ label: 'Create CronTask', to: '/crontasks/create' }}
+                    />
                   </td>
                 </tr>
               ) : (

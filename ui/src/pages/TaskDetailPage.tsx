@@ -201,6 +201,12 @@ function TaskDetailPage() {
                 {task.completionTime ? <TimeAgo date={task.completionTime} /> : '-'}
               </dd>
             </div>
+            {task.timeout && (
+              <div>
+                <dt className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider">Timeout</dt>
+                <dd className="mt-1.5 text-sm text-stone-800 font-mono text-xs">{task.timeout}</dd>
+              </div>
+            )}
             {task.podName && (
               <div>
                 <dt className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider">Pod</dt>

@@ -27,6 +27,7 @@ function TaskCreatePage() {
   });
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [timeout, setTimeout] = useState('');
   const [sourceType, setSourceType] = useState<SourceType>('agent');
   const [selectedAgent, setSelectedAgent] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('');
@@ -159,6 +160,10 @@ function TaskCreatePage() {
       task.description = description;
     }
 
+    if (timeout) {
+      task.timeout = timeout;
+    }
+
     if (sourceType === 'agent' && selectedAgent) {
       const agent = agentsData?.agents.find(
         (a) => `${a.namespace}/${a.name}` === selectedAgent
@@ -229,7 +234,7 @@ function TaskCreatePage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Auto-generated if empty"
-                className="block w-full rounded-lg border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300"
+                className="block w-full px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300"
               />
             </div>
           </div>
@@ -354,10 +359,30 @@ function TaskCreatePage() {
               rows={12}
               required
               placeholder="Describe what you want the AI agent to do..."
-              className="block w-full rounded-lg border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
+              className="block w-full px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
             />
             <p className="mt-1.5 text-xs text-stone-400">
               This will be the main instruction for the AI agent
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="timeout"
+              className="block text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-1.5"
+            >
+              Timeout <span className="normal-case tracking-normal text-stone-300">(optional)</span>
+            </label>
+            <input
+              type="text"
+              id="timeout"
+              value={timeout}
+              onChange={(e) => setTimeout(e.target.value)}
+              placeholder="e.g. 30m, 1h, 2h30m"
+              className="block w-full max-w-xs px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
+            />
+            <p className="mt-1.5 text-xs text-stone-400">
+              Maximum execution time. Timer starts when the task begins running, not when queued. Leave empty for no limit.
             </p>
           </div>
 

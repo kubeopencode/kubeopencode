@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import Labels from '../components/Labels';
 import Skeleton from '../components/Skeleton';
+import EmptyState, { TemplateIcon } from '../components/EmptyState';
 import ResourceFilter from '../components/ResourceFilter';
 import { useFilterState } from '../hooks/useFilterState';
 import { useNamespace } from '../contexts/NamespaceContext';
@@ -89,8 +90,13 @@ function AgentTemplatesPage() {
         <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {data?.templates.length === 0 ? (
-            <div className="col-span-full text-center py-16 text-stone-400 text-sm">
-              No agent templates found. Templates are created by platform administrators.
+            <div className="col-span-full bg-white rounded-xl border-0 shadow-card">
+              <EmptyState
+                icon={<TemplateIcon />}
+                title="No templates found"
+                description="Agent Templates are reusable blueprints for creating Agents. They define shared configurations like images, credentials, and contexts that Agents can inherit."
+                action={{ label: 'Create Template', to: '/templates/create' }}
+              />
             </div>
           ) : (
             data?.templates.map((tmpl) => (

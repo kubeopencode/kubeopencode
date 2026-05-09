@@ -197,6 +197,16 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Set timeout if provided
+	if req.Timeout != "" {
+		d, err := time.ParseDuration(req.Timeout)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid timeout format", fmt.Sprintf("expected Go duration (e.g. 30m, 1h, 2h30m): %v", err))
+			return
+		}
+		task.Spec.Timeout = &metav1.Duration{Duration: d}
+	}
+
 	// Convert contexts
 	for _, c := range req.Contexts {
 		item := kubeopenv1alpha1.ContextItem{
@@ -415,6 +425,11 @@ func taskToResponse(task *kubeopenv1alpha1.Task) types.TaskResponse {
 		PodName:     task.Status.PodName,
 		CreatedAt:   task.CreationTimestamp.Time,
 		Labels:      task.Labels,
+	}
+
+	// Timeout
+	if task.Spec.Timeout != nil {
+		resp.Timeout = task.Spec.Timeout.Duration.String()
 	}
 
 	if task.Spec.AgentRef != nil {

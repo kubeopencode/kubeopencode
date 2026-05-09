@@ -57,7 +57,7 @@ function AgentTemplateCreatePage() {
   const isValid = !!name;
 
   const labelClass = 'block text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-1.5';
-  const inputClass = 'block w-full rounded-md border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300';
+  const inputClass = 'block w-full px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300';
   const monoInputClass = `${inputClass} font-mono placeholder:font-body`;
 
   return (
