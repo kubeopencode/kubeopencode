@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../test/utils';
 import AgentDetailPage from '../AgentDetailPage';
 import { Route, Routes } from 'react-router-dom';
@@ -139,7 +140,15 @@ describe('AgentDetailPage', () => {
   });
 
   it('renders YamlViewer', async () => {
+    const user = userEvent.setup();
     renderAgentDetailPage('default', 'opencode-agent');
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'opencode-agent' })).toBeInTheDocument();
+    });
+
+    // Click the YAML tab
+    await user.click(screen.getByRole('button', { name: /YAML/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId('yaml-viewer')).toBeInTheDocument();
