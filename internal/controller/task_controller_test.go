@@ -3883,29 +3883,29 @@ var _ = Describe("TaskController", func() {
 		})
 	})
 
-	Context("Task with Agent that has plugins", func() {
+	Context("Task with AgentTemplate that has plugins", func() {
 		It("Should create Pod with plugin-init container", func() {
-			agentName := "test-plugin-task-agent"
+			templateName := "test-plugin-template"
 			taskName := "test-task-plugin"
 
-			By("Creating an Agent with plugins")
-			agent := &kubeopenv1alpha1.Agent{
+			By("Creating an AgentTemplate with plugins")
+			tmpl := &kubeopenv1alpha1.AgentTemplate{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      agentName,
+					Name:      templateName,
 					Namespace: taskNamespace,
 				},
-				Spec: kubeopenv1alpha1.AgentSpec{
+				Spec: kubeopenv1alpha1.AgentTemplateSpec{
 					ExecutorImage:      "test-executor:latest",
 					WorkspaceDir:       "/workspace",
-					ServiceAccountName: "test-agent",
+					ServiceAccountName: "default",
 					Plugins: []kubeopenv1alpha1.PluginSpec{
 						{Name: "@kubeopencode/test-plugin", Target: "server"},
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, agent)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, tmpl)).Should(Succeed())
 
-			By("Creating a Task referencing this Agent")
+			By("Creating a Task referencing this AgentTemplate (ephemeral mode)")
 			desc := "Test plugins in task pod"
 			task := &kubeopenv1alpha1.Task{
 				ObjectMeta: metav1.ObjectMeta{
@@ -3913,7 +3913,7 @@ var _ = Describe("TaskController", func() {
 					Namespace: taskNamespace,
 				},
 				Spec: kubeopenv1alpha1.TaskSpec{
-					AgentRef:    &kubeopenv1alpha1.AgentReference{Name: agentName},
+					TemplateRef: &kubeopenv1alpha1.AgentTemplateReference{Name: templateName},
 					Description: &desc,
 				},
 			}
@@ -3956,7 +3956,7 @@ var _ = Describe("TaskController", func() {
 
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
-			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, tmpl)).Should(Succeed())
 		})
 	})
 })
