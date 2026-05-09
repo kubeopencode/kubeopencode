@@ -414,9 +414,10 @@ type UpdateShareRequest struct {
 
 // ShareInfoResponse represents agent info returned for share link pages
 type ShareInfoResponse struct {
-	AgentName string `json:"agentName"`
-	Namespace string `json:"namespace"`
-	Profile   string `json:"profile,omitempty"`
+	AgentName string  `json:"agentName"`
+	Namespace string  `json:"namespace"`
+	Profile   string  `json:"profile,omitempty"`
+	ExpiresAt *string `json:"expiresAt,omitempty"`
 }
 
 // ShareStatusInfo represents share configuration in API responses

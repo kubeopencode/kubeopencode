@@ -9,6 +9,8 @@ interface YamlViewerProps {
   queryKey: string[];
   fetchYaml: () => Promise<string>;
   onSave?: (yaml: string) => Promise<void>;
+  defaultOpen?: boolean;
+  hideToggle?: boolean;
 }
 
 interface YamlError {
@@ -88,8 +90,8 @@ const darkTheme = EditorView.theme({
   },
 });
 
-function YamlViewer({ queryKey, fetchYaml, onSave }: YamlViewerProps) {
-  const [isOpen, setIsOpen] = useState(false);
+function YamlViewer({ queryKey, fetchYaml, onSave, defaultOpen = false, hideToggle = false }: YamlViewerProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -163,21 +165,23 @@ function YamlViewer({ queryKey, fetchYaml, onSave }: YamlViewerProps) {
   );
 
   return (
-    <div className="mt-6">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 text-xs font-display font-medium text-stone-400 hover:text-stone-600 uppercase tracking-wider transition-colors"
-      >
-        <svg
-          className={`w-3.5 h-3.5 transform transition-transform ${isOpen ? 'rotate-90' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
+    <div className={hideToggle ? '' : 'mt-6'}>
+      {!hideToggle && (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center space-x-2 text-xs font-display font-medium text-stone-400 hover:text-stone-600 uppercase tracking-wider transition-colors"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        <span>YAML</span>
-      </button>
+          <svg
+            className={`w-3.5 h-3.5 transform transition-transform ${isOpen ? 'rotate-90' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          <span>YAML</span>
+        </button>
+      )}
       {isOpen && (
         <div className="mt-2 bg-stone-800 rounded-xl overflow-hidden border border-stone-700 animate-fade-in">
           <div className="px-4 py-2.5 bg-stone-700/50 flex items-center justify-between border-b border-stone-600/50">
@@ -226,7 +230,7 @@ function YamlViewer({ queryKey, fetchYaml, onSave }: YamlViewerProps) {
                   onChange={setEditValue}
                   extensions={extensions}
                   theme="dark"
-                  height="384px"
+                  height={hideToggle ? 'calc(100vh - 320px)' : '384px'}
                   basicSetup={{
                     lineNumbers: true,
                     foldGutter: true,
@@ -275,8 +279,8 @@ function YamlViewer({ queryKey, fetchYaml, onSave }: YamlViewerProps) {
                 value={yaml || ''}
                 extensions={readOnlyExtensions}
                 theme="dark"
-                height="auto"
-                maxHeight="384px"
+                height={hideToggle ? 'auto' : 'auto'}
+                maxHeight={hideToggle ? 'calc(100vh - 280px)' : '384px'}
                 basicSetup={{
                   lineNumbers: true,
                   foldGutter: true,
