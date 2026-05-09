@@ -50,6 +50,7 @@ type CreateTaskRequest struct {
 	Description string                  `json:"description,omitempty"`
 	AgentRef    *AgentReference         `json:"agentRef,omitempty"`
 	TemplateRef *AgentTemplateReference `json:"templateRef,omitempty"`
+	Timeout     string                  `json:"timeout,omitempty"`
 	Contexts    []ContextItem           `json:"contexts,omitempty"`
 }
 
@@ -95,6 +96,7 @@ type TaskResponse struct {
 	Description    string                  `json:"description,omitempty"`
 	AgentRef       *AgentReference         `json:"agentRef,omitempty"`
 	TemplateRef    *AgentTemplateReference `json:"templateRef,omitempty"`
+	Timeout        string                  `json:"timeout,omitempty"`
 	PodName        string                  `json:"podName,omitempty"`
 	Session        *SessionInfoResponse    `json:"session,omitempty"`
 	StartTime      *time.Time              `json:"startTime,omitempty"`

@@ -42,6 +42,7 @@ export interface Task {
   description?: string;
   agentRef?: AgentReference;
   templateRef?: AgentReference;
+  timeout?: string;
   podName?: string;
   session?: SessionInfo;
   startTime?: string;
@@ -82,6 +83,7 @@ export interface CreateTaskRequest {
   description?: string;
   agentRef?: AgentReference;
   templateRef?: { name: string };
+  timeout?: string;
 }
 
 export interface CreateVolumePersistence {
@@ -359,8 +361,6 @@ export interface LogEvent {
   content?: string;
   message?: string;
 }
-
-
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {

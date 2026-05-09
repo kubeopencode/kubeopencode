@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useNamespace } from '../contexts/NamespaceContext';
 import Breadcrumbs from '../components/Breadcrumbs';
 import SearchableSelect from '../components/SearchableSelect';
+import CronScheduleEditor from '../components/CronScheduleEditor';
 
 type SourceType = 'agent' | 'template';
 
@@ -189,49 +190,39 @@ function CronTaskCreatePage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Auto-generated if empty"
-                className="block w-full rounded-lg border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300"
+                className="block w-full px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="schedule"
-                className="block text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-1.5"
-              >
-                Schedule
-              </label>
-              <input
-                type="text"
-                id="schedule"
-                value={schedule}
-                onChange={(e) => setSchedule(e.target.value)}
-                required
-                placeholder="0 9 * * 1-5"
-                className="block w-full rounded-lg border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
-              />
-              <p className="mt-1.5 text-xs text-stone-400">
-                Cron expression, e.g. <code className="bg-stone-100 px-1 py-0.5 rounded font-mono">0 9 * * 1-5</code> (weekdays at 9am)
-              </p>
-            </div>
+          <div>
+            <label
+              className="block text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-1.5"
+            >
+              Schedule
+            </label>
+            <CronScheduleEditor
+              value={schedule}
+              onChange={setSchedule}
+              timeZone={timeZone}
+            />
+          </div>
 
-            <div>
-              <label
-                htmlFor="timezone"
-                className="block text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-1.5"
-              >
-                Timezone
-              </label>
-              <input
-                type="text"
-                id="timezone"
-                value={timeZone}
-                onChange={(e) => setTimeZone(e.target.value)}
-                placeholder="UTC"
-                className="block w-full rounded-lg border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300"
-              />
-            </div>
+          <div>
+            <label
+              htmlFor="timezone"
+              className="block text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-1.5"
+            >
+              Timezone
+            </label>
+            <input
+              type="text"
+              id="timezone"
+              value={timeZone}
+              onChange={(e) => setTimeZone(e.target.value)}
+              placeholder="UTC"
+              className="block w-full max-w-xs px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300"
+            />
           </div>
 
           <div>
@@ -245,7 +236,7 @@ function CronTaskCreatePage() {
               id="concurrencyPolicy"
               value={concurrencyPolicy}
               onChange={(e) => setConcurrencyPolicy(e.target.value)}
-              className="block w-full rounded-lg border-stone-200 bg-white shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700"
+              className="block w-full px-3 py-2 rounded-lg border border-stone-200 bg-white shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700"
             >
               <option value="Forbid">Forbid - Skip new if previous is still running</option>
               <option value="Allow">Allow - Allow concurrent executions</option>
@@ -350,7 +341,7 @@ function CronTaskCreatePage() {
               onChange={(e) => setDescription(e.target.value)}
               rows={6}
               placeholder="Describe what you want the AI agent to do on each run..."
-              className="block w-full rounded-lg border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
+              className="block w-full px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 font-mono placeholder:text-stone-300 placeholder:font-body"
             />
             <p className="mt-1.5 text-xs text-stone-400">
               This will be the instruction for each scheduled task execution
@@ -391,7 +382,7 @@ function CronTaskCreatePage() {
                       value={maxRetainedTasks}
                       onChange={(e) => setMaxRetainedTasks(Number(e.target.value))}
                       min={0}
-                      className="block w-full rounded-lg border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700"
+                      className="block w-full px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700"
                     />
                     <p className="mt-1.5 text-xs text-stone-400">
                       Number of completed Tasks to retain
@@ -412,7 +403,7 @@ function CronTaskCreatePage() {
                       onChange={(e) => setStartingDeadlineSeconds(e.target.value ? Number(e.target.value) : '')}
                       min={0}
                       placeholder="No deadline"
-                      className="block w-full rounded-lg border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300"
+                      className="block w-full px-3 py-2 rounded-lg border border-stone-200 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm text-stone-700 placeholder:text-stone-300"
                     />
                     <p className="mt-1.5 text-xs text-stone-400">
                       Deadline for starting a missed scheduled task

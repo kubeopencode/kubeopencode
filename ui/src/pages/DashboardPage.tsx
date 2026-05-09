@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
@@ -6,19 +6,20 @@ import StatusBadge from '../components/StatusBadge';
 import AgentStatusBadge from '../components/AgentStatusBadge';
 import { DashboardSkeleton } from '../components/Skeleton';
 import TimeAgo from '../components/TimeAgo';
+import { formatCost } from '../components/SessionPanel';
 import { useNamespace } from '../contexts/NamespaceContext';
 
 function DashboardPage() {
   const { namespace, isAllNamespaces } = useNamespace();
 
+  // Fetch more tasks for stats (up to 100 recent)
   const { data: tasksData, isLoading: tasksLoading } = useQuery({
     queryKey: ['dashboard-tasks', namespace],
     queryFn: () => isAllNamespaces
-      ? api.listAllTasks({ limit: 10 })
-      : api.listTasks(namespace, { limit: 10 }),
+      ? api.listAllTasks({ limit: 100 })
+      : api.listTasks(namespace, { limit: 100 }),
     refetchInterval: (query) => {
       const tasks = query.state.data?.tasks;
-      // Poll frequently while tasks are in active states, slow down otherwise
       if (tasks?.some((t) => ['Running', 'Queued', 'Pending'].includes(t.phase))) return 5000;
       return 30000;
     },
@@ -31,7 +32,6 @@ function DashboardPage() {
       : api.listAgents(namespace, { limit: 100 }),
     refetchInterval: (query) => {
       const agents = query.state.data?.agents;
-      // Poll every 5s while any agent is in a transitional state
       if (agents?.some((a) => !a.serverStatus?.suspended && !a.serverStatus?.ready)) return 5000;
       return false;
     },
@@ -47,6 +47,29 @@ function DashboardPage() {
     completed: tasks.filter((t) => t.phase === 'Completed').length,
     failed: tasks.filter((t) => t.phase === 'Failed').length,
   };
+
+  // Compute aggregate stats from session data
+  const aggregateStats = useMemo(() => {
+    let totalCost = 0;
+    let totalTokens = 0;
+    let tasksWithSession = 0;
+
+    for (const task of tasks) {
+      if (task.session?.summary) {
+        tasksWithSession++;
+        const s = task.session.summary;
+        if (s.cost) totalCost += parseFloat(s.cost) || 0;
+        if (s.tokenUsage) {
+          totalTokens += (s.tokenUsage.input || 0) + (s.tokenUsage.output || 0);
+        }
+      }
+    }
+
+    const finishedTasks = taskStats.completed + taskStats.failed;
+    const successRate = finishedTasks > 0 ? Math.round((taskStats.completed / finishedTasks) * 100) : 0;
+
+    return { totalCost, totalTokens, tasksWithSession, successRate, finishedTasks };
+  }, [tasks, taskStats.completed, taskStats.failed]);
 
   const statCards = [
     { label: 'Total', value: taskStats.total, color: 'bg-slate-50 border-slate-200 text-slate-700', accent: 'text-slate-900' },
@@ -91,6 +114,69 @@ function DashboardPage() {
         ))}
       </div>
 
+      {/* Activity Overview */}
+      {!isLoading && taskStats.total > 0 && (
+        <div className={`grid grid-cols-1 ${aggregateStats.totalCost > 0 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
+          {/* Success Rate */}
+          <div className="bg-white rounded-xl border-0 shadow-card p-4">
+            <p className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Success Rate</p>
+            <div className="mt-2 flex items-end gap-2">
+              <span className="text-2xl font-display font-bold text-stone-900">
+                {aggregateStats.finishedTasks > 0 ? `${aggregateStats.successRate}%` : '-'}
+              </span>
+              {aggregateStats.finishedTasks > 0 && (
+                <span className="text-xs text-stone-400 mb-0.5">{aggregateStats.finishedTasks} finished</span>
+              )}
+            </div>
+            {aggregateStats.finishedTasks > 0 && (
+              <div className="mt-2 h-1.5 bg-stone-100 rounded-full overflow-hidden flex">
+                <div
+                  className="bg-emerald-400 rounded-full transition-all duration-500"
+                  style={{ width: `${aggregateStats.successRate}%` }}
+                />
+                <div
+                  className="bg-red-400 rounded-full transition-all duration-500"
+                  style={{ width: `${100 - aggregateStats.successRate}%` }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Total Cost - only shown when > 0 */}
+          {aggregateStats.totalCost > 0 && (
+            <div className="bg-white rounded-xl border-0 shadow-card p-4">
+              <p className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Total Cost</p>
+              <div className="mt-2">
+                <span className="text-2xl font-display font-bold text-stone-900 font-mono">
+                  {formatCost(aggregateStats.totalCost.toString())}
+                </span>
+              </div>
+              {aggregateStats.tasksWithSession > 0 && (
+                <p className="text-xs text-stone-400 mt-1">across {aggregateStats.tasksWithSession} tasks</p>
+              )}
+            </div>
+          )}
+
+          {/* Total Tokens */}
+          <div className="bg-white rounded-xl border-0 shadow-card p-4">
+            <p className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider">Total Tokens</p>
+            <div className="mt-2">
+              <span className="text-2xl font-display font-bold text-stone-900 font-mono">
+                {aggregateStats.totalTokens > 0
+                  ? aggregateStats.totalTokens >= 1_000_000
+                    ? `${(aggregateStats.totalTokens / 1_000_000).toFixed(1)}M`
+                    : aggregateStats.totalTokens >= 1_000
+                      ? `${(aggregateStats.totalTokens / 1_000).toFixed(1)}k`
+                      : aggregateStats.totalTokens.toString()
+                  : '-'}
+              </span>
+            </div>
+          </div>
+
+
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Tasks */}
         <div className="lg:col-span-2 bg-white rounded-xl border-0 overflow-hidden shadow-card">
@@ -111,9 +197,20 @@ function DashboardPage() {
               ))}
             </div>
           ) : tasks.length === 0 ? (
-            <div className="px-5 py-12 text-center">
-              <p className="text-stone-400 text-sm">No tasks yet.</p>
-              <Link to="/tasks/create" className="text-sm text-primary-600 hover:text-primary-700 font-medium mt-1 inline-block">
+            <div className="px-5 py-10 text-center">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-stone-100 mb-3">
+                <svg className="w-5 h-5 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                  <rect x="9" y="3" width="6" height="4" rx="1" />
+                  <path d="M9 14l2 2 4-4" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-stone-700">No tasks yet</p>
+              <p className="text-xs text-stone-400 mt-1 max-w-xs mx-auto">Create a task to start running AI agent workflows in your cluster.</p>
+              <Link to="/tasks/create" className="inline-flex items-center gap-1.5 mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                </svg>
                 Create your first task
               </Link>
             </div>
@@ -157,7 +254,24 @@ function DashboardPage() {
           {agentsLoading ? (
             <div className="px-5 py-8 text-center text-stone-400 text-sm">Loading...</div>
           ) : agents.length === 0 ? (
-            <div className="px-5 py-8 text-center text-stone-400 text-sm">No agents configured</div>
+            <div className="px-5 py-10 text-center">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-stone-100 mb-3">
+                <svg className="w-5 h-5 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <circle cx="9" cy="16" r="1" />
+                  <circle cx="15" cy="16" r="1" />
+                  <path d="M9 7L9 4M15 7L15 4M12 7L12 2" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-stone-700">No agents configured</p>
+              <p className="text-xs text-stone-400 mt-1">Agents execute your AI tasks. Set up an agent to get started.</p>
+              <Link to="/agents/create" className="inline-flex items-center gap-1.5 mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                </svg>
+                Create Agent
+              </Link>
+            </div>
           ) : (
             <ul className="divide-y divide-stone-100">
               {agents.map((agent) => (

@@ -10,6 +10,7 @@ import ResourceFilter from '../components/ResourceFilter';
 import MultiSelect from '../components/MultiSelect';
 import SortableHeader from '../components/SortableHeader';
 import ConfirmDialog from '../components/ConfirmDialog';
+import EmptyState, { TaskIcon } from '../components/EmptyState';
 import { TableSkeleton } from '../components/Skeleton';
 import { useFilterState } from '../hooks/useFilterState';
 import { useNamespace } from '../contexts/NamespaceContext';
@@ -250,7 +251,7 @@ function TasksPage() {
 
       {isLoading ? (
         <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
-          <TableSkeleton rows={5} cols={isAllNamespaces ? 7 : 6} />
+          <TableSkeleton rows={5} cols={isAllNamespaces ? 9 : 8} />
         </div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 rounded-xl p-5">
@@ -340,13 +341,14 @@ function TasksPage() {
             <tbody className="bg-white divide-y divide-stone-100">
               {data?.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={isAllNamespaces ? 9 : 8} className="px-5 py-12 text-center text-stone-400 text-sm">
-                    No tasks found.{' '}
-                    {!isAllNamespaces && (
-                      <Link to="/tasks/create" className="text-primary-600 hover:text-primary-700 font-medium">
-                        Create your first task
-                      </Link>
-                    )}
+                  <td colSpan={isAllNamespaces ? 9 : 8}>
+                    <EmptyState
+                      icon={<TaskIcon />}
+                      title="No tasks found"
+                      description="Tasks are units of work sent to AI agents. Create a task to get started with automated coding, code review, or any AI-powered workflow."
+                      action={{ label: 'Create Task', to: '/tasks/create' }}
+                      secondaryAction={{ label: 'View Agents', to: '/agents' }}
+                    />
                   </td>
                 </tr>
               ) : (
