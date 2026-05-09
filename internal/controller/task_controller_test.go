@@ -23,6 +23,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("TaskController", func() {
@@ -3879,6 +3880,83 @@ var _ = Describe("TaskController", func() {
 			By("Cleaning up")
 			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, agent)).Should(Succeed())
+		})
+	})
+
+	Context("Task with AgentTemplate that has plugins", func() {
+		It("Should create Pod with plugin-init container", func() {
+			templateName := "test-plugin-template"
+			taskName := "test-task-plugin"
+
+			By("Creating an AgentTemplate with plugins")
+			tmpl := &kubeopenv1alpha1.AgentTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.AgentTemplateSpec{
+					ExecutorImage:      "test-executor:latest",
+					WorkspaceDir:       "/workspace",
+					ServiceAccountName: "default",
+					Plugins: []kubeopenv1alpha1.PluginSpec{
+						{Name: "@kubeopencode/test-plugin", Target: "server"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, tmpl)).Should(Succeed())
+
+			By("Creating a Task referencing this AgentTemplate (ephemeral mode)")
+			desc := "Test plugins in task pod"
+			task := &kubeopenv1alpha1.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: taskNamespace,
+				},
+				Spec: kubeopenv1alpha1.TaskSpec{
+					TemplateRef: &kubeopenv1alpha1.AgentTemplateReference{Name: templateName},
+					Description: &desc,
+				},
+			}
+			Expect(k8sClient.Create(ctx, task)).Should(Succeed())
+
+			By("Expecting a Pod to be created with plugin-init init container")
+			Eventually(func() bool {
+				podList := &corev1.PodList{}
+				if err := k8sClient.List(ctx, podList,
+					client.InNamespace(taskNamespace),
+					client.MatchingLabels{"kubeopencode.io/task": taskName},
+				); err != nil || len(podList.Items) == 0 {
+					return false
+				}
+				pod := &podList.Items[0]
+				for _, c := range pod.Spec.InitContainers {
+					if c.Name == "plugin-init" {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue(), "expected plugin-init init container in Task Pod")
+
+			By("Verifying Pod has plugins volume")
+			podList := &corev1.PodList{}
+			Expect(k8sClient.List(ctx, podList,
+				client.InNamespace(taskNamespace),
+				client.MatchingLabels{"kubeopencode.io/task": taskName},
+			)).Should(Succeed())
+			Expect(podList.Items).Should(HaveLen(1))
+
+			pod := &podList.Items[0]
+			hasPluginsVolume := false
+			for _, v := range pod.Spec.Volumes {
+				if v.Name == PluginsVolumeName {
+					hasPluginsVolume = true
+				}
+			}
+			Expect(hasPluginsVolume).Should(BeTrue(), "expected plugins volume in Task Pod")
+
+			By("Cleaning up")
+			Expect(k8sClient.Delete(ctx, task)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, tmpl)).Should(Succeed())
 		})
 	})
 })
