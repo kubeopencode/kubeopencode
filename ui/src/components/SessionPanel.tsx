@@ -12,8 +12,7 @@ function formatTokens(count: number): string {
 function formatCost(cost?: string): string {
   if (!cost) return '-';
   const num = parseFloat(cost);
-  if (isNaN(num)) return cost;
-  if (num === 0) return '-';
+  if (isNaN(num) || num === 0) return '-';
   return `$${num.toFixed(4)}`;
 }
 

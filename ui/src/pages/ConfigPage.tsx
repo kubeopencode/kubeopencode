@@ -1,11 +1,39 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import api from '../api/client';
 import Labels from '../components/Labels';
 import Breadcrumbs from '../components/Breadcrumbs';
 import YamlViewer from '../components/YamlViewer';
 import CopyButton from '../components/CopyButton';
 import { DetailSkeleton } from '../components/Skeleton';
+
+type ConfigTabId = 'overview' | 'yaml';
+
+const CONFIG_TABS: { id: ConfigTabId; label: string; icon: React.ReactNode }[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    icon: (
+      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+      </svg>
+    ),
+  },
+  {
+    id: 'yaml',
+    label: 'YAML',
+    icon: (
+      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
+      </svg>
+    ),
+  },
+];
 
 const CONFIG_TEMPLATE = `apiVersion: kubeopencode.io/v1alpha1
 kind: KubeOpenCodeConfig
@@ -18,10 +46,20 @@ spec:
 
 function ConfigPage() {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const { data: config, isLoading, error } = useQuery({
     queryKey: ['config'],
     queryFn: () => api.getConfig(),
   });
+
+  const hashTab = location.hash.replace('#', '') as ConfigTabId;
+  const initialTab: ConfigTabId = ['overview', 'yaml'].includes(hashTab) ? hashTab : 'overview';
+  const [activeTab, setActiveTab] = useState<ConfigTabId>(initialTab);
+
+  const handleTabChange = (tab: ConfigTabId) => {
+    setActiveTab(tab);
+    window.history.replaceState(null, '', `${location.pathname}#${tab}`);
+  };
 
   if (isLoading) {
     return <DetailSkeleton />;
@@ -66,6 +104,7 @@ function ConfigPage() {
       <Breadcrumbs items={[{ label: 'Config' }]} />
 
       <div className="bg-white rounded-xl border-0 overflow-hidden shadow-card">
+        {/* Header */}
         <div className="px-6 py-5 border-b border-stone-100">
           <div className="flex items-center justify-between">
             <div>
@@ -78,118 +117,151 @@ function ConfigPage() {
           </div>
         </div>
 
-        <div className="px-6 py-5 space-y-6">
-          {/* System Image */}
-          <div>
-            <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">
-              System Image
-            </h3>
-            {config.systemImage ? (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                {config.systemImage.image && (
-                  <div>
-                    <dt className="text-xs text-stone-400">Image</dt>
-                    <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100 break-all">
-                      {config.systemImage.image}
-                    </dd>
-                  </div>
-                )}
-                {config.systemImage.imagePullPolicy && (
-                  <div>
-                    <dt className="text-xs text-stone-400">Pull Policy</dt>
-                    <dd className="mt-1 text-sm text-stone-700">{config.systemImage.imagePullPolicy}</dd>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-stone-400">Using default system image</p>
-            )}
-          </div>
-
-          {/* Cleanup */}
-          <div>
-            <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">
-              Task Cleanup
-            </h3>
-            {config.cleanup ? (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                <div>
-                  <dt className="text-xs text-stone-400">TTL After Finished</dt>
-                  <dd className="mt-1 text-sm text-stone-700">
-                    {config.cleanup.ttlSecondsAfterFinished != null
-                      ? formatDuration(config.cleanup.ttlSecondsAfterFinished)
-                      : <span className="text-stone-400">Not set</span>}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-stone-400">Max Retained Tasks (per namespace)</dt>
-                  <dd className="mt-1 text-sm text-stone-700">
-                    {config.cleanup.maxRetainedTasks != null
-                      ? config.cleanup.maxRetainedTasks
-                      : <span className="text-stone-400">Not set</span>}
-                  </dd>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-stone-400">No automatic cleanup configured</p>
-            )}
-          </div>
-
-          {/* Proxy */}
-          <div>
-            <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">
-              Proxy
-            </h3>
-            {config.proxy ? (
-              <div className="space-y-3">
-                {config.proxy.httpProxy && (
-                  <div>
-                    <dt className="text-xs text-stone-400">HTTP Proxy</dt>
-                    <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100">
-                      {config.proxy.httpProxy}
-                    </dd>
-                  </div>
-                )}
-                {config.proxy.httpsProxy && (
-                  <div>
-                    <dt className="text-xs text-stone-400">HTTPS Proxy</dt>
-                    <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100">
-                      {config.proxy.httpsProxy}
-                    </dd>
-                  </div>
-                )}
-                {config.proxy.noProxy && (
-                  <div>
-                    <dt className="text-xs text-stone-400">No Proxy</dt>
-                    <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100 break-all">
-                      {config.proxy.noProxy}
-                    </dd>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-stone-400">No proxy configured</p>
-            )}
-          </div>
-
-          {/* Labels */}
-          {config.labels && Object.keys(config.labels).length > 0 && (
-            <div>
-              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
-              <Labels labels={config.labels} />
-            </div>
-          )}
+        {/* Tab Bar */}
+        <div className="px-6 border-b border-stone-100 bg-stone-50/50">
+          <nav className="flex space-x-1 -mb-px" aria-label="Tabs">
+            {CONFIG_TABS.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabChange(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-primary-600 text-primary-700'
+                      : 'border-transparent text-stone-500 hover:text-stone-700 hover:border-stone-300'
+                  }`}
+                >
+                  <span className={isActive ? 'text-primary-600' : 'text-stone-400'}>{tab.icon}</span>
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
         </div>
-      </div>
 
-      <YamlViewer
-        queryKey={['config-yaml']}
-        fetchYaml={() => api.getConfigYaml()}
-        onSave={async (yaml) => {
-          await api.updateConfigYaml(yaml);
-          queryClient.invalidateQueries({ queryKey: ['config'] });
-        }}
-      />
+        {/* Overview Tab */}
+        {activeTab === 'overview' && (
+          <div className="px-6 py-5 space-y-6">
+            {/* System Image */}
+            <div>
+              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">
+                System Image
+              </h3>
+              {config.systemImage ? (
+                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  {config.systemImage.image && (
+                    <div>
+                      <dt className="text-xs text-stone-400">Image</dt>
+                      <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100 break-all">
+                        {config.systemImage.image}
+                      </dd>
+                    </div>
+                  )}
+                  {config.systemImage.imagePullPolicy && (
+                    <div>
+                      <dt className="text-xs text-stone-400">Pull Policy</dt>
+                      <dd className="mt-1 text-sm text-stone-700">{config.systemImage.imagePullPolicy}</dd>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-stone-400">Using default system image</p>
+              )}
+            </div>
+
+            {/* Cleanup */}
+            <div>
+              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">
+                Task Cleanup
+              </h3>
+              {config.cleanup ? (
+                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <div>
+                    <dt className="text-xs text-stone-400">TTL After Finished</dt>
+                    <dd className="mt-1 text-sm text-stone-700">
+                      {config.cleanup.ttlSecondsAfterFinished != null
+                        ? formatDuration(config.cleanup.ttlSecondsAfterFinished)
+                        : <span className="text-stone-400">Not set</span>}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-stone-400">Max Retained Tasks (per namespace)</dt>
+                    <dd className="mt-1 text-sm text-stone-700">
+                      {config.cleanup.maxRetainedTasks != null
+                        ? config.cleanup.maxRetainedTasks
+                        : <span className="text-stone-400">Not set</span>}
+                    </dd>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-stone-400">No automatic cleanup configured</p>
+              )}
+            </div>
+
+            {/* Proxy */}
+            <div>
+              <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-4">
+                Proxy
+              </h3>
+              {config.proxy ? (
+                <div className="space-y-3">
+                  {config.proxy.httpProxy && (
+                    <div>
+                      <dt className="text-xs text-stone-400">HTTP Proxy</dt>
+                      <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100">
+                        {config.proxy.httpProxy}
+                      </dd>
+                    </div>
+                  )}
+                  {config.proxy.httpsProxy && (
+                    <div>
+                      <dt className="text-xs text-stone-400">HTTPS Proxy</dt>
+                      <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100">
+                        {config.proxy.httpsProxy}
+                      </dd>
+                    </div>
+                  )}
+                  {config.proxy.noProxy && (
+                    <div>
+                      <dt className="text-xs text-stone-400">No Proxy</dt>
+                      <dd className="mt-1 text-xs text-stone-700 font-mono bg-stone-50 px-3 py-2 rounded-lg border border-stone-100 break-all">
+                        {config.proxy.noProxy}
+                      </dd>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-stone-400">No proxy configured</p>
+              )}
+            </div>
+
+            {/* Labels */}
+            {config.labels && Object.keys(config.labels).length > 0 && (
+              <div>
+                <h3 className="text-[11px] font-display font-medium text-stone-400 uppercase tracking-wider mb-3">Labels</h3>
+                <Labels labels={config.labels} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* YAML Tab */}
+        {activeTab === 'yaml' && (
+          <div className="p-4">
+            <YamlViewer
+              queryKey={['config-yaml']}
+              fetchYaml={() => api.getConfigYaml()}
+              onSave={async (yaml) => {
+                await api.updateConfigYaml(yaml);
+                queryClient.invalidateQueries({ queryKey: ['config'] });
+              }}
+              defaultOpen
+              hideToggle
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -11,9 +11,35 @@ interface ShareInfo {
   agentName: string;
   namespace: string;
   profile?: string;
+  expiresAt?: string;
 }
 
 type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
+
+function formatExpiry(expiresAt: string): { text: string; isExpired: boolean; isUrgent: boolean } {
+  const now = Date.now();
+  const expiry = new Date(expiresAt).getTime();
+  const diff = expiry - now;
+
+  if (diff <= 0) {
+    return { text: 'Expired', isExpired: true, isUrgent: true };
+  }
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  let text: string;
+  if (days > 0) {
+    text = `Expires in ${days}d ${hours % 24}h`;
+  } else if (hours > 0) {
+    text = `Expires in ${hours}h ${minutes % 60}m`;
+  } else {
+    text = `Expires in ${minutes}m`;
+  }
+
+  return { text, isExpired: false, isUrgent: hours < 1 };
+}
 
 function ShareTerminalPage() {
   const { token } = useParams<{ token: string }>();
@@ -204,6 +230,20 @@ function ShareTerminalPage() {
           </div>
           <span className="text-sm text-stone-300 font-mono">{shareInfo.agentName}</span>
           <span className="text-[11px] text-stone-600">{shareInfo.namespace}</span>
+          {shareInfo.expiresAt && (() => {
+            const expiry = formatExpiry(shareInfo.expiresAt);
+            return (
+              <span className={`text-[11px] px-2 py-0.5 rounded-md border font-medium ${
+                expiry.isExpired
+                  ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                  : expiry.isUrgent
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                    : 'bg-stone-800 text-stone-400 border-stone-700'
+              }`}>
+                {expiry.text}
+              </span>
+            );
+          })()}
         </div>
         <div className="flex items-center space-x-1">
           <button

@@ -98,7 +98,15 @@ describe('TaskDetailPage', () => {
   });
 
   it('renders LogViewer for running tasks', async () => {
+    const user = userEvent.setup();
     renderTaskDetailPage('default', 'fix-auth-bug');
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'fix-auth-bug' })).toBeInTheDocument();
+    });
+
+    // Click the Logs tab
+    await user.click(screen.getByRole('button', { name: /Logs/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId('log-viewer')).toBeInTheDocument();
@@ -106,7 +114,15 @@ describe('TaskDetailPage', () => {
   });
 
   it('renders YamlViewer', async () => {
+    const user = userEvent.setup();
     renderTaskDetailPage('default', 'fix-auth-bug');
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'fix-auth-bug' })).toBeInTheDocument();
+    });
+
+    // Click the YAML tab
+    await user.click(screen.getByRole('button', { name: /YAML/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId('yaml-viewer')).toBeInTheDocument();

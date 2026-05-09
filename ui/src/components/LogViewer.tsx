@@ -152,7 +152,7 @@ function LogViewer({ namespace, taskName, podName, isRunning }: LogViewerProps) 
 
   const logAreaClass = isFullscreen
     ? 'flex-1 overflow-y-auto font-mono text-xs text-stone-300 whitespace-pre-wrap p-4 sidebar-scroll'
-    : 'p-4 h-96 overflow-y-auto font-mono text-xs text-stone-300 whitespace-pre-wrap sidebar-scroll';
+    : 'p-4 overflow-y-auto font-mono text-xs text-stone-300 whitespace-pre-wrap sidebar-scroll';
 
   return (
     <div className={containerClass}>
@@ -238,6 +238,7 @@ function LogViewer({ namespace, taskName, podName, isRunning }: LogViewerProps) 
         ref={logContainerRef}
         onScroll={handleScroll}
         className={logAreaClass}
+        style={isFullscreen ? undefined : { height: 'calc(100vh - 320px)', minHeight: '300px' }}
       >
         {logs.length === 0 ? (
           <span className="text-stone-600">

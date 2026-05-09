@@ -9,12 +9,13 @@ import '@xterm/xterm/css/xterm.css';
 interface TerminalPanelProps {
   namespace: string;
   agentName: string;
+  defaultMode?: PanelMode;
 }
 
 type PanelMode = 'collapsed' | 'expanded' | 'maximized';
 
-function TerminalPanel({ namespace, agentName }: TerminalPanelProps) {
-  const [mode, setMode] = useState<PanelMode>('collapsed');
+function TerminalPanel({ namespace, agentName, defaultMode = 'collapsed' }: TerminalPanelProps) {
+  const [mode, setMode] = useState<PanelMode>(defaultMode);
   const termRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -201,7 +202,7 @@ function TerminalPanel({ namespace, agentName }: TerminalPanelProps) {
         className={
           isMaximized
             ? 'fixed inset-3 z-50 bg-stone-950 flex flex-col rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10'
-            : 'bg-stone-950 rounded-xl overflow-hidden border border-stone-800 animate-fade-in'
+            : 'bg-stone-950 rounded-xl overflow-hidden border border-stone-800 animate-fade-in flex flex-col'
         }
         style={isMaximized ? { animation: 'panel-maximize 0.2s cubic-bezier(0.16, 1, 0.3, 1)' } : undefined}
       >
@@ -252,7 +253,7 @@ function TerminalPanel({ namespace, agentName }: TerminalPanelProps) {
         <div
           ref={termRef}
           className={isMaximized ? 'flex-1 min-h-0' : ''}
-          style={isMaximized ? { height: '100%' } : { height: '70vh' }}
+          style={{ height: isMaximized ? '100%' : 'calc(100vh - 280px)', minHeight: '400px' }}
         />
       </div>
     </>

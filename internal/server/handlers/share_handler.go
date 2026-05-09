@@ -188,11 +188,16 @@ func (h *ShareHandler) ServeShareInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, servertypes.ShareInfoResponse{
+	resp := servertypes.ShareInfoResponse{
 		AgentName: sc.agent.Name,
 		Namespace: sc.agent.Namespace,
 		Profile:   sc.agent.Spec.Profile,
-	})
+	}
+	if sc.agent.Spec.Share != nil && sc.agent.Spec.Share.ExpiresAt != nil {
+		t := sc.agent.Spec.Share.ExpiresAt.Time.UTC().Format("2006-01-02T15:04:05Z")
+		resp.ExpiresAt = &t
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ServeShareTerminal handles WebSocket terminal sessions via share token.
