@@ -47,13 +47,15 @@ jobs:
           fi
           echo "Chart.yaml appVersion matches tag: $CHART_APP_VERSION"
 
+      - name: Sync ui/package.json version from tag
+        run: cd ui && npm pkg set version=${{ needs.prepare.outputs.version }}
+
       - name: Verify ui/package.json version matches tag
         run: |
           UI_VERSION=$(jq -r '.version' ui/package.json)
           EXPECTED_VERSION=${{ needs.prepare.outputs.version }}
           if [ "$UI_VERSION" != "$EXPECTED_VERSION" ]; then
             echo "ERROR: ui/package.json version ($UI_VERSION) does not match tag ($EXPECTED_VERSION)"
-            echo "Run 'make ui-build' to auto-sync the version, then commit the change."
             exit 1
           fi
           echo "ui/package.json version matches tag: $UI_VERSION"
