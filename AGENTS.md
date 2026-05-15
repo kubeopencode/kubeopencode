@@ -121,6 +121,10 @@ All Go files must include:
 
 > **IMPORTANT FOR AI ASSISTANTS**: When the user mentions "local", "local dev", "local development", "Kind cluster", "local setup", or asks to set up/debug/fix their local environment, refer to **`CONTRIBUTING.md` → "Local Development Environment" section** for the canonical guide. Key commands:
 
+> **Environment**: Before running build or setup commands, always detect the OS first (`uname -s`). Platform-specific notes:
+> - **Linux (Debian/Ubuntu)**: `docker buildx` is **NOT** bundled with `docker-ce` — install `docker-buildx-plugin` separately (`sudo apt install docker-buildx-plugin`) or download manually to `~/.docker/cli-plugins/`. The devbox agent Dockerfile uses BuildKit-only features (`COPY --chmod`), so BuildKit must be available.
+> - **macOS**: Docker Desktop includes `buildx` and BuildKit by default. No extra steps needed.
+
 | Task | Command |
 |------|---------|
 | **Full setup (recommended)** | `make local-dev-setup` |
