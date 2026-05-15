@@ -430,7 +430,39 @@ LOCAL_DEV_AGENTS := opencode devbox attach
 LOCAL_DEV_CONTROLLER_IMG := $(IMG_REGISTRY)/$(IMG_ORG)/$(IMG_NAME)
 LOCAL_DEV_AGENT_IMGS := $(foreach a,$(LOCAL_DEV_AGENTS),$(IMG_REGISTRY)/$(IMG_ORG)/kubeopencode-agent-$(a))
 
-local-dev-setup: ## One-command local dev setup: cluster, images, helm, test resources
+# Verify kubectl context matches the Kind local-dev cluster to prevent
+# accidental modification of remote/production clusters (e.g. k3s-prod)
+# by helm upgrade / kubectl apply during local-dev targets.
+.PHONY: local-dev-check-context
+local-dev-check-context:
+	@EXPECTED_CTX="kind-$(LOCAL_DEV_CLUSTER)"; \
+	CURRENT_CTX=$$(kubectl config current-context 2>/dev/null || echo ""); \
+	CLUSTER_EXISTS=""; \
+	if kind get clusters 2>/dev/null | grep -q "^$(LOCAL_DEV_CLUSTER)$$"; then CLUSTER_EXISTS=1; fi; \
+	if [ -z "$$CLUSTER_EXISTS" ] && [ -z "$$CURRENT_CTX" ]; then \
+		echo "kubectl context check: no current context and Kind cluster does not exist yet (will be created)"; \
+		exit 0; \
+	fi; \
+	if [ "$$CURRENT_CTX" != "$$EXPECTED_CTX" ]; then \
+		echo ""; \
+		echo "ERROR: kubectl context mismatch."; \
+		echo "  Current:  $$CURRENT_CTX"; \
+		echo "  Expected: $$EXPECTED_CTX"; \
+		echo ""; \
+		echo "Refusing to run local-dev target against a non-local cluster."; \
+		if [ -z "$$CLUSTER_EXISTS" ]; then \
+			echo "(The '$(LOCAL_DEV_CLUSTER)' Kind cluster does not exist yet; it will be created by local-dev-setup.)"; \
+			echo "Create the cluster and switch context:"; \
+			echo "  kind create cluster --name $(LOCAL_DEV_CLUSTER)"; \
+		fi; \
+		echo "Switch context first:"; \
+		echo "  kubectl config use-context $$EXPECTED_CTX"; \
+		echo ""; \
+		exit 1; \
+	fi; \
+	echo "kubectl context verified: $$EXPECTED_CTX"
+
+local-dev-setup: local-dev-check-context ## One-command local dev setup: cluster, images, helm, test resources
 	@echo "=== KubeOpenCode Local Dev Setup ==="
 	@# Step 1: Create Kind cluster (idempotent)
 	@if kind get clusters 2>/dev/null | grep -q "^$(LOCAL_DEV_CLUSTER)$$"; then \
@@ -477,7 +509,7 @@ local-dev-setup: ## One-command local dev setup: cluster, images, helm, test res
 	@echo "UI:         kubectl port-forward -n kubeopencode-system svc/kubeopencode-server 2746:2746"
 .PHONY: local-dev-setup
 
-local-dev-reload: ## Rebuild and reload all images into local dev cluster
+local-dev-reload: local-dev-check-context ## Rebuild and reload all images into local dev cluster
 	@# Note: KubeOpenCodeConfig.systemImage is set during local-dev-setup via Helm
 	@# and persists across reloads. No need to re-run helm upgrade here.
 	@echo "=== Rebuilding and reloading images ==="
@@ -495,7 +527,7 @@ local-dev-reload: ## Rebuild and reload all images into local dev cluster
 	@echo "Reload complete"
 .PHONY: local-dev-reload
 
-local-dev-teardown: ## Delete Kind cluster and all local dev resources
+local-dev-teardown: local-dev-check-context ## Delete Kind cluster and all local dev resources
 	@echo "=== Tearing down local dev environment ==="
 	@kubectl delete -k deploy/local-dev/ --ignore-not-found=true 2>/dev/null || true
 	@helm uninstall kubeopencode -n kubeopencode-system 2>/dev/null || true
