@@ -1,0 +1,32 @@
+# Copyright Contributors to the KubeOpenCode project
+name: Fix Dependabot Lockfile
+
+on:
+  pull_request:
+    paths:
+      - "website/pnpm-lock.yaml"
+
+jobs:
+  fix-lockfile:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Re-sync lockfile
+        working-directory: website
+        run: pnpm install --no-frozen-lockfile
+
+      - uses: stefanzweifel/git-auto-commit-action@v6
+        with:
+          commit_message: "chore(deps): fix pnpm lockfile sync"
