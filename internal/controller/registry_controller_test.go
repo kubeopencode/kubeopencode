@@ -93,7 +93,7 @@ var _ = Describe("RegistryController", func() {
 						},
 						{
 							Name:  "invalid",
-							Image: "",
+							Image: " ",
 						},
 					},
 				},
@@ -222,7 +222,7 @@ var _ = Describe("RegistryController", func() {
 						},
 						{
 							Name:   "empty-plugin",
-							Plugin: kubeopenv1alpha1.PluginSpec{Name: ""},
+							Plugin: kubeopenv1alpha1.PluginSpec{Name: " "},
 						},
 					},
 				},
@@ -275,7 +275,7 @@ var _ = Describe("RegistryController", func() {
 						},
 						{
 							Name:  "invalid-image",
-							Image: "",
+							Image: " ",
 						},
 					},
 					Skills: []kubeopenv1alpha1.RegistrySkill{

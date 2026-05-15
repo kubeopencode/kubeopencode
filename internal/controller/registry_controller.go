@@ -174,7 +174,7 @@ func (r *RegistryReconciler) checkImages(ctx context.Context, registry *kubeopen
 			}
 
 			// Validate image reference format
-			if image.Image == "" {
+			if strings.TrimSpace(image.Image) == "" {
 				status.Phase = kubeopenv1alpha1.AssetPhaseUnavailable
 				status.Message = "image reference is empty"
 				statuses[idx] = status
@@ -318,7 +318,7 @@ func (r *RegistryReconciler) checkPlugins(ctx context.Context, registry *kubeope
 				LastChecked: &now,
 			}
 
-			if plugin.Plugin.Name == "" {
+			if strings.TrimSpace(plugin.Plugin.Name) == "" {
 				status.Phase = kubeopenv1alpha1.AssetPhaseUnavailable
 				status.Message = "plugin npm package name is empty"
 				statuses[idx] = status
