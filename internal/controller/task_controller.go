@@ -51,6 +51,10 @@ const (
 	// Following OpenShift convention, cluster-wide config resources are named "cluster".
 	KubeOpenCodeConfigName = "cluster"
 
+	// ConditionReady is the condition type used across controllers to indicate
+	// that a resource is ready for use.
+	ConditionReady = "Ready"
+
 	// RuntimeSystemPrompt is the system prompt injected when Runtime context is enabled.
 	// It provides KubeOpenCode platform awareness to the agent.
 	RuntimeSystemPrompt = `## KubeOpenCode Runtime Context

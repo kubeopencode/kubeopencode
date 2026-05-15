@@ -58,7 +58,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	sched, err := r.parseSchedule(cronTask)
 	if err != nil {
 		log.Error(err, "invalid cron schedule", "schedule", cronTask.Spec.Schedule)
-		r.setCondition(cronTask, "Ready", metav1.ConditionFalse, "InvalidSchedule", fmt.Sprintf("Invalid cron schedule: %v", err))
+		r.setCondition(cronTask, ConditionReady, metav1.ConditionFalse, "InvalidSchedule", fmt.Sprintf("Invalid cron schedule: %v", err))
 		if statusErr := r.Status().Update(ctx, cronTask); statusErr != nil {
 			log.Error(statusErr, "failed to update status")
 		}
@@ -105,7 +105,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Check if suspended
 	if cronTask.Spec.Suspend != nil && *cronTask.Spec.Suspend {
 		log.V(1).Info("CronTask is suspended, skipping scheduling")
-		r.setCondition(cronTask, "Ready", metav1.ConditionFalse, "Suspended", "CronTask is suspended")
+		r.setCondition(cronTask, ConditionReady, metav1.ConditionFalse, "Suspended", "CronTask is suspended")
 		cronTask.Status.NextScheduleTime = nil
 		if statusErr := r.Status().Update(ctx, cronTask); statusErr != nil {
 			return ctrl.Result{}, statusErr
@@ -150,7 +150,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	if scheduledTime == nil {
 		// No schedule due yet
-		r.setCondition(cronTask, "Ready", metav1.ConditionTrue, "Scheduled", "Waiting for next schedule")
+		r.setCondition(cronTask, ConditionReady, metav1.ConditionTrue, "Scheduled", "Waiting for next schedule")
 		if statusErr := r.Status().Update(ctx, cronTask); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
@@ -164,7 +164,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			log.Info("missed starting deadline", "scheduledTime", scheduledTime, "deadline", deadline)
 			r.Recorder.Eventf(cronTask, nil, corev1.EventTypeWarning, "MissedDeadline", "Schedule",
 				"Missed starting deadline for schedule at %s (deadline: %ds)", scheduledTime.Format(time.RFC3339), *cronTask.Spec.StartingDeadlineSeconds)
-			r.setCondition(cronTask, "Ready", metav1.ConditionTrue, "MissedDeadline", "Missed starting deadline, waiting for next schedule")
+			r.setCondition(cronTask, ConditionReady, metav1.ConditionTrue, "MissedDeadline", "Missed starting deadline, waiting for next schedule")
 			if statusErr := r.Status().Update(ctx, cronTask); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
@@ -177,7 +177,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		log.Info("too many missed schedules, resetting", "missed", missedCount)
 		r.Recorder.Eventf(cronTask, nil, corev1.EventTypeWarning, "TooManyMissed", "Schedule",
 			"Missed %d schedules, resetting to next future schedule", missedCount)
-		r.setCondition(cronTask, "Ready", metav1.ConditionTrue, "Scheduled", "Reset after too many missed schedules")
+		r.setCondition(cronTask, ConditionReady, metav1.ConditionTrue, "Scheduled", "Reset after too many missed schedules")
 		if statusErr := r.Status().Update(ctx, cronTask); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
@@ -191,7 +191,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		r.Recorder.Eventf(cronTask, nil, corev1.EventTypeWarning, "MaxRetainedTasksReached", "Schedule",
 			"Cannot create Task: %d child Tasks exist (max: %d). Configure global cleanup or delete old Tasks.",
 			len(childTasks), *cronTask.Spec.MaxRetainedTasks)
-		r.setCondition(cronTask, "Ready", metav1.ConditionFalse, "MaxRetainedTasksReached",
+		r.setCondition(cronTask, ConditionReady, metav1.ConditionFalse, "MaxRetainedTasksReached",
 			fmt.Sprintf("Cannot create Tasks: %d/%d retained Tasks", len(childTasks), *cronTask.Spec.MaxRetainedTasks))
 		if statusErr := r.Status().Update(ctx, cronTask); statusErr != nil {
 			return ctrl.Result{}, statusErr
@@ -207,7 +207,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			log.V(1).Info("concurrency policy Forbid: active Task exists, skipping")
 			r.Recorder.Eventf(cronTask, nil, corev1.EventTypeNormal, "TaskStillActive", "Schedule",
 				"Skipping scheduled Task creation: %d active Task(s) (concurrencyPolicy: Forbid)", len(activeTasks))
-			r.setCondition(cronTask, "Ready", metav1.ConditionTrue, "ActiveTaskExists", "Skipped due to concurrencyPolicy Forbid")
+			r.setCondition(cronTask, ConditionReady, metav1.ConditionTrue, "ActiveTaskExists", "Skipped due to concurrencyPolicy Forbid")
 			if statusErr := r.Status().Update(ctx, cronTask); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
@@ -240,7 +240,7 @@ func (r *CronTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if created {
 		cronTask.Status.TotalExecutions++
 	}
-	r.setCondition(cronTask, "Ready", metav1.ConditionTrue, "Scheduled", "Task created successfully")
+	r.setCondition(cronTask, ConditionReady, metav1.ConditionTrue, "Scheduled", "Task created successfully")
 
 	if statusErr := r.Status().Update(ctx, cronTask); statusErr != nil {
 		return ctrl.Result{}, statusErr
