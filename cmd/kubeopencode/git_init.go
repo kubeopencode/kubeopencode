@@ -34,11 +34,11 @@ const (
 
 // Default values for git-init
 const (
-	defaultRef    = "HEAD"
-	defaultDepth  = 1
-	defaultRoot   = "/git"
-	defaultLink   = "repo"
-	defaultRetries = 3
+	defaultRef        = "HEAD"
+	defaultDepth      = 1
+	defaultRoot       = "/git"
+	defaultLink       = "repo"
+	defaultRetries    = 3
 	defaultRetryDelay = 5 * time.Second
 )
 
@@ -171,7 +171,9 @@ func runGitInit(cmd *cobra.Command, args []string) error {
 				time.Sleep(retryDelay)
 
 				// Clean up partial clone directory before retrying
-				os.RemoveAll(targetDir)
+				if err := os.RemoveAll(targetDir); err != nil {
+					fmt.Printf("git-init: Failed to clean up %s before retry: %v\n", targetDir, err)
+				}
 			}
 
 			cloneCmd := exec.Command("git", cloneArgs...) //nolint:gosec // args are constructed from controlled inputs

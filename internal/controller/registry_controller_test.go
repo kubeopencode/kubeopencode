@@ -201,8 +201,8 @@ var _ = Describe("RegistryController", func() {
 			Expect(invalidSkill).NotTo(BeNil())
 			Expect(invalidSkill.Phase).To(Equal(kubeopenv1alpha1.AssetPhaseUnavailable))
 
-		// Cleanup
-		Expect(k8sClient.Delete(ctx, registry)).Should(Succeed())
+			// Cleanup
+			Expect(k8sClient.Delete(ctx, registry)).Should(Succeed())
 		})
 	})
 

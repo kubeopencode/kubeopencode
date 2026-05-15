@@ -167,7 +167,7 @@ func TestStreamEvents_DoneChannel(t *testing.T) {
 		flusher := w.(http.Flusher)
 
 		for i := 0; i < 100; i++ {
-			io.WriteString(w, "data: {\"type\":\"message.part.delta\",\"properties\":{\"sessionID\":\"s1\",\"part\":{\"type\":\"text\",\"text\":\"ping\"}}}\n\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"message.part.delta\",\"properties\":{\"sessionID\":\"s1\",\"part\":{\"type\":\"text\",\"text\":\"ping\"}}}\n\n")
 			flusher.Flush()
 		}
 	}))
@@ -216,7 +216,7 @@ func TestStreamEvents_PermissionAskedEvent(t *testing.T) {
 		writeSSE(w, flusher, sseEvent("permission.asked", map[string]interface{}{
 			"sessionID":  sessionID,
 			"permission": "file-write",
-			"patterns":  []string{"/app/main.go"},
+			"patterns":   []string{"/app/main.go"},
 		}))
 
 		writeSSE(w, flusher, fmt.Sprintf("data: {\"type\":\"session.status\",\"properties\":{\"sessionID\":\"%s\",\"status\":{\"type\":\"idle\"}}}\n\n", sessionID))
@@ -292,7 +292,7 @@ func TestStreamEvents_InvalidJSON(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher := w.(http.Flusher)
 
-		io.WriteString(w, "data: {invalid json}\n\n")
+		_, _ = io.WriteString(w, "data: {invalid json}\n\n")
 		flusher.Flush()
 
 		writeSSE(w, flusher, sseEvent("session.error", map[string]interface{}{
@@ -392,10 +392,10 @@ func TestStreamEvents_NonDataLinesSkipped(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher := w.(http.Flusher)
 
-		io.WriteString(w, ": this is a comment\n")
-		io.WriteString(w, "event: custom\n")
-		io.WriteString(w, "id: 123\n")
-		io.WriteString(w, "retry: 5000\n\n")
+		_, _ = io.WriteString(w, ": this is a comment\n")
+		_, _ = io.WriteString(w, "event: custom\n")
+		_, _ = io.WriteString(w, "id: 123\n")
+		_, _ = io.WriteString(w, "retry: 5000\n\n")
 		flusher.Flush()
 
 		writeSSE(w, flusher, sseEvent("session.error", map[string]interface{}{
@@ -439,8 +439,6 @@ func TestStreamEvents_NonDataLinesSkipped(t *testing.T) {
 	close(done)
 }
 
-
-
 func sseEvent(eventType string, properties interface{}) string {
 	propsJSON, _ := json.Marshal(properties)
 	data, _ := json.Marshal(map[string]interface{}{
@@ -451,6 +449,6 @@ func sseEvent(eventType string, properties interface{}) string {
 }
 
 func writeSSE(w io.Writer, flusher http.Flusher, data string) {
-	io.WriteString(w, data+"\n")
+	_, _ = io.WriteString(w, data+"\n")
 	flusher.Flush()
 }
