@@ -47,7 +47,7 @@ func (r *AgentTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 		// Set Ready condition using standard meta.SetStatusCondition
 		meta.SetStatusCondition(&tmpl.Status.Conditions, metav1.Condition{
-			Type:               "Ready",
+			Type:               ConditionReady,
 			Status:             metav1.ConditionTrue,
 			ObservedGeneration: tmpl.Generation,
 			Reason:             "Valid",

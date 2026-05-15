@@ -105,7 +105,7 @@ func (r *RegistryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	switch {
 	case readyCount == totalCount && totalCount > 0:
 		meta.SetStatusCondition(&registry.Status.Conditions, metav1.Condition{
-			Type:               "Ready",
+			Type:               ConditionReady,
 			Status:             metav1.ConditionTrue,
 			ObservedGeneration: registry.Generation,
 			Reason:             "AllAssetsReady",
@@ -113,7 +113,7 @@ func (r *RegistryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		})
 	case totalCount == 0:
 		meta.SetStatusCondition(&registry.Status.Conditions, metav1.Condition{
-			Type:               "Ready",
+			Type:               ConditionReady,
 			Status:             metav1.ConditionTrue,
 			ObservedGeneration: registry.Generation,
 			Reason:             "Empty",
@@ -121,7 +121,7 @@ func (r *RegistryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		})
 	default:
 		meta.SetStatusCondition(&registry.Status.Conditions, metav1.Condition{
-			Type:               "Ready",
+			Type:               ConditionReady,
 			Status:             metav1.ConditionFalse,
 			ObservedGeneration: registry.Generation,
 			Reason:             "AssetsUnavailable",
