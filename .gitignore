@@ -7,6 +7,9 @@
 # MacOS
 .DS_Store
 
+# Git worktrees
+.worktree/
+
 # Go
 bin/
 cover.out
