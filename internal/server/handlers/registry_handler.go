@@ -357,6 +357,9 @@ func registryToResponse(reg *kubeopenv1alpha1.Registry) types.RegistryResponse {
 		}
 		if skill.Git != nil {
 			info.Repository = skill.Git.Repository
+			info.Ref = skill.Git.Ref
+			info.Path = skill.Git.Path
+			info.Names = skill.Git.Names
 		}
 		if status, ok := skillStatusMap[skill.Name]; ok {
 			info.Phase = string(status.Phase)

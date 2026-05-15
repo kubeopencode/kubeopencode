@@ -5,6 +5,8 @@ package types
 
 import (
 	"time"
+
+	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
 
 // ServerInfo represents server information
@@ -74,6 +76,10 @@ type CreateAgentRequest struct {
 	// P2: Advanced configuration
 	Port  *int32           `json:"port,omitempty"`
 	Proxy *ProxyConfigInfo `json:"proxy,omitempty"`
+
+	// Assembly: assets selected from a Registry catalog
+	Skills  []kubeopenv1alpha1.SkillSource `json:"skills,omitempty"`
+	Plugins []kubeopenv1alpha1.PluginSpec  `json:"plugins,omitempty"`
 }
 
 // CreatePersistenceConfig represents persistence settings in create request
@@ -393,6 +399,10 @@ type CreateAgentTemplateRequest struct {
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 	AgentImage         string `json:"agentImage,omitempty"`
 	ExecutorImage      string `json:"executorImage,omitempty"`
+
+	// Assembly: assets selected from a Registry catalog
+	Skills  []kubeopenv1alpha1.SkillSource `json:"skills,omitempty"`
+	Plugins []kubeopenv1alpha1.PluginSpec  `json:"plugins,omitempty"`
 }
 
 // ShareTokenResponse is returned by GET /agents/{name}/share with the actual token value
@@ -468,6 +478,9 @@ type ImageMetadataInfo struct {
 type RegistrySkillInfo struct {
 	Name         string     `json:"name"`
 	Repository   string     `json:"repository,omitempty"`
+	Ref          string     `json:"ref,omitempty"`
+	Path         string     `json:"path,omitempty"`
+	Names        []string   `json:"names,omitempty"`
 	Phase        string     `json:"phase"`
 	LatestCommit string     `json:"latestCommit,omitempty"`
 	LastChecked  *time.Time `json:"lastChecked,omitempty"`

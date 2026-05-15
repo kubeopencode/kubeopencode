@@ -38,22 +38,11 @@ function RegistriesPage() {
 
   return (
     <div className="animate-fade-in">
-      <div className="sm:flex sm:items-center sm:justify-between mb-6">
-        <div>
-          <h2 className="font-display text-2xl font-bold text-stone-900 tracking-tight">Registries</h2>
-          <p className="mt-1 text-sm text-stone-500">
-            Asset catalogs for agent assembly
-          </p>
-        </div>
-        <Link
-          to="/registries/create"
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-          </svg>
-          Create Registry
-        </Link>
+      <div className="mb-6">
+        <h2 className="font-display text-2xl font-bold text-stone-900 tracking-tight">Registries</h2>
+        <p className="mt-1 text-sm text-stone-500">
+          Asset catalogs for agent assembly
+        </p>
       </div>
 
       <div className="mb-4">
@@ -98,8 +87,7 @@ function RegistriesPage() {
                   </svg>
                 }
                 title="No registries found"
-                description="Registries are asset catalogs that define images, skills, and plugins available for agent assembly."
-                action={{ label: 'Create Registry', to: '/registries/create' }}
+                description="Registries are asset catalogs that define images, skills, and plugins available for agent assembly. Apply a Registry YAML via kubectl to get started."
               />
             </div>
           ) : (

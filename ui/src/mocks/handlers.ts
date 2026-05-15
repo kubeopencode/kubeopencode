@@ -584,27 +584,6 @@ export const handlers = [
     return HttpResponse.json(registry);
   }),
 
-  http.post(`${API_BASE}/namespaces/:namespace/registries`, async ({ params, request }) => {
-    const { namespace } = params;
-    const body = await request.json() as Record<string, unknown>;
-    const newRegistry: Registry = {
-      name: (body.name as string) || `registry-${Date.now()}`,
-      namespace: namespace as string,
-      images: [],
-      skills: [],
-      plugins: [],
-      summary: {
-        images: 0,
-        skills: 0,
-        plugins: 0,
-        readyCount: 0,
-        totalCount: 0,
-      },
-      createdAt: new Date().toISOString(),
-    };
-    return HttpResponse.json(newRegistry, { status: 201 });
-  }),
-
   http.delete(`${API_BASE}/namespaces/:namespace/registries/:name`, ({ params }) => {
     const { namespace, name } = params;
     const registry = mockRegistries.find((r) => r.namespace === namespace && r.name === name);

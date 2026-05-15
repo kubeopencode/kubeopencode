@@ -22,3 +22,4 @@ resources:
   - agenttemplate.yaml
   - agent.yaml
   - crontask.yaml
+  - registry.yaml

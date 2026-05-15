@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import api from '../api/client';
+import api, { RegistryImageInfo } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import Labels from '../components/Labels';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -35,6 +35,74 @@ const REGISTRY_TABS: { id: RegistryTabId; label: string; icon: React.ReactNode }
     ),
   },
 ];
+
+function ImageGroups({ images }: { images: RegistryImageInfo[] }) {
+  const executorImages = images.filter(
+    (img) => (img.metadata?.category || '').toLowerCase() === 'executor',
+  );
+  const agentImages = images.filter(
+    (img) => (img.metadata?.category || '').toLowerCase() === 'agent',
+  );
+  const uncategorized = images.filter(
+    (img) => !(img.metadata?.category || '').toLowerCase(),
+  );
+  const groups: { label: string; items: RegistryImageInfo[] }[] = [];
+  if (executorImages.length > 0) groups.push({ label: 'Executor Images', items: executorImages });
+  if (agentImages.length > 0) groups.push({ label: 'Agent Images', items: agentImages });
+  if (uncategorized.length > 0) groups.push({ label: 'Images', items: uncategorized });
+
+  if (groups.length === 0) return null;
+
+  return (
+    <div>
+      {groups.map((group) => (
+        <div key={group.label} className="mb-6">
+          <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">
+            {group.label} ({group.items.length})
+          </h3>
+          <div className="space-y-2">
+            {group.items.map((img) => (
+              <div key={img.name} className="bg-stone-50 rounded-lg p-3 border border-stone-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-stone-800">{img.name}</span>
+                    {img.metadata?.category && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200 font-medium">
+                        {img.metadata.category}
+                      </span>
+                    )}
+                  </div>
+                  <PhaseBadge phase={img.phase} />
+                </div>
+                <p className="mt-1 text-xs text-stone-500 font-mono break-all">{img.image}</p>
+                {img.metadata?.description && (
+                  <p className="mt-1.5 text-xs text-stone-400">{img.metadata.description}</p>
+                )}
+                {img.metadata?.tools && img.metadata.tools.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {img.metadata.tools.map((tool) => (
+                      <span
+                        key={tool}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-500 border border-stone-200"
+                      >
+                        {tool}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {img.message && img.phase !== 'Ready' && (
+                  <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    {img.message}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function PhaseBadge({ phase }: { phase: string }) {
   const isReady = phase === 'Ready';
@@ -116,6 +184,15 @@ function RegistryDetailPage() {
               <p className="text-xs text-stone-400 mt-0.5 font-mono">{registry.namespace}</p>
             </div>
             <div className="flex items-center gap-2">
+              <Link
+                to={`/registries/${namespace}/${name}/assemble`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors shadow-sm"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Assemble
+              </Link>
               <button
                 onClick={() => setShowDeleteDialog(true)}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors"
@@ -185,37 +262,7 @@ function RegistryDetailPage() {
 
             {/* Images */}
             {registry.images && registry.images.length > 0 && (
-              <div>
-                <h3 className="text-xs font-display font-semibold text-stone-500 uppercase tracking-wider mb-3">
-                  Images ({registry.images.length})
-                </h3>
-                <div className="space-y-2">
-                  {registry.images.map((img, idx) => (
-                    <div key={idx} className="bg-stone-50 rounded-lg p-3 border border-stone-100">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm text-stone-800">{img.name}</span>
-                        <PhaseBadge phase={img.phase} />
-                      </div>
-                      <p className="mt-1 text-xs text-stone-500 font-mono break-all">{img.image}</p>
-                      {img.metadata?.category && (
-                        <div className="mt-1.5 flex items-center gap-2">
-                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-600 border border-sky-200 font-medium">
-                            {img.metadata.category}
-                          </span>
-                          {img.metadata.tools && img.metadata.tools.length > 0 && (
-                            <span className="text-[11px] text-stone-400">
-                              Tools: {img.metadata.tools.join(', ')}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {img.metadata?.description && (
-                        <p className="mt-1 text-xs text-stone-400">{img.metadata.description}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <ImageGroups images={registry.images} />
             )}
 
             {/* Skills */}
@@ -236,6 +283,11 @@ function RegistryDetailPage() {
                       )}
                       {skill.description && (
                         <p className="mt-1 text-xs text-stone-400">{skill.description}</p>
+                      )}
+                      {skill.message && skill.phase !== 'Ready' && (
+                        <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                          {skill.message}
+                        </p>
                       )}
                     </div>
                   ))}
@@ -259,6 +311,11 @@ function RegistryDetailPage() {
                       <p className="mt-1 text-xs text-stone-500 font-mono break-all">{plugin.package}</p>
                       {plugin.description && (
                         <p className="mt-1 text-xs text-stone-400">{plugin.description}</p>
+                      )}
+                      {plugin.message && plugin.phase !== 'Ready' && (
+                        <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                          {plugin.message}
+                        </p>
                       )}
                     </div>
                   ))}

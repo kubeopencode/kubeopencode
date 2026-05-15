@@ -96,12 +96,29 @@ export interface CreatePersistenceConfig {
   workspace?: CreateVolumePersistence;
 }
 
+export interface AssemblySkillInput {
+  name: string;
+  git?: {
+    repository: string;
+    ref?: string;
+    path?: string;
+    names?: string[];
+  };
+}
+
+export interface AssemblyPluginInput {
+  name: string;
+  target?: string;
+}
+
 export interface CreateAgentTemplateRequest {
   name: string;
   workspaceDir?: string;
   serviceAccountName?: string;
   agentImage?: string;
   executorImage?: string;
+  skills?: AssemblySkillInput[];
+  plugins?: AssemblyPluginInput[];
 }
 
 export interface CreateAgentRequest {
@@ -120,6 +137,9 @@ export interface CreateAgentRequest {
   // P2: Advanced
   port?: number;
   proxy?: ProxyConfigInfo;
+  // Assembly: assets selected from a Registry catalog
+  skills?: AssemblySkillInput[];
+  plugins?: AssemblyPluginInput[];
 }
 
 export interface StandbyInfo {
@@ -385,6 +405,9 @@ export interface RegistryImageInfo {
 export interface RegistrySkillInfo {
   name: string;
   repository?: string;
+  ref?: string;
+  path?: string;
+  names?: string[];
   phase: string;
   latestCommit?: string;
   lastChecked?: string;
@@ -429,10 +452,6 @@ export interface RegistryListResponse {
   registries: Registry[];
   total: number;
   pagination?: Pagination;
-}
-
-export interface CreateRegistryRequest {
-  name: string;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -777,12 +796,6 @@ export const api = {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.text();
   },
-
-  createRegistry: (namespace: string, data: CreateRegistryRequest) =>
-    request<Registry>(`/namespaces/${namespace}/registries`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
 
   deleteRegistry: (namespace: string, name: string) =>
     request<void>(`/namespaces/${namespace}/registries/${name}`, { method: 'DELETE' }),

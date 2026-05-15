@@ -219,6 +219,12 @@ func (h *AgentTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 	tmpl.Spec.ServiceAccountName = req.ServiceAccountName
 	tmpl.Spec.AgentImage = req.AgentImage
 	tmpl.Spec.ExecutorImage = req.ExecutorImage
+	if len(req.Skills) > 0 {
+		tmpl.Spec.Skills = req.Skills
+	}
+	if len(req.Plugins) > 0 {
+		tmpl.Spec.Plugins = req.Plugins
+	}
 
 	if err := k8sClient.Create(ctx, tmpl); err != nil {
 		if apierrors.IsAlreadyExists(err) {

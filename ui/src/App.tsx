@@ -13,7 +13,7 @@ import AgentTemplateDetailPage from './pages/AgentTemplateDetailPage';
 import AgentTemplateCreatePage from './pages/AgentTemplateCreatePage';
 import RegistriesPage from './pages/RegistriesPage';
 import RegistryDetailPage from './pages/RegistryDetailPage';
-import RegistryCreatePage from './pages/RegistryCreatePage';
+import RegistryAssemblePage from './pages/RegistryAssemblePage';
 import CronTasksPage from './pages/CronTasksPage';
 import CronTaskCreatePage from './pages/CronTaskCreatePage';
 import CronTaskDetailPage from './pages/CronTaskDetailPage';
@@ -45,7 +45,7 @@ function App() {
           <Route path="templates/create" element={<AgentTemplateCreatePage />} />
           <Route path="templates/:namespace/:name" element={<AgentTemplateDetailPage />} />
           <Route path="registries" element={<RegistriesPage />} />
-          <Route path="registries/create" element={<RegistryCreatePage />} />
+          <Route path="registries/:namespace/:name/assemble" element={<RegistryAssemblePage />} />
           <Route path="registries/:namespace/:name" element={<RegistryDetailPage />} />
           <Route path="config" element={<ConfigPage />} />
           <Route path="*" element={<NotFoundPage />} />
