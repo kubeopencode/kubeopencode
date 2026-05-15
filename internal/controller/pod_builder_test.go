@@ -1866,6 +1866,10 @@ func TestBuildPod_TemplateRef_WithoutAttachCommand(t *testing.T) {
 	if !strings.Contains(container.Command[2], "/tools/opencode run") {
 		t.Errorf("Command should use /tools/opencode run")
 	}
+	// Verify the command includes models warmup for templateRef (non-attach) path
+	if !strings.Contains(container.Command[2], "opencode models --refresh") {
+		t.Errorf("Command should include models warmup step for templateRef path, got: %s", container.Command[2])
+	}
 	// Verify the command includes --title with task name prefix
 	if !strings.Contains(container.Command[2], "--title") {
 		t.Errorf("Command should contain --title flag")
