@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
@@ -206,6 +207,137 @@ func TestIsTaskTimedOut(t *testing.T) {
 		}
 		if !isTaskTimedOut(task) {
 			t.Error("expected true when timeout is zero (immediately expires)")
+		}
+	})
+}
+
+func TestGetPodFailureDetail(t *testing.T) {
+
+	t.Run("empty when all containers succeeded", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Status: corev1.PodStatus{
+				ContainerStatuses: []corev1.ContainerStatus{
+					{
+						Name: "agent",
+						State: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								ExitCode: 0,
+								Reason:   "Completed",
+							},
+						},
+					},
+				},
+			},
+		}
+		detail := getPodFailureDetail(pod)
+		if detail != "" {
+			t.Errorf("expected empty detail, got %q", detail)
+		}
+	})
+
+	t.Run("returns detail for main container failure", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Status: corev1.PodStatus{
+				ContainerStatuses: []corev1.ContainerStatus{
+					{
+						Name: "agent",
+						State: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								ExitCode: 1,
+								Reason:   "Error",
+								Message:  "Model not found",
+							},
+						},
+					},
+				},
+			},
+		}
+		detail := getPodFailureDetail(pod)
+		if detail == "" {
+			t.Error("expected non-empty detail")
+		}
+		if detail != "container agent: exit code 1 (Error: Model not found)" {
+			t.Errorf("unexpected detail: %q", detail)
+		}
+	})
+
+	t.Run("returns detail for init container failure", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Status: corev1.PodStatus{
+				InitContainerStatuses: []corev1.ContainerStatus{
+					{
+						Name: "git-init-0",
+						State: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								ExitCode: 128,
+								Reason:   "Error",
+							},
+						},
+					},
+				},
+			},
+		}
+		detail := getPodFailureDetail(pod)
+		if detail == "" {
+			t.Error("expected non-empty detail")
+		}
+		if detail != "container git-init-0: exit code 128 (Error)" {
+			t.Errorf("unexpected detail: %q", detail)
+		}
+	})
+
+	t.Run("returns OOMKilled detail", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Status: corev1.PodStatus{
+				ContainerStatuses: []corev1.ContainerStatus{
+					{
+						Name: "agent",
+						State: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								ExitCode: 137,
+								Reason:   "OOMKilled",
+							},
+						},
+					},
+				},
+			},
+		}
+		detail := getPodFailureDetail(pod)
+		if detail != "container agent: OOMKilled" {
+			t.Errorf("unexpected detail: %q", detail)
+		}
+	})
+
+	t.Run("prioritizes init container failure over main container", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Status: corev1.PodStatus{
+				InitContainerStatuses: []corev1.ContainerStatus{
+					{
+						Name: "git-init-0",
+						State: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								ExitCode: 1,
+								Reason:   "Error",
+							},
+						},
+					},
+				},
+				ContainerStatuses: []corev1.ContainerStatus{
+					{
+						Name: "agent",
+						State: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								ExitCode: 1,
+								Reason:   "Error",
+							},
+						},
+					},
+				},
+			},
+		}
+		detail := getPodFailureDetail(pod)
+		if detail != "container git-init-0: exit code 1 (Error)" {
+			t.Errorf("unexpected detail: %q", detail)
 		}
 	})
 }

@@ -637,8 +637,16 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 		task.Status.Phase = kubeopenv1alpha1.TaskPhaseFailed
 		now := metav1.Now()
 		task.Status.CompletionTime = &now
-		log.Info("task failed", "pod", task.Status.PodName)
-		r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Failed", "Failed", "Task failed")
+
+		// Extract container failure details for better diagnostics
+		failureDetail := getPodFailureDetail(pod)
+		if failureDetail != "" {
+			log.Info("task failed", "pod", task.Status.PodName, "detail", failureDetail)
+			r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Failed", "Failed", "Task failed: %s", failureDetail)
+		} else {
+			log.Info("task failed", "pod", task.Status.PodName)
+			r.Recorder.Eventf(task, nil, corev1.EventTypeWarning, "Failed", "Failed", "Task failed")
+		}
 		r.recordTaskDuration(task)
 		// Resolve session info from Agent's OpenCode server (best-effort)
 		r.resolveSessionInfo(ctx, task)
@@ -646,6 +654,43 @@ func (r *TaskReconciler) updateTaskStatusFromPod(ctx context.Context, task *kube
 	}
 
 	return nil
+}
+
+// getPodFailureDetail extracts a human-readable failure reason from a failed Pod.
+// It inspects init container and container termination states to find the first
+// non-zero exit code or OOM/Signal reason.
+func getPodFailureDetail(pod *corev1.Pod) string {
+	// Check init containers first (they run before the main container)
+	for i := range pod.Status.InitContainerStatuses {
+		term := pod.Status.InitContainerStatuses[i].State.Terminated
+		if term != nil && term.ExitCode != 0 {
+			return formatTerminationDetail(pod.Status.InitContainerStatuses[i].Name, term)
+		}
+	}
+	// Check main containers
+	for i := range pod.Status.ContainerStatuses {
+		term := pod.Status.ContainerStatuses[i].State.Terminated
+		if term != nil && term.ExitCode != 0 {
+			return formatTerminationDetail(pod.Status.ContainerStatuses[i].Name, term)
+		}
+	}
+	return ""
+}
+
+// formatTerminationDetail creates a human-readable string from a container termination state.
+func formatTerminationDetail(containerName string, term *corev1.ContainerStateTerminated) string {
+	switch {
+	case term.Reason == "OOMKilled":
+		return fmt.Sprintf("container %s: OOMKilled", containerName)
+	case term.ExitCode != 0 && term.Message != "":
+		return fmt.Sprintf("container %s: exit code %d (%s: %s)", containerName, term.ExitCode, term.Reason, term.Message)
+	case term.ExitCode != 0:
+		return fmt.Sprintf("container %s: exit code %d (%s)", containerName, term.ExitCode, term.Reason)
+	case term.Message != "":
+		return fmt.Sprintf("container %s: %s", containerName, term.Message)
+	default:
+		return fmt.Sprintf("container %s: %s", containerName, term.Reason)
+	}
 }
 
 // resolveSessionInfo queries the Agent's OpenCode server to find the session
