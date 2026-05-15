@@ -362,6 +362,79 @@ export interface LogEvent {
   message?: string;
 }
 
+// Registry types
+export interface RegistryImageMetadata {
+  description?: string;
+  category?: string;
+  tags?: string[];
+  tools?: string[];
+  baseImage?: string;
+  maintainer?: string;
+}
+
+export interface RegistryImageInfo {
+  name: string;
+  image: string;
+  phase: string;
+  digest?: string;
+  lastChecked?: string;
+  message?: string;
+  metadata?: RegistryImageMetadata;
+}
+
+export interface RegistrySkillInfo {
+  name: string;
+  repository?: string;
+  phase: string;
+  latestCommit?: string;
+  lastChecked?: string;
+  message?: string;
+  description?: string;
+  tags?: string[];
+}
+
+export interface RegistryPluginInfo {
+  name: string;
+  package: string;
+  target?: string;
+  phase: string;
+  resolvedVersion?: string;
+  lastChecked?: string;
+  message?: string;
+  description?: string;
+  tags?: string[];
+}
+
+export interface RegistrySummary {
+  images: number;
+  skills: number;
+  plugins: number;
+  readyCount: number;
+  totalCount: number;
+}
+
+export interface Registry {
+  name: string;
+  namespace: string;
+  images?: RegistryImageInfo[];
+  skills?: RegistrySkillInfo[];
+  plugins?: RegistryPluginInfo[];
+  summary: RegistrySummary;
+  createdAt: string;
+  labels?: Record<string, string>;
+  conditions?: Condition[];
+}
+
+export interface RegistryListResponse {
+  registries: Registry[];
+  total: number;
+  pagination?: Pagination;
+}
+
+export interface CreateRegistryRequest {
+  name: string;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -663,6 +736,59 @@ export const api = {
 
   updateCronTaskYaml: async (namespace: string, name: string, yaml: string): Promise<void> => {
     const response = await fetch(`${API_BASE}/namespaces/${namespace}/crontasks/${name}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/x-yaml' },
+      body: yaml,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.message || error.error || `HTTP ${response.status}`);
+    }
+  },
+
+  // Registries
+  listAllRegistries: (params?: FilterParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<RegistryListResponse>(`/registries${queryString ? `?${queryString}` : ''}`);
+  },
+
+  listRegistries: (namespace: string, params?: FilterParams) => {
+    const searchParams = new URLSearchParams();
+    if (params?.name) searchParams.set('name', params.name);
+    if (params?.labelSelector) searchParams.set('labelSelector', params.labelSelector);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    const queryString = searchParams.toString();
+    return request<RegistryListResponse>(`/namespaces/${namespace}/registries${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getRegistry: (namespace: string, name: string) =>
+    request<Registry>(`/namespaces/${namespace}/registries/${name}`),
+
+  getRegistryYaml: async (namespace: string, name: string): Promise<string> => {
+    const response = await fetch(`${API_BASE}/namespaces/${namespace}/registries/${name}?output=yaml`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.text();
+  },
+
+  createRegistry: (namespace: string, data: CreateRegistryRequest) =>
+    request<Registry>(`/namespaces/${namespace}/registries`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteRegistry: (namespace: string, name: string) =>
+    request<void>(`/namespaces/${namespace}/registries/${name}`, { method: 'DELETE' }),
+
+  updateRegistryYaml: async (namespace: string, name: string, yaml: string): Promise<void> => {
+    const response = await fetch(`${API_BASE}/namespaces/${namespace}/registries/${name}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/x-yaml' },
       body: yaml,

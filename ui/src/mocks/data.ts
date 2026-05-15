@@ -1,9 +1,9 @@
 // Mock data fixtures for tests and development mode
 
 import type {
-  Task, Agent, AgentTemplate, CronTask,
+  Task, Agent, AgentTemplate, CronTask, Registry,
   TaskListResponse, AgentListResponse, AgentTemplateListResponse,
-  CronTaskListResponse,
+  CronTaskListResponse, RegistryListResponse,
   ConfigResponse,
 } from '../api/client';
 
@@ -814,6 +814,169 @@ export const mockCronTaskHistory: Task[] = [
   },
 ];
 
+export const mockRegistries: Registry[] = [
+  {
+    name: 'official-catalog',
+    namespace: 'default',
+    images: [
+      {
+        name: 'devbox',
+        image: 'ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest',
+        phase: 'Ready',
+        digest: 'sha256:abc123def456',
+        lastChecked: '2026-04-02T10:00:00Z',
+        metadata: {
+          description: 'Full-featured development environment with Go, Node.js, Python, and common CLI tools',
+          category: 'executor',
+          tags: ['go', 'node', 'python'],
+          tools: ['git', 'make', 'docker-cli'],
+          baseImage: 'ubuntu:22.04',
+          maintainer: 'kubeopencode-team',
+        },
+      },
+      {
+        name: 'opencode',
+        image: 'ghcr.io/kubeopencode/kubeopencode-agent-opencode:latest',
+        phase: 'Ready',
+        digest: 'sha256:789ghi012jkl',
+        lastChecked: '2026-04-02T10:00:00Z',
+        metadata: {
+          description: 'OpenCode AI coding agent init container',
+          category: 'agent',
+          tags: ['opencode'],
+          maintainer: 'kubeopencode-team',
+        },
+      },
+    ],
+    skills: [
+      {
+        name: 'frontend-design',
+        repository: 'https://github.com/anthropics/skills.git',
+        phase: 'Ready',
+        latestCommit: 'a1b2c3d',
+        lastChecked: '2026-04-02T10:00:00Z',
+        description: 'Frontend UI design and implementation skill',
+        tags: ['frontend', 'react', 'css'],
+      },
+      {
+        name: 'webapp-testing',
+        repository: 'https://github.com/anthropics/skills.git',
+        phase: 'Ready',
+        latestCommit: 'e4f5g6h',
+        lastChecked: '2026-04-02T10:00:00Z',
+        description: 'Web application testing and QA automation',
+        tags: ['testing', 'e2e', 'unit'],
+      },
+    ],
+    plugins: [
+      {
+        name: '@kubeopencode/opencode-slack-plugin',
+        package: '@kubeopencode/opencode-slack-plugin@^1.0.0',
+        target: 'server',
+        phase: 'Ready',
+        resolvedVersion: '1.2.3',
+        lastChecked: '2026-04-02T10:00:00Z',
+        description: 'Slack integration for OpenCode notifications and commands',
+        tags: ['slack', 'notifications'],
+      },
+      {
+        name: 'opencode-plugin-otel',
+        package: 'opencode-plugin-otel@^0.5.0',
+        target: 'server',
+        phase: 'Ready',
+        resolvedVersion: '0.5.1',
+        lastChecked: '2026-04-02T10:00:00Z',
+        description: 'OpenTelemetry tracing and metrics for OpenCode',
+        tags: ['observability', 'tracing'],
+      },
+    ],
+    summary: {
+      images: 2,
+      skills: 2,
+      plugins: 2,
+      readyCount: 6,
+      totalCount: 6,
+    },
+    createdAt: '2026-01-15T00:00:00Z',
+    labels: { tier: 'official', maintained: 'true' },
+    conditions: [
+      { type: 'Ready', status: 'True', reason: 'AllAssetsReady', message: 'All registry assets are available' },
+    ],
+  },
+  {
+    name: 'team-alpha-registry',
+    namespace: 'staging',
+    images: [
+      {
+        name: 'custom-devbox',
+        image: 'registry.internal/team-alpha/devbox:v2.1.0',
+        phase: 'Ready',
+        lastChecked: '2026-04-01T08:00:00Z',
+        metadata: {
+          description: 'Custom devbox with team-specific tooling',
+          category: 'executor',
+          tags: ['custom', 'team-alpha'],
+        },
+      },
+    ],
+    skills: [
+      {
+        name: 'internal-review',
+        repository: 'https://git.internal/team-alpha/skills.git',
+        phase: 'Unavailable',
+        lastChecked: '2026-04-01T08:00:00Z',
+        message: 'Repository not accessible',
+        description: 'Internal code review skill',
+        tags: ['review'],
+      },
+    ],
+    plugins: [],
+    summary: {
+      images: 1,
+      skills: 1,
+      plugins: 0,
+      readyCount: 1,
+      totalCount: 2,
+    },
+    createdAt: '2026-03-01T00:00:00Z',
+    labels: { team: 'alpha', env: 'staging' },
+    conditions: [
+      { type: 'Ready', status: 'False', reason: 'AssetUnavailable', message: 'Some assets are not available' },
+    ],
+  },
+  {
+    name: 'minimal-registry',
+    namespace: 'production',
+    images: [
+      {
+        name: 'prod-devbox',
+        image: 'ghcr.io/kubeopencode/kubeopencode-agent-devbox:v1.0.0',
+        phase: 'Ready',
+        digest: 'sha256:prod123abc',
+        lastChecked: '2026-04-02T06:00:00Z',
+        metadata: {
+          description: 'Production-pinned devbox image',
+          category: 'executor',
+        },
+      },
+    ],
+    skills: [],
+    plugins: [],
+    summary: {
+      images: 1,
+      skills: 0,
+      plugins: 0,
+      readyCount: 1,
+      totalCount: 1,
+    },
+    createdAt: '2026-02-15T00:00:00Z',
+    labels: { env: 'production', compliance: 'approved' },
+    conditions: [
+      { type: 'Ready', status: 'True', reason: 'AllAssetsReady' },
+    ],
+  },
+];
+
 export const mockConfig: ConfigResponse = {
   name: 'cluster',
   createdAt: '2026-01-01T00:00:00Z',
@@ -887,6 +1050,17 @@ export const mockCronTaskListResponse: CronTaskListResponse = {
     limit: 20,
     offset: 0,
     totalCount: mockCronTasks.length,
+    hasMore: false,
+  },
+};
+
+export const mockRegistryListResponse: RegistryListResponse = {
+  registries: mockRegistries,
+  total: mockRegistries.length,
+  pagination: {
+    limit: 20,
+    offset: 0,
+    totalCount: mockRegistries.length,
     hasMore: false,
   },
 };

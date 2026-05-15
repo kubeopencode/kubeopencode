@@ -15,6 +15,7 @@ rules:
   - cronworkflows
   - crontasks
   - kubeopencodeconfigs
+  - registries
   - tasks
   - webhooktriggers
   - workflows
@@ -37,6 +38,7 @@ rules:
   - cronworkflows/status
   - crontasks/status
   - kubeopencodeconfigs/status
+  - registries/status
   - tasks/status
   - webhooktriggers/status
   - workflows/status
@@ -53,6 +55,7 @@ rules:
   - crontasks/finalizers
   - agents/finalizers
   - agenttemplates/finalizers
+  - registries/finalizers
   verbs:
   - update
 # ConfigMaps and Secrets (full access for task context)

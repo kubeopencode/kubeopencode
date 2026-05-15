@@ -1,0 +1,586 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
+  name: registries.kubeopencode.io
+spec:
+  group: kubeopencode.io
+  names:
+    kind: Registry
+    listKind: RegistryList
+    plural: registries
+    shortNames:
+    - reg
+    singular: registry
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.summary.images
+      name: Images
+      type: integer
+    - jsonPath: .status.summary.skills
+      name: Skills
+      type: integer
+    - jsonPath: .status.summary.plugins
+      name: Plugins
+      type: integer
+    - jsonPath: .status.summary.readyCount
+      name: Ready
+      type: integer
+    - jsonPath: .status.summary.totalCount
+      name: Total
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Registry is a namespace-scoped catalog of agent assets.
+          It indexes executor images, skills, and plugins — providing a central discovery
+          mechanism for agent assembly. The Registry does not store or build assets;
+          it only references and validates them.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the desired asset catalog
+            properties:
+              checkInterval:
+                description: |-
+                  CheckInterval defines how often the controller re-validates
+                  asset availability (images, skills, plugins).
+                  If not specified, the controller defaults to 10 minutes.
+                type: string
+              images:
+                description: |-
+                  Images defines executor image references available for agent assembly.
+                  Each entry references a pre-built container image in an external registry.
+                  The Registry does not build images — it only indexes and validates them.
+                items:
+                  description: |-
+                    RegistryImage defines a reference to a pre-built container image.
+                    The image must already exist in an external container registry.
+                    The Registry controller validates that the image is reachable and records its digest.
+                  properties:
+                    image:
+                      description: |-
+                        Image is the full container image reference (e.g., "harbor.company.com/team/go-dev:1.23").
+                        Must include registry, repository, and tag or digest.
+                      minLength: 1
+                      type: string
+                    metadata:
+                      description: |-
+                        Metadata provides human-readable information for the UI,
+                        helping users choose the right executor image for their use case.
+                      properties:
+                        baseImage:
+                          description: |-
+                            BaseImage indicates the base OS/runtime image (informational).
+                            Example: "ubuntu:24.04", "nvidia/cuda:12.4-runtime-ubuntu24.04"
+                          type: string
+                        category:
+                          description: |-
+                            Category classifies the image for filtering in the UI.
+                            Examples: "backend", "frontend", "data-science", "devops", "general"
+                          type: string
+                        description:
+                          description: |-
+                            Description is a human-readable summary of what this image provides.
+                            Example: "Go 1.23 development environment with LSP support and debugging tools"
+                          type: string
+                        maintainer:
+                          description: |-
+                            Maintainer is the contact for this image (informational).
+                            Example: "platform-team@company.com"
+                          type: string
+                        tags:
+                          description: |-
+                            Tags are searchable labels for discovery.
+                            Examples: ["golang", "backend", "grpc"]
+                          items:
+                            type: string
+                          type: array
+                        tools:
+                          description: |-
+                            Tools lists the key tools/binaries available in the image.
+                            Displayed in the UI to help users understand what the image provides.
+                            Examples: ["go", "gopls", "delve", "golangci-lint"]
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    name:
+                      description: Name is a unique identifier for this image within
+                        the Registry.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                      type: string
+                    secretRef:
+                      description: |-
+                        SecretRef references a Secret containing registry credentials for private images.
+                        The Secret must be of type kubernetes.io/dockerconfigjson.
+                        NOTE: Phase 1 does not use this field for validation — image checks are
+                        format-only. Future phases will use go-containerregistry with these credentials
+                        to perform HEAD manifest checks against private registries.
+                      properties:
+                        name:
+                          description: Name of the Secret containing registry credentials.
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      type: object
+                  required:
+                  - image
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              npmRegistryURL:
+                description: |-
+                  NpmRegistryURL overrides the default npm registry URL (https://registry.npmjs.org/)
+                  for plugin availability checks. Use this when plugins are hosted on a private
+                  npm registry (e.g., Artifactory, Verdaccio, GitHub Packages).
+                  Example: "https://npm.company.com/"
+                type: string
+              plugins:
+                description: Plugins defines plugin references (reuses existing PluginSpec
+                  type).
+                items:
+                  description: |-
+                    RegistryPlugin wraps PluginSpec with catalog metadata.
+                    Note: PluginSpec includes an Options field (runtime configuration).
+                    In the Registry context, Options is ignored — it exists only because
+                    we reuse the PluginSpec type as-is. Plugin options are runtime concerns
+                    and belong in Agent/AgentTemplate, not in the catalog.
+                  properties:
+                    metadata:
+                      description: Metadata provides human-readable information for
+                        the UI.
+                      properties:
+                        description:
+                          description: Description is a human-readable summary.
+                          type: string
+                        requiredCredentials:
+                          description: RequiredCredentials lists env vars that must
+                            be set (only meaningful for plugins).
+                          items:
+                            description: CredentialRequirement describes a credential
+                              that must be configured for a plugin.
+                            properties:
+                              description:
+                                description: Description explains what this credential
+                                  is for.
+                                type: string
+                              env:
+                                description: Env is the environment variable name.
+                                type: string
+                            required:
+                            - env
+                            type: object
+                          type: array
+                        tags:
+                          description: Tags are searchable labels for discovery.
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    name:
+                      description: Name is a unique identifier for this plugin within
+                        the Registry.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                      type: string
+                    plugin:
+                      description: |-
+                        Plugin specifies the plugin package (reuses existing PluginSpec).
+                        Only name and target are meaningful in the Registry; options is ignored.
+                      properties:
+                        name:
+                          description: |-
+                            Name is the npm package specifier of the plugin.
+                            Supports standard npm specifier formats:
+                              "cc-safety-net"                    — latest version
+                              "cc-safety-net@0.8.2"             — specific version
+                              "@aexol/opencode-tui"             — scoped package
+                              "@aexol/opencode-tui@^1.0.0"      — version range
+                          minLength: 1
+                          type: string
+                        options:
+                          description: |-
+                            Options is an arbitrary JSON object passed to the plugin function
+                            as the second argument (PluginOptions).
+                            Each plugin defines its own options schema.
+
+                            Example:
+                              options:
+                                endpoint: "http://otel-collector:4318"
+                                verbose: true
+                          x-kubernetes-preserve-unknown-fields: true
+                        target:
+                          default: server
+                          description: |-
+                            Target specifies which OpenCode plugin runtime to load this plugin into.
+                            - "server" (default): loaded by `opencode serve`, provides backend hooks
+                            - "tui": loaded during interactive terminal sessions, provides UI extensions
+                          enum:
+                          - server
+                          - tui
+                          type: string
+                      required:
+                      - name
+                      type: object
+                  required:
+                  - name
+                  - plugin
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              skills:
+                description: Skills defines skill references (reuses existing SkillSource
+                  types).
+                items:
+                  description: |-
+                    RegistrySkill wraps SkillSource with catalog metadata.
+                    The Git field reuses the existing GitSkillSource type from SkillSource.
+                  properties:
+                    git:
+                      description: Git specifies the skill source (reuses existing
+                        GitSkillSource).
+                      properties:
+                        depth:
+                          default: 1
+                          description: |-
+                            Depth specifies the clone depth for shallow cloning.
+                            1 means shallow clone (fastest, default), 0 means full clone.
+                          type: integer
+                        names:
+                          description: |-
+                            Names selects specific skill directories under Path.
+                            Each name corresponds to a skill folder name containing SKILL.md.
+                            If omitted, ALL skills found under Path are included.
+                            Each name must be a simple directory name (no path separators or ".." allowed).
+
+                            Example: ["frontend-design", "webapp-testing"] selects only those two skills
+                            from the repository, ignoring all others.
+                          items:
+                            maxLength: 253
+                            minLength: 1
+                            pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                        path:
+                          description: |-
+                            Path is the base directory within the repository where skills are located.
+                            For example, "skills/" for the anthropics/skills repo structure,
+                            or "engineering/" for domain-organized repos.
+                            If omitted, the repository root is used as the base directory.
+                          type: string
+                        recurseSubmodules:
+                          description: RecurseSubmodules enables recursive cloning
+                            of Git submodules.
+                          type: boolean
+                        ref:
+                          default: HEAD
+                          description: |-
+                            Ref is the Git reference to checkout (branch, tag, or commit SHA).
+                            Defaults to "HEAD" if not specified.
+                            Example: "main", "v2.0.0", "abc123"
+                          type: string
+                        repository:
+                          description: |-
+                            Repository is the Git repository URL.
+                            Supported protocols: https://, http://, git@ (SSH).
+                            Example: "https://github.com/anthropics/skills.git"
+                          type: string
+                        secretRef:
+                          description: |-
+                            SecretRef references a Secret containing Git credentials.
+                            The Secret should contain one of:
+                              - "username" + "password": For HTTPS token-based auth (password can be a PAT)
+                              - "ssh-privatekey": For SSH key-based auth
+                            If not specified, anonymous clone is attempted.
+                            Reuses the same Secret format as context Git.
+                          properties:
+                            name:
+                              description: Name of the Secret containing Git credentials.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                      required:
+                      - repository
+                      type: object
+                    metadata:
+                      description: Metadata provides human-readable information for
+                        the UI.
+                      properties:
+                        description:
+                          description: Description is a human-readable summary.
+                          type: string
+                        requiredCredentials:
+                          description: RequiredCredentials lists env vars that must
+                            be set (only meaningful for plugins).
+                          items:
+                            description: CredentialRequirement describes a credential
+                              that must be configured for a plugin.
+                            properties:
+                              description:
+                                description: Description explains what this credential
+                                  is for.
+                                type: string
+                              env:
+                                description: Env is the environment variable name.
+                                type: string
+                            required:
+                            - env
+                            type: object
+                          type: array
+                        tags:
+                          description: Tags are searchable labels for discovery.
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    name:
+                      description: Name is a unique identifier for this skill within
+                        the Registry.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+            type: object
+          status:
+            description: Status represents the observed state of the asset catalog
+            properties:
+              conditions:
+                description: Conditions represent the latest available observations
+                  of the Registry's state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              images:
+                description: Images tracks the status of each registered image.
+                items:
+                  description: ImageStatus tracks the availability of a registered
+                    image.
+                  properties:
+                    digest:
+                      description: Digest is the resolved image digest from the registry.
+                      type: string
+                    image:
+                      description: Image is the full image reference from spec.
+                      type: string
+                    lastChecked:
+                      description: LastChecked is the timestamp of the last status
+                        check.
+                      format: date-time
+                      type: string
+                    message:
+                      description: Message contains error details when Phase is Unavailable.
+                      type: string
+                    name:
+                      description: Name matches the spec image name.
+                      type: string
+                    phase:
+                      description: Phase indicates whether the image is reachable.
+                      enum:
+                      - Ready
+                      - Unavailable
+                      type: string
+                  required:
+                  - name
+                  - phase
+                  type: object
+                type: array
+              observedGeneration:
+                description: ObservedGeneration reflects the generation of the spec
+                  that was last reconciled.
+                format: int64
+                type: integer
+              plugins:
+                description: Plugins tracks the status of each registered plugin.
+                items:
+                  description: PluginStatus tracks the availability of a registered
+                    plugin.
+                  properties:
+                    lastChecked:
+                      description: LastChecked is the timestamp of the last status
+                        check.
+                      format: date-time
+                      type: string
+                    message:
+                      description: Message contains error details when Phase is Unavailable.
+                      type: string
+                    name:
+                      description: Name matches the spec plugin name.
+                      type: string
+                    phase:
+                      description: Phase indicates whether the npm package is reachable.
+                      enum:
+                      - Ready
+                      - Unavailable
+                      type: string
+                    resolvedVersion:
+                      description: ResolvedVersion is the resolved semver version
+                        from the npm registry.
+                      type: string
+                  required:
+                  - name
+                  - phase
+                  type: object
+                type: array
+              skills:
+                description: Skills tracks the status of each registered skill.
+                items:
+                  description: SkillStatus tracks the availability of a registered
+                    skill.
+                  properties:
+                    lastChecked:
+                      description: LastChecked is the timestamp of the last status
+                        check.
+                      format: date-time
+                      type: string
+                    latestCommit:
+                      description: LatestCommit is the HEAD commit SHA from the remote.
+                      type: string
+                    message:
+                      description: Message contains error details when Phase is Unavailable.
+                      type: string
+                    name:
+                      description: Name matches the spec skill name.
+                      type: string
+                    phase:
+                      description: Phase indicates whether the Git repository is reachable.
+                      enum:
+                      - Ready
+                      - Unavailable
+                      type: string
+                  required:
+                  - name
+                  - phase
+                  type: object
+                type: array
+              summary:
+                description: Summary provides aggregate counts for kubectl printcolumn
+                  display.
+                properties:
+                  images:
+                    description: Images is the total number of registered images.
+                    type: integer
+                  plugins:
+                    description: Plugins is the total number of registered plugins.
+                    type: integer
+                  readyCount:
+                    description: ReadyCount is the total number of assets with Ready
+                      phase.
+                    type: integer
+                  skills:
+                    description: Skills is the total number of registered skills.
+                    type: integer
+                  totalCount:
+                    description: TotalCount is the total number of registered assets.
+                    type: integer
+                required:
+                - images
+                - plugins
+                - readyCount
+                - skills
+                - totalCount
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

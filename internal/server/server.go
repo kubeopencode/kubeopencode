@@ -251,6 +251,17 @@ func (s *Server) setupRoutes() *chi.Mux {
 		r.Get("/config", configHandler.Get)
 		r.Put("/config", configHandler.Update)
 
+		// Registry endpoints
+		registryHandler := handlers.NewRegistryHandler(s.k8sClient)
+		r.Get("/registries", registryHandler.ListAll)
+		r.Route("/namespaces/{namespace}/registries", func(r chi.Router) {
+			r.Get("/", registryHandler.List)
+			r.Post("/", registryHandler.Create)
+			r.Get("/{name}", registryHandler.Get)
+			r.Put("/{name}", registryHandler.Update)
+			r.Delete("/{name}", registryHandler.Delete)
+		})
+
 		// Agent endpoints
 		r.Get("/agents", agentHandler.ListAll)
 		r.Route("/namespaces/{namespace}/agents", func(r chi.Router) {

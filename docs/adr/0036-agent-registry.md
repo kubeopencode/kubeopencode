@@ -37,13 +37,15 @@ In enterprise environments, teams need visibility into what agent assets (images
 
 KubeOpenCode already has well-defined types for skills (`SkillSource` with `GitSkillSource`) and plugins (`PluginSpec` with npm packages). These work. The problem is not storage or format — it is **discovery, management, and assembly**. The Registry should be a **catalog layer on top of existing types**, not a new storage system.
 
-All three asset types follow the same principle — **index only, never store**:
+All three asset types follow the same principle — **index only, never store, never build**:
 
-| Asset  | Storage                           |
-|--------|-----------------------------------|
-| Skill  | User's Git repository             |
-| Plugin | npm registry (public or corporate)|
-| Image  | User's container registry (Harbor, ACR, ECR, GHCR, etc.) |
+| Asset  | Storage                           | Registry's Role         |
+|--------|-----------------------------------|-------------------------|
+| Skill  | User's Git repository             | Index + status check    |
+| Plugin | npm registry (public or corporate)| Index + status check    |
+| Image  | User's container registry (Harbor, ACR, ECR, GHCR, etc.) | Index + status check |
+
+The Registry is like building blocks — each piece (image, skill, plugin) already exists somewhere else. The Registry simply catalogues them so users can discover and assemble agents visually. **Image building is explicitly out of scope** — it is delegated to external CI/CD pipelines or a future dedicated build controller.
 
 ### Related ADRs
 
@@ -55,7 +57,7 @@ All three asset types follow the same principle — **index only, never store**:
 
 ### Registry CRD: A Namespace-Scoped Asset Catalog
 
-The **Registry** is a new **namespace-scoped CRD** that serves as a catalog of agent assets. It is an index — it does not store skills, plugins, or images itself. Skills reference Git repos, plugins reference npm, and images are built from Dockerfiles and pushed to an **external container registry** provided by the user.
+The **Registry** is a new **namespace-scoped CRD** that serves as a catalog of agent assets. It is a pure index — it does not store or build anything. Skills reference Git repos, plugins reference npm, and images reference already-built container images in external registries.
 
 ```yaml
 apiVersion: kubeopencode.io/v1alpha1
@@ -64,65 +66,51 @@ metadata:
   name: team-alpha
   namespace: dev
 spec:
-  # Check interval for skill/plugin status validation (default: 10m)
+  # Check interval for asset status validation (default: 10m)
   checkInterval: 15m
 
-  # External container registry for built images
-  imageRegistry:
-    # Default prefix — images without explicit target use this
-    prefix: "harbor.company.com/kubeopencode"
-    # Push credentials (must contain .dockerconfigjson)
-    secretRef:
-      name: registry-push-credentials
-
-  # Agent images — built from Dockerfile, pushed to external registry
+  # Executor images — references to pre-built container images
   images:
     - name: go-dev
-      dockerfile:
-        context: "https://github.com/company/agent-images.git"
-        path: "go/Dockerfile"
-        ref: "main"
-      # Optional: override imageRegistry.prefix for this image
-      target: "harbor.company.com/team-alpha/go-dev"
+      # Full image reference (required) — must already exist in an external registry
+      image: "harbor.company.com/kubeopencode/go-dev:1.23"
+      # Optional: credentials for pulling from private registries (for status checks)
+      secretRef:
+        name: harbor-pull-credentials
       metadata:
-        description: "Go development environment"
-        tags: [golang, backend]
-        tools: [go, gopls, delve]
+        description: "Go 1.23 development environment with LSP support"
+        category: backend
+        tags: [golang, backend, grpc]
+        tools: [go, gopls, delve, golangci-lint, protoc]
+        baseImage: "ubuntu:24.04"
+        maintainer: "platform-team@company.com"
 
     - name: node-dev
-      dockerfile:
-        context: "https://github.com/company/agent-images.git"
-        path: "node/Dockerfile"
-      # Uses imageRegistry.prefix → harbor.company.com/kubeopencode/node-dev
+      image: "harbor.company.com/kubeopencode/node-dev:22"
       metadata:
-        description: "Node.js development environment"
-        tags: [nodejs, frontend]
+        description: "Node.js 22 with TypeScript, React, and testing tools"
+        category: frontend
+        tags: [nodejs, typescript, frontend, react]
+        tools: [node, npm, pnpm, tsx, playwright]
+        baseImage: "ubuntu:24.04"
 
-    - name: custom-ml
-      dockerfile:
-        # Inline Dockerfile — controller creates a ConfigMap with the content,
-        # mounts it into the Kaniko Job as /workspace/Dockerfile
-        inline: |
-          FROM python:3.12-slim
-          RUN pip install torch transformers
+    - name: python-ml
+      image: "ghcr.io/company/agent-images/python-ml:3.12"
       metadata:
-        description: "ML/AI development environment"
-        tags: [python, ml]
+        description: "Python 3.12 with PyTorch, Transformers, and Jupyter"
+        category: data-science
+        tags: [python, ml, ai, pytorch]
+        tools: [python, pip, jupyter, pytest]
+        baseImage: "nvidia/cuda:12.4-runtime-ubuntu24.04"
 
-  # Build configuration for Kaniko Jobs
-  build:
-    # Resource limits for build Jobs (prevents unbounded memory usage)
-    resources:
-      requests:
-        cpu: "500m"
-        memory: "1Gi"
-      limits:
-        cpu: "2"
-        memory: "4Gi"
-    # Number of retries on build failure (default: 2)
-    retryLimit: 2
-    # TTL for completed/failed build Jobs (default: 3600 = 1 hour)
-    ttlSecondsAfterFinished: 3600
+    - name: devbox-default
+      # The default KubeOpenCode devbox image — no secretRef needed for public images
+      image: "ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest"
+      metadata:
+        description: "General-purpose development environment (default)"
+        category: general
+        tags: [general, multi-language]
+        tools: [git, docker, curl, jq, python, node, go]
 
   # Skills — references using existing SkillSource types
   skills:
@@ -180,16 +168,14 @@ status:
   # Controller populates status for each asset
   images:
     - name: go-dev
-      phase: Ready          # Pending | Building | Ready | Failed
-      image: "harbor.company.com/team-alpha/go-dev@sha256:abc123..."
+      phase: Ready           # Ready | Unavailable
+      image: "harbor.company.com/kubeopencode/go-dev:1.23"
       digest: "sha256:abc123..."
-      buildTime: "2026-05-07T10:00:00Z"
-    - name: node-dev
-      phase: Building
-      buildJobName: "registry-team-alpha-build-node-dev-1715000000"
-    - name: custom-ml
-      phase: Failed
-      message: "pip install torch: network timeout"
+      lastChecked: "2026-05-07T10:05:00Z"
+    - name: python-ml
+      phase: Unavailable
+      message: "image not found: ghcr.io/company/agent-images/python-ml:3.12"
+      lastChecked: "2026-05-07T10:05:00Z"
 
   skills:
     - name: golang-best-practices
@@ -210,25 +196,22 @@ status:
       message: "npm registry: package not found"
 
   summary:
-    images: 3
-    skills: 2
+    images: 4
+    skills: 3
     plugins: 2
-    readyCount: 4
-    totalCount: 7
+    readyCount: 5
+    totalCount: 9
 ```
 
 ### What the Registry Controller Does
 
-The Registry controller reconciles each Registry resource and performs status checks. All checks run **in-process** using Go libraries — no external binaries required.
+The Registry controller reconciles each Registry resource and performs status checks. All checks run **in-process** using Go libraries — no external binaries required. The controller **never builds anything** — it only validates that referenced assets exist and are reachable.
 
 **For Images:**
-1. If no built image exists (or Dockerfile changed) → create a **Kaniko Job** to build and push to the external registry
-2. Track build progress via Job status → update `status.images[].phase`
-3. On success, record the image reference and digest in status → image is available for use
-4. On failure, surface the error message; retry up to `spec.build.retryLimit` times
-5. If spec is updated while a build is in-flight → delete the existing Job, create a new one
-6. Completed/failed Jobs are cleaned up after `spec.build.ttlSecondsAfterFinished`
-7. On Registry deletion → ownerReferences on Jobs trigger garbage collection
+1. Validate the container image exists in the registry via **registry API** (`HEAD` manifest check)
+2. Record the resolved digest in status
+3. If `secretRef` is specified, use credentials for private registry access
+4. Update `status.images[].phase` to Ready or Unavailable
 
 **For Skills:**
 1. Validate the Git repository is reachable via `go-git` library (`ls-remote`, no binary dependency)
@@ -251,7 +234,7 @@ All status checks use goroutines with `context.WithTimeout` to prevent blocking 
 | Temporary Jobs per check | Full isolation | Massive overhead — scheduling a Pod every 10 min per asset |
 | Sidecar container | Dedicated network context | Complicates Controller Deployment |
 
-Git checks use `go-git` (already proven in the ecosystem — Flux, Argo CD use the same approach). npm checks are a single HTTP GET to the registry API — no `npm` CLI needed. Both are non-blocking with context timeouts.
+Git checks use `go-git` (already proven in the ecosystem — Flux, Argo CD use the same approach). npm checks are a single HTTP GET to the registry API — no `npm` CLI needed. Image checks use the [go-containerregistry](https://github.com/google/go-containerregistry) library (crane) — a single `HEAD` request to the manifest endpoint. All are non-blocking with context timeouts.
 
 ### Relationship to AgentTemplate and Agent
 
@@ -289,7 +272,7 @@ The Visual Assembler UI reads Registry resources to show available assets, then 
 The Registry UI provides two capabilities:
 
 **1. Asset Management (CRUD)**
-- **Images**: Upload Dockerfile (inline or Git URL) → build → see build logs → manage versions
+- **Images**: Add/edit/remove image references with rich descriptions → see registry reachability and digest
 - **Skills**: Add/edit/remove skill references → see Git reachability and latest commit
 - **Plugins**: Add/edit/remove plugin references → see npm package availability and version
 
@@ -300,12 +283,14 @@ Users pick components from the Registry catalog and the UI generates AgentTempla
 ┌─────────────────────────────────────────────────┐
 │            Registry: team-alpha                  │
 │                                                  │
-│  Images (pick one):                              │
-│  ┌────────┐ ┌────────┐ ┌────────┐               │
-│  │ go-dev │ │node-dev│ │  ml    │               │
-│  │   ✓    │ │        │ │        │               │
-│  │ Ready  │ │Building│ │ Failed │               │
-│  └────────┘ └────────┘ └────────┘               │
+│  Executor Images (pick one):                     │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐   │
+│  │  go-dev    │ │  node-dev  │ │ python-ml  │   │
+│  │    ✓       │ │            │ │            │   │
+│  │  Ready     │ │   Ready    │ │Unavailable │   │
+│  │  Go 1.23   │ │  Node 22   │ │ Python 3.12│   │
+│  │  backend   │ │  frontend  │ │data-science│   │
+│  └────────────┘ └────────────┘ └────────────┘   │
 │                                                  │
 │  Skills (pick any):                              │
 │  ☑ golang-best-practices  ● Ready  a1b2c3d      │
@@ -320,85 +305,21 @@ Users pick components from the Registry catalog and the UI generates AgentTempla
 └─────────────────────────────────────────────────┘
 ```
 
-Only assets with **Ready** status can be selected for assembly. The status indicators help users immediately see which assets are usable.
-
-### In-Cluster Image Building: Kaniko
-
-When a Registry defines images, the controller creates **Kaniko Jobs** to build Dockerfiles and push the resulting images to the user's external container registry.
-
-#### Why Kaniko
-
-BuildKit rootless mode **requires `allowPrivilegeEscalation: true`** — a hard Linux kernel requirement (`newuidmap` setuid binary). This blocks PSS Restricted clusters. Kaniko builds entirely in userspace:
-
-```yaml
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop: ["ALL"]
-  runAsNonRoot: true
-  seccompProfile:
-    type: RuntimeDefault
-```
-
-| Aspect | Kaniko | BuildKit |
-|--------|--------|----------|
-| **PSS Restricted** | Yes | No — requires `allowPrivilegeEscalation: true` |
-| **Deployment** | Stateless K8s Jobs | Persistent Deployment (daemon) |
-| **Multi-arch** | Not supported | Supported |
-| **Maintenance** | [Chainguard fork](https://github.com/chainguard-forks/kaniko) actively maintained | Official moby/buildkit |
-
-**Note on Kaniko status**: The [original GoogleContainerTools/kaniko](https://github.com/GoogleContainerTools/kaniko) repository is archived. This design depends on the actively maintained [Chainguard fork](https://github.com/chainguard-forks/kaniko). The Helm default image should reference the Chainguard fork, not third-party builds.
-
-#### Build Flow
-
-```
-User uploads Dockerfile (via UI or Registry spec)
-       ↓
-Registry Controller prepares build context:
-  → Git context: Kaniko clones directly (--context=git://...)
-  → Inline: Controller creates a ConfigMap with the Dockerfile content,
-    mounted into the Kaniko Job at /workspace/Dockerfile (--context=dir:///workspace)
-       ↓
-Registry Controller creates Kaniko Job
-  → --destination={target or prefix/name}
-  → --digest-file=/dev/termination-log
-  → Push credentials mounted from imageRegistry.secretRef
-       ↓
-Kaniko builds image → pushes to external registry
-       ↓
-Controller reads Job termination message → extracts digest
-       ↓
-Controller updates Registry status with image reference + digest
-       ↓
-Image available for selection in Visual Assembler
-```
-
-#### Build Job Lifecycle
-
-| Scenario | Behavior |
-|----------|----------|
-| Build succeeds | Job retained for `ttlSecondsAfterFinished`, status updated to Ready |
-| Build fails | Retried up to `retryLimit` times, then marked Failed with error message |
-| Spec updated during build | In-flight Job deleted, new Job created |
-| Registry deleted | Jobs garbage-collected via ownerReferences |
-| Registry deleted during build | ownerReferences trigger Job deletion; partial images may remain in external registry (user's responsibility to clean up) |
+Only assets with **Ready** status can be selected for assembly. The status indicators help users immediately see which assets are usable. Image cards display rich metadata (description, category, tools) to help users choose the right executor environment.
 
 ### Helm Integration
 
-The Registry components are part of the unified KubeOpenCode Helm chart. Since Registry requires no infrastructure (no in-cluster registry, no persistent daemons), it only needs:
+The Registry components are part of the unified KubeOpenCode Helm chart. Since Registry requires no infrastructure (no in-cluster registry, no build daemons), it only needs:
 
 ```yaml
 # charts/kubeopencode/values.yaml (additions)
 registry:
   enabled: false          # Set to true to enable Registry CRD reconciler
-  build:
-    kaniko:
-      image: cgr.dev/chainguard/kaniko:latest
 ```
 
 When `registry.enabled: false` (default), the Registry reconciler is not started. No additional Deployments, PVCs, or Services are created. KubeOpenCode works exactly as today.
 
-When `registry.enabled: true`, the only new component is the Registry reconciler running inside the existing Controller process. Build Jobs are created on-demand and cleaned up automatically.
+When `registry.enabled: true`, the only new component is the Registry reconciler running inside the existing Controller process. No additional Pods, Jobs, or infrastructure are created.
 
 ### Architecture
 
@@ -420,13 +341,13 @@ KubeOpenCode Helm Chart (kubeopencode-system namespace)
 
 No additional infrastructure components required.
 
-Registry Controller actions:
-  Images:  create Kaniko Job ──build──→ push to external registry
-  Skills:  go-git ls-remote ──check──→ update status
-  Plugins: HTTP GET npm registry API ──check──→ update status
+Registry Controller actions (all in-process, no external Jobs):
+  Images:  HEAD manifest check ──validate──→ update status
+  Skills:  go-git ls-remote    ──check────→ update status
+  Plugins: HTTP GET npm API    ──check────→ update status
 ```
 
-**Note**: No in-cluster registry (Zot), no persistent build daemon (BuildKit), no npm registry (Verdaccio) is deployed. The Registry is a pure CRD + Controller feature with zero infrastructure dependencies.
+**Note**: No in-cluster registry (Zot), no build daemon (Kaniko/BuildKit), no npm registry (Verdaccio) is deployed. The Registry is a pure CRD + Controller feature with zero infrastructure dependencies. Image building is handled externally (CI/CD, dedicated build controller, or manual `docker push`).
 
 ### API Definition
 
@@ -456,21 +377,14 @@ type RegistryList struct {
 
 type RegistrySpec struct {
     // CheckInterval defines how often the controller re-validates
-    // skill and plugin availability.
+    // asset availability (images, skills, plugins).
     // If not specified, the controller defaults to 10 minutes.
     // +optional
     CheckInterval *metav1.Duration `json:"checkInterval,omitempty"`
 
-    // ImageRegistry configures the external container registry for built images.
-    // Required if spec.images is non-empty.
-    // +optional
-    ImageRegistry *ImageRegistryConfig `json:"imageRegistry,omitempty"`
-
-    // Build configures Kaniko build Job defaults.
-    // +optional
-    Build *BuildConfig `json:"build,omitempty"`
-
-    // Images defines container images to build and push.
+    // Images defines executor image references available for agent assembly.
+    // Each entry references a pre-built container image in an external registry.
+    // The Registry does not build images — it only indexes and validates them.
     Images []RegistryImage `json:"images,omitempty"`
     // Skills defines skill references (reuses existing SkillSource types).
     Skills []RegistrySkill `json:"skills,omitempty"`
@@ -478,18 +392,59 @@ type RegistrySpec struct {
     Plugins []RegistryPlugin `json:"plugins,omitempty"`
 }
 
-// ImageRegistryConfig configures the external container registry for pushing built images.
-type ImageRegistryConfig struct {
-    // Prefix is the default registry/repository prefix for built images.
-    // Images without an explicit Target will be pushed to {Prefix}/{ImageName}:{tag}.
-    // Example: "harbor.company.com/kubeopencode", "gcr.io/my-project/agents"
+// RegistryImage defines a reference to a pre-built container image.
+// The image must already exist in an external container registry.
+// The Registry controller validates that the image is reachable and records its digest.
+type RegistryImage struct {
+    // Name is a unique identifier for this image within the Registry.
     // +required
-    Prefix string `json:"prefix"`
-
-    // SecretRef references a Secret containing registry push credentials.
+    // +kubebuilder:validation:MinLength=1
+    // +kubebuilder:validation:MaxLength=63
+    // +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+    Name string `json:"name"`
+    // Image is the full container image reference (e.g., "harbor.company.com/team/go-dev:1.23").
+    // Must include registry, repository, and tag or digest.
+    // +required
+    Image string `json:"image"`
+    // SecretRef references a Secret containing registry credentials for private images.
     // The Secret must be of type kubernetes.io/dockerconfigjson.
-    // +required
-    SecretRef RegistrySecretReference `json:"secretRef"`
+    // Used by the controller for image existence validation (HEAD manifest check).
+    // +optional
+    SecretRef *RegistrySecretReference `json:"secretRef,omitempty"`
+    // Metadata provides human-readable information for the UI,
+    // helping users choose the right executor image for their use case.
+    // +optional
+    Metadata ImageMetadata `json:"metadata,omitempty"`
+}
+
+// ImageMetadata provides rich descriptive information for executor images.
+// This metadata helps users browse and select the right image in the Visual Assembler UI.
+type ImageMetadata struct {
+    // Description is a human-readable summary of what this image provides.
+    // Example: "Go 1.23 development environment with LSP support and debugging tools"
+    // +optional
+    Description string `json:"description,omitempty"`
+    // Category classifies the image for filtering in the UI.
+    // Examples: "backend", "frontend", "data-science", "devops", "general"
+    // +optional
+    Category string `json:"category,omitempty"`
+    // Tags are searchable labels for discovery.
+    // Examples: ["golang", "backend", "grpc"]
+    // +optional
+    Tags []string `json:"tags,omitempty"`
+    // Tools lists the key tools/binaries available in the image.
+    // Displayed in the UI to help users understand what the image provides.
+    // Examples: ["go", "gopls", "delve", "golangci-lint"]
+    // +optional
+    Tools []string `json:"tools,omitempty"`
+    // BaseImage indicates the base OS/runtime image (informational).
+    // Example: "ubuntu:24.04", "nvidia/cuda:12.4-runtime-ubuntu24.04"
+    // +optional
+    BaseImage string `json:"baseImage,omitempty"`
+    // Maintainer is the contact for this image (informational).
+    // Example: "platform-team@company.com"
+    // +optional
+    Maintainer string `json:"maintainer,omitempty"`
 }
 
 // RegistrySecretReference references a Secret for container registry authentication.
@@ -502,71 +457,6 @@ type RegistrySecretReference struct {
     // Name of the Secret containing registry credentials.
     // +required
     Name string `json:"name"`
-}
-
-// BuildConfig defines defaults for Kaniko build Jobs.
-type BuildConfig struct {
-    // Resources specifies compute resources for build Jobs.
-    // Builds (e.g., compiling Go, installing PyTorch) can be resource-intensive.
-    // If not set, no resource limits are applied (inherits namespace defaults).
-    // +optional
-    Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-
-    // RetryLimit is the number of retries on build failure. Defaults to 2.
-    // +optional
-    // +kubebuilder:default=2
-    // +kubebuilder:validation:Minimum=0
-    // +kubebuilder:validation:Maximum=10
-    RetryLimit *int32 `json:"retryLimit,omitempty"`
-
-    // TTLSecondsAfterFinished defines how long completed/failed build Jobs
-    // are retained before cleanup. Defaults to 3600 (1 hour).
-    // +optional
-    // +kubebuilder:default=3600
-    // +kubebuilder:validation:Minimum=0
-    TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
-}
-
-// RegistryImage defines a container image to build from a Dockerfile.
-type RegistryImage struct {
-    // Name is a unique identifier for this image within the Registry.
-    // +required
-    // +kubebuilder:validation:MinLength=1
-    // +kubebuilder:validation:MaxLength=63
-    // +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
-    Name string `json:"name"`
-    // Dockerfile specifies how to build the image.
-    Dockerfile DockerfileBuild `json:"dockerfile"`
-    // Target overrides imageRegistry.prefix for this image.
-    // If set, the image is pushed to this exact reference (minus tag/digest).
-    // Example: "harbor.company.com/team-alpha/go-dev"
-    // +optional
-    Target string `json:"target,omitempty"`
-    // Metadata provides human-readable information for the UI.
-    // +optional
-    Metadata AssetMetadata `json:"metadata,omitempty"`
-}
-
-// +kubebuilder:validation:XValidation:rule="has(self.context) || has(self.inline)",message="either context or inline must be specified"
-// +kubebuilder:validation:XValidation:rule="!(has(self.context) && has(self.inline))",message="context and inline are mutually exclusive"
-type DockerfileBuild struct {
-    // Context is a Git repository URL containing the Dockerfile.
-    // Mutually exclusive with Inline.
-    // +optional
-    Context string `json:"context,omitempty"`
-    // Path is the Dockerfile path within the context. Defaults to "Dockerfile".
-    // +optional
-    Path string `json:"path,omitempty"`
-    // Ref is the Git ref to checkout. Defaults to "HEAD".
-    // +optional
-    Ref string `json:"ref,omitempty"`
-    // Inline is an inline Dockerfile content. Mutually exclusive with Context.
-    // +optional
-    Inline string `json:"inline,omitempty"`
-    // SecretRef references a Secret for Git credentials (used when Context is a private repo).
-    // Reuses the existing GitSecretReference type.
-    // +optional
-    SecretRef *GitSecretReference `json:"secretRef,omitempty"`
 }
 
 // RegistrySkill wraps SkillSource with catalog metadata.
@@ -601,12 +491,10 @@ type RegistryPlugin struct {
     Metadata AssetMetadata `json:"metadata,omitempty"`
 }
 
-// AssetMetadata provides human-readable information for UI display.
+// AssetMetadata provides human-readable information for UI display (skills and plugins).
 type AssetMetadata struct {
     Description string   `json:"description,omitempty"`
     Tags        []string `json:"tags,omitempty"`
-    // Tools lists tools available in an image (only meaningful for images).
-    Tools []string `json:"tools,omitempty"`
     // RequiredCredentials lists env vars that must be set (only meaningful for plugins).
     RequiredCredentials []CredentialRequirement `json:"requiredCredentials,omitempty"`
 }
@@ -616,18 +504,7 @@ type CredentialRequirement struct {
     Description string `json:"description,omitempty"`
 }
 
-// ImagePhase represents the build lifecycle phase of a Registry image.
-// +kubebuilder:validation:Enum=Pending;Building;Ready;Failed
-type ImagePhase string
-
-const (
-    ImagePhasePending  ImagePhase = "Pending"
-    ImagePhaseBuilding ImagePhase = "Building"
-    ImagePhaseReady    ImagePhase = "Ready"
-    ImagePhaseFailed   ImagePhase = "Failed"
-)
-
-// AssetPhase represents the availability status of a skill or plugin.
+// AssetPhase represents the availability status of a registry asset.
 // +kubebuilder:validation:Enum=Ready;Unavailable
 type AssetPhase string
 
@@ -647,13 +524,12 @@ type RegistryStatus struct {
 }
 
 type ImageStatus struct {
-    Name         string       `json:"name"`
-    Phase        ImagePhase   `json:"phase"`             // Pending | Building | Ready | Failed
-    Image        string       `json:"image,omitempty"`   // Full image reference with digest
-    Digest       string       `json:"digest,omitempty"`
-    BuildJobName string       `json:"buildJobName,omitempty"`
-    BuildTime    *metav1.Time `json:"buildTime,omitempty"`
-    Message      string       `json:"message,omitempty"`
+    Name        string       `json:"name"`
+    Phase       AssetPhase   `json:"phase"`             // Ready | Unavailable
+    Image       string       `json:"image,omitempty"`   // Full image reference
+    Digest      string       `json:"digest,omitempty"`  // Resolved digest from registry
+    LastChecked *metav1.Time `json:"lastChecked,omitempty"`
+    Message     string       `json:"message,omitempty"`
 }
 
 type SkillStatus struct {
@@ -683,28 +559,40 @@ type StatusSummary struct {
 
 ### Key Design Decisions
 
-#### 1. Registry as Catalog, Not Storage
+#### 1. Registry as Catalog, Not Storage or Builder
 
-**Decision**: The Registry CRD is a catalog/index. It never stores assets. Skills stay in Git, plugins stay in npm, images are pushed to an external registry provided by the user.
+**Decision**: The Registry CRD is a pure catalog/index. It never stores or builds assets. Skills stay in Git, plugins stay in npm, images stay in the user's container registry. The Registry only references and validates them.
 
 **Rationale**:
 - Skills are SKILL.md files — Git is the natural home. No benefit from repackaging as OCI artifacts.
 - Plugins are npm packages — the npm ecosystem already handles versioning, distribution, and caching.
-- Images are pushed to the user's existing container registry — enterprises already run Harbor, Nexus, ACR, ECR, or GHCR. Adding an in-cluster registry (Zot) creates operational burden with no unique value.
+- Images already exist in the user's container registry — enterprises already run Harbor, Nexus, ACR, ECR, or GHCR.
+- Building images is a separate concern (CI/CD, GitOps, or a dedicated build controller). Mixing build and catalog responsibilities creates unnecessary complexity.
 - Reusing existing types (`GitSkillSource`, `PluginSpec`) means zero migration — all existing Agent/AgentTemplate configurations work unchanged.
 
-#### 2. External Registry, Not In-Cluster Zot
+#### 2. No Image Building in Registry
 
-**Decision**: Built images are pushed to an external container registry. KubeOpenCode does not deploy an in-cluster registry.
+**Decision**: The Registry does not build images. It only references pre-built images. Image building is delegated to external systems (CI/CD pipelines, a future dedicated build controller, or manual `docker build && docker push`).
 
 **Rationale**:
-- Enterprises already have container registries with access control, audit logging, vulnerability scanning, and HA.
-- An in-cluster Zot would require managing: PVC storage, garbage collection, TLS, access control, backup/restore, and high availability.
-- Zot's namespace-scoped paths (`zot:5000/{namespace}/...`) are a naming convention, not an authorization boundary — no multi-tenant isolation without additional configuration.
-- The "index only, never store" principle is applied consistently across all three asset types.
-- Users who lack a container registry likely also don't need custom image builds — the default devbox image suffices.
+- Separation of concerns: catalog (discovery) vs. build (construction) are fundamentally different responsibilities
+- Build infrastructure (Kaniko Jobs, build context management, retry logic, credential mounting for push) adds significant controller complexity
+- Enterprise teams already have CI/CD pipelines that build and push images
+- A future dedicated build CRD/controller can handle image building if needed, without polluting the Registry's clean catalog semantics
+- Keeping Registry simple makes it faster to implement and easier to maintain
 
-#### 3. AgentTemplate as Assembly Output
+#### 3. Rich Image Metadata for User Selection
+
+**Decision**: Executor images include rich metadata (description, category, tags, tools, baseImage, maintainer) beyond what skills and plugins need.
+
+**Rationale**:
+- Choosing an executor image is the most impactful decision when assembling an agent — it determines the entire development environment
+- Users need to understand what tools are available, what language runtimes are installed, and what the image is designed for
+- Category-based filtering (backend, frontend, data-science, devops) enables quick narrowing in the UI
+- Tool lists help users verify that required tooling is available before selecting
+- BaseImage and maintainer provide traceability for enterprise governance
+
+#### 4. AgentTemplate as Assembly Output
 
 **Decision**: The Visual Assembler generates AgentTemplate YAML. No "recipe" or intermediate abstraction.
 
@@ -713,7 +601,7 @@ type StatusSummary struct {
 - Generated YAML is self-contained and auditable
 - Teams can share via `kubectl`, Git, or GitOps workflows
 
-#### 4. Namespace-Scoped Registry CRD
+#### 5. Namespace-Scoped Registry CRD
 
 **Decision**: Registry is namespace-scoped. Each team/namespace can have its own Registry.
 
@@ -722,131 +610,115 @@ type StatusSummary struct {
 - RBAC naturally scoped — standard Kubernetes namespace permissions apply
 - Multiple Registries per namespace are allowed (e.g., `team-alpha-dev`, `team-alpha-prod`)
 
-**Cross-Registry image name conflicts**: Two Registries in the same namespace could define images with the same name but different targets. Since images are pushed to external registries at user-specified paths, there is no storage-level conflict. However, if both use the same `imageRegistry.prefix` and same image name, the last build wins. The controller does **not** enforce cross-Registry uniqueness — this is by design, as each Registry is an independent catalog.
+**Cross-Registry image name conflicts**: Two Registries in the same namespace could define images with the same name but different references. Since images are just references to external registries, there is no storage-level conflict. The controller does **not** enforce cross-Registry uniqueness — this is by design, as each Registry is an independent catalog.
 
-#### 5. Status-Driven UI
+#### 6. Status-Driven UI
 
 **Decision**: The Registry controller actively checks asset availability and surfaces status. The UI shows ready/unavailable indicators.
 
 **Rationale**:
 - Users see immediately which assets are usable vs. broken
-- Build failures are surfaced before they affect Agent deployment
+- Missing images are discovered at catalog time, not at Agent deployment time
 - Git credential issues are caught at catalog time, not at Task runtime
-- Periodic re-checks keep status fresh (stale Git refs, yanked npm packages)
+- Periodic re-checks keep status fresh (deleted images, stale Git refs, yanked npm packages)
 
-#### 6. In-Process Status Checks
+#### 7. In-Process Status Checks
 
-**Decision**: Skill and plugin status checks run in the Controller process using Go libraries (`go-git` for Git, HTTP client for npm registry API). No external binaries or temporary Jobs.
+**Decision**: All status checks (images, skills, plugins) run in the Controller process using Go libraries. No external binaries or temporary Jobs.
 
 **Rationale**:
 - `go-git` is battle-tested in the Kubernetes ecosystem (Flux CD, Argo CD)
 - npm registry API is a simple JSON REST endpoint (`GET https://registry.npmjs.org/{package}`)
-- Controller image stays minimal — no `git` or `npm` binaries needed
+- Container registry manifest check uses `go-containerregistry` (crane) — a `HEAD` request to the manifest API
+- Controller image stays minimal — no `git`, `npm`, or `crane` binaries needed
 - Goroutines with context timeouts prevent blocking the reconcile loop
 - Creating temporary Pods for periodic checks would be excessive (scheduling overhead every 10 minutes per asset)
 
-#### 7. Kaniko as Build Engine
-
-**Decision**: Kaniko is the only supported build engine. BuildKit is not offered as an alternative.
-
-**Rationale**:
-- PSS Restricted compatibility is a hard requirement for enterprise clusters
-- Offering two engines adds testing and documentation burden with marginal benefit
-- Multi-arch builds (BuildKit's advantage) can be handled externally via CI/CD pipelines
-- The Chainguard fork of Kaniko is actively maintained
-
 ### Supersedes ADR 0015
 
-ADR 0015 proposed embedding builds in the Agent controller via `Agent.spec.build`. This ADR takes a different approach: builds are managed through the **Registry CRD**, decoupled from Agent lifecycle.
+ADR 0015 proposed embedding builds in the Agent controller via `Agent.spec.build`. This ADR takes a fundamentally different approach: the Registry is a pure catalog with no build capability.
 
 | Aspect | ADR 0015 | ADR 0036 (this) |
 |--------|----------|----------------|
-| Build trigger | `Agent.spec.build` | `Registry.spec.images[].dockerfile` |
-| Build engine | BuildKit only | Kaniko (PSS Restricted compatible) |
+| Image handling | Build from Dockerfile | Reference pre-built images |
+| Build engine | BuildKit | None (out of scope) |
 | Image storage | In-cluster registry | External registry (user-provided) |
-| Image lifecycle | Tied to Agent | Independent — build once, reference in many Agents |
+| Image lifecycle | Tied to Agent | Independent — reference in many Agents |
 | Skill/Plugin management | Not addressed | Registry catalog with status checks |
 | User experience | YAML-only | UI with CRUD + visual assembler |
-| Infrastructure deps | BuildKit daemon + in-cluster registry | None (Kaniko Jobs are ephemeral) |
+| Infrastructure deps | BuildKit daemon + in-cluster registry | None |
 
 ## Implementation Plan
 
 ### Phase 1: Registry CRD + Controller + CLI
 
-**Goal**: Registry CRD with status checks for skills and plugins. No image building yet.
+**Goal**: Registry CRD with status checks for all asset types (images, skills, plugins).
 
 1. **API**: Add `Registry` and `RegistryList` CRDs to `api/v1alpha1/`
-2. **Controller**: `registry_controller.go` — reconcile skill/plugin status checks (go-git + npm HTTP)
+2. **Controller**: `registry_controller.go` — reconcile status checks:
+   - Images: `go-containerregistry` manifest HEAD check
+   - Skills: `go-git` ls-remote
+   - Plugins: npm registry HTTP GET
 3. **CLI**: `kubeoc registry list`, `kubeoc registry show <name>`
 4. **RBAC**: Update Helm ClusterRoles (controller, server, web-user)
 5. **Tests**: Unit + integration tests
 6. **Documentation**: Architecture docs, YAML examples
 
-### Phase 2: Image Building
-
-**Goal**: In-cluster image building from Dockerfiles, pushing to external registries.
-
-1. **Build orchestration**: Controller creates Kaniko Jobs with `--destination` pointing to external registry
-2. **Credential mounting**: `imageRegistry.secretRef` mounted as `/kaniko/.docker/config.json`
-3. **Job lifecycle**: ownerReferences, TTL cleanup, retry logic, in-flight cancellation
-4. **Build log streaming**: Server API for real-time build logs
-5. **CLI**: `kubeoc registry build <name>`, `kubeoc registry logs <name>`
-
-### Phase 3: UI + Visual Assembler
+### Phase 2: UI + Visual Assembler
 
 **Goal**: Web UI for asset management and agent assembly.
 
 1. **Registry pages**: CRUD for images, skills, plugins with status indicators
-2. **Build UI**: Upload Dockerfile → see build logs → success/fail
+2. **Image browser**: Category filtering, tool search, rich metadata display
 3. **Assembler**: Pick components → generate AgentTemplate YAML → copy button
 4. **Server API**: REST endpoints for Registry CRUD + assembly
 
-### Phase 4: Enterprise Features
+### Phase 3: Enterprise Features
 
-1. **Supply chain security** — Cosign signing for built images
-2. **Audit trail** — Track asset changes
-3. **Scheduled rebuilds** — Cron-based rebuild for security patches
-4. **Multi-cluster** — Registry replication across clusters
-5. **Observability** — Prometheus metrics for build duration, failure rate, status check latency
+1. **Audit trail** — Track asset changes
+2. **Multi-cluster** — Registry replication across clusters
+3. **Observability** — Prometheus metrics for status check latency, asset counts
+4. **Image policy** — Allowlist/denylist for image registries or tags
 
 ## Consequences
 
 ### Positive
 
-1. **Zero infrastructure dependencies** — No in-cluster registry, no persistent daemons. Registry is a pure CRD + Controller feature. Build Jobs are ephemeral.
-2. **Consistent "index only" design** — All three asset types (skills, plugins, images) follow the same pattern: catalog references, never store.
+1. **Zero infrastructure dependencies** — No in-cluster registry, no build daemons, no Jobs. Registry is a pure CRD + Controller feature.
+2. **Consistent "index only" design** — All three asset types (skills, plugins, images) follow the same pattern: catalog references, never store, never build.
 3. **Enterprise-friendly** — Works with existing container registries (Harbor, ACR, ECR, GHCR). No new infrastructure to manage.
 4. **Zero migration** — Existing `SkillSource` and `PluginSpec` types are reused as-is. No changes to Agent or AgentTemplate CRDs.
-5. **Status visibility** — Controller actively checks asset health. Users know immediately if a Git repo is unreachable or an npm package is missing.
+5. **Status visibility** — Controller actively checks asset health. Users know immediately if an image is missing, a Git repo is unreachable, or an npm package is gone.
 6. **Namespace-scoped governance** — Teams manage their own catalogs. Standard Kubernetes RBAC applies.
-7. **Visual assembly** — UI lowers the barrier to creating well-configured Agents.
+7. **Visual assembly** — UI lowers the barrier to creating well-configured Agents. Rich image metadata helps users choose the right executor environment.
 8. **Single Helm chart** — Enable with `--set registry.enabled=true`. No separate install, no additional Deployments.
-9. **PSS Restricted compatible** — Kaniko build engine works in strict security environments.
+9. **Simple controller** — No build orchestration, no Job management, no retry logic. Controller only performs lightweight status checks.
+10. **Clean separation of concerns** — Build responsibility is explicitly out of scope. A future build controller can be added independently without modifying Registry.
 
 ### Negative
 
-1. **Requires external registry** — Users who want image builds must provide a container registry with push credentials. No "zero config" image building experience.
-2. **Status checks are best-effort** — `git ls-remote` and npm API calls can fail for transient reasons. Status may flicker.
+1. **No integrated build experience** — Users must build and push images externally before referencing them in the Registry. No "upload Dockerfile and build" workflow.
+2. **Status checks are best-effort** — `git ls-remote`, npm API calls, and registry manifest checks can fail for transient reasons. Status may flicker.
 3. **No air-gap story for plugins** — Without an in-cluster npm registry, air-gapped clusters need an externally managed npm mirror. This is explicitly out of scope.
 4. **New CRD** — Adds a new resource type that teams need to learn.
 5. **Configuration drift** — Changes to Registry (e.g., updated Git URL for a skill) do not automatically propagate to previously generated AgentTemplates. Users must re-generate.
-6. **No multi-arch builds** — Kaniko does not support multi-arch. Mixed ARM/x86 clusters need external CI/CD for multi-arch images.
+6. **Image metadata is manual** — Description, tools, category must be manually maintained by the user. There is no automatic introspection of image contents.
 
 ### Risks
 
 | Risk | Mitigation |
 |------|------------|
-| UI development takes too long | Phase 1-2 deliver value via CLI and CRD before UI is ready |
-| Chainguard Kaniko fork abandoned | Track [chainguard-forks/kaniko](https://github.com/chainguard-forks/kaniko) and [osscontainertools/kaniko](https://github.com/osscontainertools/kaniko); low risk given active maintenance |
+| UI development takes too long | Phase 1 delivers value via CLI and CRD before UI is ready |
 | Git credential issues in status checks | Use `go-git` shallow ls-remote (no clone); clear error messages in status |
 | Registry status becomes stale | Configurable `checkInterval`; manual trigger via annotation |
-| Build Jobs consume excessive resources | `spec.build.resources` allows setting limits; namespace ResourceQuotas also apply |
+| Image metadata becomes outdated | Metadata is informational — incorrect metadata does not affect agent functionality; UI can highlight `lastChecked` timestamps |
+| Users want integrated build | Document recommended CI/CD patterns; consider a future dedicated build CRD |
 
 ## Alternatives Considered
 
 ### Alternative 1: In-Cluster Zot Registry
 
-Deploy Zot as an in-cluster OCI registry for storing built images.
+Deploy Zot as an in-cluster OCI registry for storing images.
 
 **Rejected because:**
 - Introduces significant operational burden: PVC storage management, garbage collection, TLS, HA, backup/restore
@@ -903,32 +775,30 @@ Deploy Registry as an independent Helm chart.
 - Version compatibility concerns
 - Community convention favors single charts with feature flags
 
-### Alternative 7: Shipwright + Tekton for Builds
+### Alternative 7: Build Images in Registry Controller (Kaniko)
+
+Include Kaniko-based image building in the Registry controller itself.
+
+**Rejected (descoped) because:**
+- Mixes catalog and build responsibilities — violates separation of concerns
+- Build orchestration (Job lifecycle, retry logic, in-flight cancellation, credential mounting) adds significant controller complexity
+- Enterprise teams already have CI/CD pipelines for image building
+- A dedicated build controller can be added later as a separate CRD without polluting Registry semantics
+- Keeping Registry as a pure catalog makes it simpler to implement, test, and maintain
+
+### Alternative 8: Shipwright + Tekton for Builds
 
 Use Shipwright CRDs for build lifecycle management.
 
 **Rejected because:**
-- Over-engineering for our simple requirement (Dockerfile → build → push)
+- Over-engineering for our use case
 - Two additional operator dependencies
-- Fewer moving parts = easier to maintain
-
-### Alternative 8: BuildKit as Alternative Build Engine
-
-Offer BuildKit alongside Kaniko as an optional build engine.
-
-**Rejected because:**
-- BuildKit requires `allowPrivilegeEscalation: true`, incompatible with PSS Restricted
-- Supporting two engines doubles testing and documentation effort
-- Multi-arch (BuildKit's main advantage over Kaniko) can be handled by external CI/CD
-- Single engine simplifies troubleshooting
+- Build is out of scope for Registry — if needed, a simpler dedicated build CRD is preferred
 
 ## References
 
-- [Kaniko](https://github.com/GoogleContainerTools/kaniko) — Userspace container image builder (archived)
-- [Chainguard Kaniko Fork](https://github.com/chainguard-forks/kaniko) — Actively maintained fork
-- [BuildKit](https://github.com/moby/buildkit) — Container image builder (requires privilege escalation)
+- [go-containerregistry](https://github.com/google/go-containerregistry) — Go library for interacting with container registries
 - [go-git](https://github.com/go-git/go-git) — Pure Go Git implementation
 - [ADR 0015](archived/0015-repo-as-agent-dynamic-image-building.md) — Dynamic image building (superseded)
 - [ADR 0026](0026-skills.md) — Skills as a top-level Agent field
 - [ADR 0034](0034-plugin-support-and-slack-integration.md) — Plugin support
-- [Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/) — PSS Restricted profile

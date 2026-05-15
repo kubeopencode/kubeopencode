@@ -230,6 +230,14 @@ var _ = AfterSuite(func() {
 		}
 	}
 
+	// Delete all Registries in test namespace
+	registries := &kubeopenv1alpha1.RegistryList{}
+	if err := k8sClient.List(ctx, registries, client.InNamespace(testNS)); err == nil {
+		for _, r := range registries.Items {
+			_ = k8sClient.Delete(ctx, &r)
+		}
+	}
+
 	// Wait for resources to be cleaned up
 	time.Sleep(5 * time.Second)
 

@@ -8,10 +8,11 @@ import {
   mockAgentTemplates,
   mockCronTasks,
   mockCronTaskHistory,
+  mockRegistries,
   mockConfig,
   paginateList,
 } from './data';
-import type { Task, Agent, AgentTemplate, CronTask } from '../api/client';
+import type { Task, Agent, AgentTemplate, CronTask, Registry } from '../api/client';
 
 const API_BASE = '/api/v1';
 
@@ -99,6 +100,15 @@ function buildTemplateListResponse(templates: AgentTemplate[], url: URL) {
   filtered = sortByCreatedAt(filtered, params.sortOrder);
   const { items, pagination } = paginateList(filtered, params.limit, params.offset);
   return { templates: items, total: filtered.length, pagination };
+}
+
+function buildRegistryListResponse(registries: Registry[], url: URL) {
+  const params = parseListParams(url);
+  let filtered = filterByName(registries, params.name);
+  filtered = filterByLabels(filtered, params.labelSelector);
+  filtered = sortByCreatedAt(filtered, params.sortOrder);
+  const { items, pagination } = paginateList(filtered, params.limit, params.offset);
+  return { registries: items, total: filtered.length, pagination };
 }
 
 export const handlers = [
@@ -544,5 +554,73 @@ export const handlers = [
       );
     }
     return HttpResponse.json(template);
+  }),
+
+  // === Registries ===
+  http.get(`${API_BASE}/registries`, ({ request }) => {
+    const url = new URL(request.url);
+    return HttpResponse.json(buildRegistryListResponse(mockRegistries, url));
+  }),
+
+  http.get(`${API_BASE}/namespaces/:namespace/registries`, ({ params, request }) => {
+    const url = new URL(request.url);
+    const filtered = filterByNamespace(mockRegistries, params.namespace as string);
+    return HttpResponse.json(buildRegistryListResponse(filtered, url));
+  }),
+
+  http.get(`${API_BASE}/namespaces/:namespace/registries/:name`, ({ params, request }) => {
+    const { namespace, name } = params;
+    const url = new URL(request.url);
+    const registry = mockRegistries.find((r) => r.namespace === namespace && r.name === name);
+    if (!registry) {
+      return HttpResponse.json({ error: 'registry not found' }, { status: 404 });
+    }
+    if (url.searchParams.get('output') === 'yaml') {
+      return new HttpResponse(
+        `apiVersion: kubeopencode.io/v1alpha1\nkind: Registry\nmetadata:\n  name: ${name}\n  namespace: ${namespace}\nspec:\n  images:\n  - name: example\n    image: ghcr.io/kubeopencode/example:latest`,
+        { headers: { 'Content-Type': 'text/plain' } },
+      );
+    }
+    return HttpResponse.json(registry);
+  }),
+
+  http.post(`${API_BASE}/namespaces/:namespace/registries`, async ({ params, request }) => {
+    const { namespace } = params;
+    const body = await request.json() as Record<string, unknown>;
+    const newRegistry: Registry = {
+      name: (body.name as string) || `registry-${Date.now()}`,
+      namespace: namespace as string,
+      images: [],
+      skills: [],
+      plugins: [],
+      summary: {
+        images: 0,
+        skills: 0,
+        plugins: 0,
+        readyCount: 0,
+        totalCount: 0,
+      },
+      createdAt: new Date().toISOString(),
+    };
+    return HttpResponse.json(newRegistry, { status: 201 });
+  }),
+
+  http.delete(`${API_BASE}/namespaces/:namespace/registries/:name`, ({ params }) => {
+    const { namespace, name } = params;
+    const registry = mockRegistries.find((r) => r.namespace === namespace && r.name === name);
+    if (!registry) {
+      return HttpResponse.json({ error: 'registry not found' }, { status: 404 });
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.put(`${API_BASE}/namespaces/:namespace/registries/:name`, async ({ params, request }) => {
+    const { namespace, name } = params;
+    const registry = mockRegistries.find((r) => r.namespace === namespace && r.name === name);
+    if (!registry) {
+      return HttpResponse.json({ error: 'registry not found' }, { status: 404 });
+    }
+    const body = await request.text();
+    return new HttpResponse(body, { headers: { 'Content-Type': 'text/plain' } });
   }),
 ];
