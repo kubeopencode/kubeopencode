@@ -25,10 +25,14 @@ metadata:
     {{- include "kubeopencode.labels" . | nindent 4 }}
     app.kubernetes.io/component: web-user
 rules:
-# View tasks, crontasks, agents, and templates
+# View tasks, crontasks, agents, templates, and registries
 - apiGroups: ["kubeopencode.io"]
-  resources: ["tasks", "crontasks", "agents", "agenttemplates"]
+  resources: ["tasks", "crontasks", "agents", "agenttemplates", "registries"]
   verbs: ["get", "list", "watch"]
+# Manage registries (create, update, delete)
+- apiGroups: ["kubeopencode.io"]
+  resources: ["registries"]
+  verbs: ["create", "update", "delete"]
 # Create, stop, and delete tasks
 - apiGroups: ["kubeopencode.io"]
   resources: ["tasks"]

@@ -47,6 +47,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&AgentTemplateList{},
 		&KubeOpenCodeConfig{},
 		&KubeOpenCodeConfigList{},
+		&Registry{},
+		&RegistryList{},
 	)
 	metav1.AddToGroupVersion(scheme, GroupVersion)
 	return nil

@@ -1,0 +1,75 @@
+# Copyright Contributors to the KubeOpenCode project
+# Registry for local testing
+#
+# A Registry is a namespace-scoped catalog of agent assets — executor images,
+# skills, and plugins — that the Registry controller continuously validates.
+# This sample exercises all three asset types so the UI can render images,
+# skills, plugins, conditions, and summary counts in local-dev.
+#
+apiVersion: kubeopencode.io/v1alpha1
+kind: Registry
+metadata:
+  name: team-catalog
+spec:
+  # Re-validate asset availability every 5 minutes
+  checkInterval: 5m
+
+  # Executor images — public images used by the local-dev Agents
+  images:
+    - name: devbox
+      image: "ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest"
+      metadata:
+        description: "General-purpose development environment with Go, Node, Python, and common CLI tools"
+        category: executor
+        tags: [general, multi-language]
+        tools: [git, make, curl, jq, python, node, go]
+        baseImage: "ubuntu:22.04"
+        maintainer: "kubeopencode-team"
+    - name: opencode
+      image: "ghcr.io/kubeopencode/kubeopencode-agent-opencode:latest"
+      metadata:
+        description: "OpenCode AI coding agent init container"
+        category: agent
+        tags: [opencode]
+        maintainer: "kubeopencode-team"
+
+  # Skills — Git-hosted SKILL.md sources
+  skills:
+    - name: anthropic-skills
+      git:
+        repository: "https://github.com/anthropics/skills.git"
+        ref: main
+        path: skills/
+        names: [skill-creator, frontend-design, doc-coauthoring]
+      metadata:
+        description: "Anthropic-published reusable skills"
+        tags: [anthropic, general]
+    - name: kubeopencode-skills
+      git:
+        repository: "https://github.com/kubeopencode/skills.git"
+        ref: main
+        path: kubeopencode/skills/
+        names: [kubeoc]
+      metadata:
+        description: "KubeOpenCode-specific skills"
+        tags: [kubeopencode]
+
+  # Plugins — OpenCode plugins resolved via npm
+  plugins:
+    - name: slack-integration
+      plugin:
+        name: "@kubeopencode/opencode-slack-plugin@^1.0.0"
+        target: server
+      metadata:
+        description: "Slack bot integration for OpenCode notifications and commands"
+        tags: [slack, messaging]
+        requiredCredentials:
+          - env: SLACK_BOT_TOKEN
+            description: "Slack bot token used to post messages"
+    - name: otel-observability
+      plugin:
+        name: "opencode-plugin-otel@^0.5.0"
+        target: server
+      metadata:
+        description: "OpenTelemetry tracing and metrics for OpenCode"
+        tags: [observability, tracing]

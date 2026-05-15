@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useNamespace } from '../contexts/NamespaceContext';
 import Breadcrumbs from '../components/Breadcrumbs';
 import SearchableSelect from '../components/SearchableSelect';
+import RegistryAssemblerBanner from '../components/RegistryAssemblerBanner';
 
 function AgentTemplateCreatePage() {
   const navigate = useNavigate();
@@ -74,6 +75,8 @@ function AgentTemplateCreatePage() {
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-6">
+          <RegistryAssemblerBanner outputKind="template" />
+
           {/* Namespace */}
           {isAllNamespaces && namespaces.length > 0 && (
             <div>

@@ -5,6 +5,8 @@ package types
 
 import (
 	"time"
+
+	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
 )
 
 // ServerInfo represents server information
@@ -74,6 +76,10 @@ type CreateAgentRequest struct {
 	// P2: Advanced configuration
 	Port  *int32           `json:"port,omitempty"`
 	Proxy *ProxyConfigInfo `json:"proxy,omitempty"`
+
+	// Assembly: assets selected from a Registry catalog
+	Skills  []kubeopenv1alpha1.SkillSource `json:"skills,omitempty"`
+	Plugins []kubeopenv1alpha1.PluginSpec  `json:"plugins,omitempty"`
 }
 
 // CreatePersistenceConfig represents persistence settings in create request
@@ -393,6 +399,10 @@ type CreateAgentTemplateRequest struct {
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 	AgentImage         string `json:"agentImage,omitempty"`
 	ExecutorImage      string `json:"executorImage,omitempty"`
+
+	// Assembly: assets selected from a Registry catalog
+	Skills  []kubeopenv1alpha1.SkillSource `json:"skills,omitempty"`
+	Plugins []kubeopenv1alpha1.PluginSpec  `json:"plugins,omitempty"`
 }
 
 // ShareTokenResponse is returned by GET /agents/{name}/share with the actual token value
@@ -428,6 +438,89 @@ type ShareStatusInfo struct {
 	URL        string     `json:"url,omitempty"`
 	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
 	AllowedIPs []string   `json:"allowedIPs,omitempty"`
+}
+
+// RegistryResponse represents a Registry in API responses
+type RegistryResponse struct {
+	Name       string               `json:"name"`
+	Namespace  string               `json:"namespace"`
+	Images     []RegistryImageInfo  `json:"images,omitempty"`
+	Skills     []RegistrySkillInfo  `json:"skills,omitempty"`
+	Plugins    []RegistryPluginInfo `json:"plugins,omitempty"`
+	Summary    RegistrySummaryInfo  `json:"summary"`
+	CreatedAt  time.Time            `json:"createdAt"`
+	Labels     map[string]string    `json:"labels,omitempty"`
+	Conditions []Condition          `json:"conditions,omitempty"`
+}
+
+// RegistryImageInfo represents an image entry in a Registry response
+type RegistryImageInfo struct {
+	Name        string             `json:"name"`
+	Image       string             `json:"image"`
+	Phase       string             `json:"phase"`
+	Digest      string             `json:"digest,omitempty"`
+	LastChecked *time.Time         `json:"lastChecked,omitempty"`
+	Message     string             `json:"message,omitempty"`
+	Metadata    *ImageMetadataInfo `json:"metadata,omitempty"`
+}
+
+// ImageMetadataInfo represents image metadata in API responses
+type ImageMetadataInfo struct {
+	Description string   `json:"description,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Tools       []string `json:"tools,omitempty"`
+	BaseImage   string   `json:"baseImage,omitempty"`
+	Maintainer  string   `json:"maintainer,omitempty"`
+}
+
+// RegistrySkillInfo represents a skill entry in a Registry response
+type RegistrySkillInfo struct {
+	Name         string     `json:"name"`
+	Repository   string     `json:"repository,omitempty"`
+	Ref          string     `json:"ref,omitempty"`
+	Path         string     `json:"path,omitempty"`
+	Names        []string   `json:"names,omitempty"`
+	Phase        string     `json:"phase"`
+	LatestCommit string     `json:"latestCommit,omitempty"`
+	LastChecked  *time.Time `json:"lastChecked,omitempty"`
+	Message      string     `json:"message,omitempty"`
+	Description  string     `json:"description,omitempty"`
+	Tags         []string   `json:"tags,omitempty"`
+}
+
+// RegistryPluginInfo represents a plugin entry in a Registry response
+type RegistryPluginInfo struct {
+	Name            string     `json:"name"`
+	Package         string     `json:"package"`
+	Target          string     `json:"target,omitempty"`
+	Phase           string     `json:"phase"`
+	ResolvedVersion string     `json:"resolvedVersion,omitempty"`
+	LastChecked     *time.Time `json:"lastChecked,omitempty"`
+	Message         string     `json:"message,omitempty"`
+	Description     string     `json:"description,omitempty"`
+	Tags            []string   `json:"tags,omitempty"`
+}
+
+// RegistrySummaryInfo represents aggregate asset counts
+type RegistrySummaryInfo struct {
+	Images     int `json:"images"`
+	Skills     int `json:"skills"`
+	Plugins    int `json:"plugins"`
+	ReadyCount int `json:"readyCount"`
+	TotalCount int `json:"totalCount"`
+}
+
+// RegistryListResponse represents a list of Registries
+type RegistryListResponse struct {
+	Registries []RegistryResponse `json:"registries"`
+	Total      int                `json:"total"`
+	Pagination *Pagination        `json:"pagination,omitempty"`
+}
+
+// CreateRegistryRequest represents a request to create a Registry
+type CreateRegistryRequest struct {
+	Name string `json:"name"`
 }
 
 // ErrorResponse represents an error response

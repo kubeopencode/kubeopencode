@@ -409,6 +409,13 @@ func (h *AgentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if len(req.Skills) > 0 {
+		agent.Spec.Skills = req.Skills
+	}
+	if len(req.Plugins) > 0 {
+		agent.Spec.Plugins = req.Plugins
+	}
+
 	if err := k8sClient.Create(ctx, agent); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			writeError(w, http.StatusConflict, "Agent already exists", err.Error())

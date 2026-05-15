@@ -129,6 +129,18 @@ This section describes how to set up a local development environment using Kind 
 
 ### One-Command Setup (Recommended)
 
+> **CRITICAL — Verify your kubectl context first.** `make local-dev-setup` runs `helm upgrade` and `kubectl apply` against your **current** kubectl context. If your context points at any other cluster (e.g. `k3s-prod`, a remote staging cluster, or `kind-kubeopencode-e2e`), the setup will modify that cluster instead of the local Kind cluster. Symptoms include `ErrImageNeverPull` (because `:dev` images were loaded into the Kind node but the real target cluster has never seen them) and silent overwrites of unrelated deployments.
+>
+> Always run these two checks before `make local-dev-setup`:
+>
+> ```bash
+> kubectl config current-context
+> # Expected: kind-kubeopencode  (NOT k3s-prod, NOT kind-kubeopencode-e2e, NOT any remote cluster)
+>
+> # If the context is wrong, switch:
+> kubectl config use-context kind-kubeopencode
+> ```
+
 The fastest way to get a local environment running:
 
 ```bash

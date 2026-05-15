@@ -28,6 +28,7 @@ func newGetCmd() *cobra.Command {
 	cmd.AddCommand(newGetAgentTemplatesCmd())
 	cmd.AddCommand(newGetTasksCmd())
 	cmd.AddCommand(newGetCronTasksCmd())
+	cmd.AddCommand(newGetRegistriesCmd())
 	return cmd
 }
 
