@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -27,14 +28,18 @@ const (
 	envGitWorkspaceDir      = "GIT_WORKSPACE_DIR"
 	envGitRepoSubpath       = "GIT_REPO_SUBPATH"
 	envGitRecurseSubmodules = "GIT_RECURSE_SUBMODULES"
+	envGitCloneRetries      = "GIT_CLONE_RETRIES"
+	envGitCloneRetryDelay   = "GIT_CLONE_RETRY_DELAY"
 )
 
 // Default values for git-init
 const (
-	defaultRef   = "HEAD"
-	defaultDepth = 1
-	defaultRoot  = "/git"
-	defaultLink  = "repo"
+	defaultRef    = "HEAD"
+	defaultDepth  = 1
+	defaultRoot   = "/git"
+	defaultLink   = "repo"
+	defaultRetries = 3
+	defaultRetryDelay = 5 * time.Second
 )
 
 func init() {
@@ -51,6 +56,7 @@ It supports:
   - Branch/tag/commit reference
   - HTTPS authentication (username/password)
   - SSH authentication (private key)
+  - Automatic retry on transient failures (configurable)
 
 Environment variables:
   GIT_REPO            Repository URL (required)
@@ -62,7 +68,9 @@ Environment variables:
   GIT_PASSWORD        HTTPS password/token
   GIT_SSH_KEY             SSH private key (content or file path)
   GIT_SSH_KNOWN_HOSTS     Known hosts content for SSH verification
-  GIT_RECURSE_SUBMODULES  If "true", recursively clone submodules`,
+  GIT_RECURSE_SUBMODULES  If "true", recursively clone submodules
+  GIT_CLONE_RETRIES        Number of retry attempts for git clone, default: 3
+  GIT_CLONE_RETRY_DELAY    Delay between retry attempts (Go duration), default: 5s`,
 	RunE: runGitInit,
 }
 
@@ -152,13 +160,33 @@ func runGitInit(cmd *cobra.Command, args []string) error {
 
 		cloneArgs = append(cloneArgs, repo, targetDir)
 
-		// Execute git clone
-		cloneCmd := exec.Command("git", cloneArgs...) //nolint:gosec // args are constructed from controlled inputs
-		cloneCmd.Stdout = os.Stdout
-		cloneCmd.Stderr = os.Stderr
+		// Retry clone on transient failures (network/TLS errors)
+		retries := getEnvIntOrDefault(envGitCloneRetries, defaultRetries)
+		retryDelay := getEnvDurationOrDefault(envGitCloneRetryDelay, defaultRetryDelay)
 
-		if err := cloneCmd.Run(); err != nil {
-			return fmt.Errorf("git clone failed: %w", err)
+		var lastErr error
+		for attempt := 1; attempt <= retries; attempt++ {
+			if attempt > 1 {
+				fmt.Printf("git-init: Retry attempt %d/%d (waiting %v)...\n", attempt, retries, retryDelay)
+				time.Sleep(retryDelay)
+
+				// Clean up partial clone directory before retrying
+				os.RemoveAll(targetDir)
+			}
+
+			cloneCmd := exec.Command("git", cloneArgs...) //nolint:gosec // args are constructed from controlled inputs
+			cloneCmd.Stdout = os.Stdout
+			cloneCmd.Stderr = os.Stderr
+
+			lastErr = cloneCmd.Run()
+			if lastErr == nil {
+				break
+			}
+			fmt.Printf("git-init: Clone attempt %d/%d failed: %v\n", attempt, retries, lastErr)
+		}
+
+		if lastErr != nil {
+			return fmt.Errorf("git clone failed after %d attempts: %w", retries, lastErr)
 		}
 
 		// Verify clone was successful

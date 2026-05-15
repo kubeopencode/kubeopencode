@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"strconv"
+	"time"
 )
 
 // Common environment variable names shared across subcommands
@@ -37,6 +38,18 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
 			return intValue
+		}
+	}
+	return defaultValue
+}
+
+// getEnvDurationOrDefault returns the value of the environment variable specified by key
+// parsed as a Go duration string (e.g., "5s", "30s", "1m"), or defaultValue if the
+// environment variable is not set, empty, or not a valid duration.
+func getEnvDurationOrDefault(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if d, err := time.ParseDuration(value); err == nil {
+			return d
 		}
 	}
 	return defaultValue
