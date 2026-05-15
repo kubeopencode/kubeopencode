@@ -269,6 +269,14 @@ const (
 	// Uses "|| true" to gracefully handle read-only root filesystems.
 	OpenCodeSymlinkCmd = "ln -sf /tools/opencode /usr/local/bin/opencode 2>/dev/null || true"
 
+	// OpenCodeModelsWarmupCmd pre-warms the OpenCode models cache before running a task.
+	// On cold starts (no persistent disk cache), "opencode run" may fail with
+	// ProviderModelNotFoundError because the models catalog hasn't been loaded yet.
+	// Running "opencode models --refresh" first ensures the cache is populated.
+	// Uses "|| true" to gracefully handle cases where the model warmup fails
+	// (e.g. network issues) without blocking task execution.
+	OpenCodeModelsWarmupCmd = "/tools/opencode models --refresh 2>/dev/null || true"
+
 	// PluginsVolumeName is the name of the emptyDir volume for installed plugins.
 	PluginsVolumeName = "plugins-volume"
 
@@ -1348,10 +1356,12 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 				fmt.Sprintf(`%s; /tools/opencode run --attach %s --title %s "$(cat %s/task.md)"`, OpenCodeSymlinkCmd, serverURL, shellEscape(sessionTitle), cfg.workspaceDir),
 			}
 		} else {
-			// templateRef path: run standalone OpenCode instance
+			// templateRef path: run standalone OpenCode instance.
+			// Pre-warm the models cache to avoid ProviderModelNotFoundError on cold starts
+			// where no persistent disk cache exists (each Task Pod starts fresh).
 			agentCommand = []string{
 				"sh", "-c",
-				fmt.Sprintf(`%s; /tools/opencode run --title %s "$(cat %s/task.md)"`, OpenCodeSymlinkCmd, shellEscape(sessionTitle), cfg.workspaceDir),
+				fmt.Sprintf(`%s; %s; /tools/opencode run --title %s "$(cat %s/task.md)"`, OpenCodeSymlinkCmd, OpenCodeModelsWarmupCmd, shellEscape(sessionTitle), cfg.workspaceDir),
 			}
 		}
 	}
