@@ -88,8 +88,14 @@ func runTaskSubmit(cmd *cobra.Command, args []string) error {
 	fmt.Printf("[task-submit] session created: %s\n", sessionID)
 
 	// Step 2: Start SSE event streaming in background for logging
+	// Collect session errors from the event stream so we can report them
 	done := make(chan struct{})
-	go streamEvents(serverURL, sessionID, done)
+	streamDone := make(chan struct{})
+	sessionErrors := make(chan string, 16)
+	go func() {
+		streamEvents(serverURL, sessionID, done, sessionErrors)
+		close(streamDone)
+	}()
 
 	// Step 3: Submit the prompt
 	fmt.Println("[task-submit] submitting prompt...")
@@ -104,6 +110,27 @@ func runTaskSubmit(cmd *cobra.Command, args []string) error {
 	}
 
 	close(done)
+	// Wait for the SSE goroutine to finish so all errors are in the channel
+	<-streamDone
+
+	// Step 5: Check if any session errors occurred during execution.
+	// Session errors (e.g., ProviderModelNotFoundError) do not cause the status
+	// to become non-idle — the session transitions to "idle" after an error.
+	// We must check the error channel to detect these failures.
+	var errs []string
+collectErrors:
+	for {
+		select {
+		case e := <-sessionErrors:
+			errs = append(errs, e)
+		default:
+			break collectErrors
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("session completed with errors: %s", strings.Join(errs, "; "))
+	}
+
 	fmt.Println("[task-submit] session completed successfully")
 	return nil
 }
@@ -214,7 +241,8 @@ func waitForIdle(client *http.Client, serverURL, sessionID string) error {
 
 // streamEvents connects to the SSE endpoint and prints events for logging.
 // It does NOT handle permission.asked events — those are handled by the Web UI or TUI.
-func streamEvents(serverURL, sessionID string, done chan struct{}) {
+// Session errors are sent to sessionErrors channel for the caller to inspect after completion.
+func streamEvents(serverURL, sessionID string, done chan struct{}, sessionErrors chan<- string) {
 	// Use a client with no timeout for SSE
 	client := &http.Client{Timeout: 0}
 
@@ -280,6 +308,27 @@ func streamEvents(serverURL, sessionID string, done chan struct{}) {
 			if json.Unmarshal(event.Properties, &props) == nil && props.SessionID == sessionID {
 				fmt.Printf("\n[task-submit] WAITING FOR PERMISSION: %s (%s) — approve via Web UI or opencode attach\n",
 					props.Permission, strings.Join(props.Patterns, ", "))
+			}
+
+		case "session.error":
+			var props struct {
+				SessionID string `json:"sessionID"`
+				Error     struct {
+					Name    string `json:"name"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(event.Properties, &props) == nil && props.SessionID == sessionID {
+				errMsg := props.Error.Name
+				if props.Error.Message != "" {
+					errMsg = props.Error.Message
+				}
+				if errMsg != "" {
+					select {
+					case sessionErrors <- errMsg:
+					default:
+					}
+				}
 			}
 
 		case "session.status":

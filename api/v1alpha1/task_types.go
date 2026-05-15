@@ -23,8 +23,8 @@ const (
 	// This indicates the agent completed its work, not necessarily that the task "succeeded".
 	// The actual outcome should be determined by examining the agent's output.
 	TaskPhaseCompleted TaskPhase = "Completed"
-	// TaskPhaseFailed means the task had an infrastructure failure
-	// (e.g., Pod crashed, unable to schedule, missing Agent).
+	// TaskPhaseFailed means the task had a failure
+	// (e.g., Pod crashed, unable to schedule, missing Agent, or application error).
 	TaskPhaseFailed TaskPhase = "Failed"
 )
 
