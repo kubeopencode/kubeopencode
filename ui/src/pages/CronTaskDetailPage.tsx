@@ -56,6 +56,7 @@ function CronTaskDetailPage() {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteTaskName, setDeleteTaskName] = useState<string | null>(null);
 
   const hashTab = location.hash.replace('#', '') as CronTaskTabId;
   const initialTab: CronTaskTabId = ['overview', 'history', 'yaml'].includes(hashTab) ? hashTab : 'overview';
@@ -125,6 +126,23 @@ function CronTaskDetailPage() {
       addToast(`Failed to resume CronTask: ${err.message}`, 'error');
     },
   });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: (task: { namespace: string; name: string }) => api.deleteTask(task.namespace, task.name),
+    onSuccess: (_data, variables) => {
+      addToast(`Task "${variables.name}" deleted successfully`, 'success');
+      queryClient.invalidateQueries({ queryKey: ['crontask-history', namespace, name] });
+      queryClient.invalidateQueries({ queryKey: ['crontask', namespace, name] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: (err: Error) => {
+      addToast(`Failed to delete task: ${err.message}`, 'error');
+    },
+  });
+
+  const isAtRetainedLimit = cronTask && cronTask.maxRetainedTasks && cronTask.maxRetainedTasks > 0
+    ? (historyData?.total ?? historyData?.pagination?.totalCount ?? 0) >= cronTask.maxRetainedTasks
+    : false;
 
   if (isLoading) {
     return <DetailSkeleton />;
@@ -196,8 +214,13 @@ function CronTaskDetailPage() {
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => triggerMutation.mutate()}
-                disabled={triggerMutation.isPending}
-                className="px-3 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
+                disabled={triggerMutation.isPending || !!isAtRetainedLimit}
+                title={isAtRetainedLimit ? `Cannot trigger: max retained tasks (${cronTask.maxRetainedTasks}) reached. Delete old tasks first.` : 'Trigger a new task now'}
+                className={`px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
+                  isAtRetainedLimit
+                    ? 'text-stone-400 bg-stone-50 border-stone-200 cursor-not-allowed'
+                    : 'text-primary-700 bg-primary-50 border-primary-200 hover:bg-primary-100'
+                }`}
               >
                 {triggerMutation.isPending ? 'Triggering...' : 'Run Now'}
               </button>
@@ -375,7 +398,14 @@ function CronTaskDetailPage() {
                 {cronTask.maxRetainedTasks !== undefined && cronTask.maxRetainedTasks > 0 && (
                   <div>
                     <dt className="text-xs text-stone-400">Max Retained Tasks</dt>
-                    <dd className="mt-1 text-sm text-stone-800 font-mono">{cronTask.maxRetainedTasks}</dd>
+                    <dd className="mt-1 text-sm text-stone-800 font-mono">
+                      {historyData?.total ?? historyData?.pagination?.totalCount ?? 0}/{cronTask.maxRetainedTasks}
+                    </dd>
+                    {isAtRetainedLimit && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        Limit reached — delete old tasks or configure cleanup to free space
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -425,6 +455,23 @@ function CronTaskDetailPage() {
         {/* Execution History Tab */}
         {activeTab === 'history' && (
           <div>
+            {isAtRetainedLimit && (
+              <div className="mx-6 mt-4 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-amber-800">
+                    Max retained tasks limit reached ({cronTask.maxRetainedTasks})
+                  </p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    New tasks cannot be created. Delete old tasks or configure global cleanup (KubeOpenCodeConfig) to free space.
+                  </p>
+                </div>
+              </div>
+            )}
             {history.length === 0 ? (
               <div className="px-6 py-12 text-center text-stone-400 text-sm">
                 No executions yet.
@@ -444,6 +491,9 @@ function CronTaskDetailPage() {
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-display font-semibold text-stone-500 uppercase tracking-wider">
                       Created
+                    </th>
+                    <th className="px-5 py-3 text-right text-xs font-display font-semibold text-stone-500 uppercase tracking-wider">
+                      Actions
                     </th>
                   </tr>
                 </thead>
@@ -466,6 +516,21 @@ function CronTaskDetailPage() {
                       </td>
                       <td className="px-5 py-3.5 whitespace-nowrap text-xs text-stone-400">
                         <TimeAgo date={task.createdAt} />
+                      </td>
+                      <td className="px-5 py-3.5 whitespace-nowrap text-right">
+                        <button
+                          onClick={() => setDeleteTaskName(task.name)}
+                          disabled={deleteTaskMutation.isPending}
+                          className="text-stone-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50"
+                          title="Delete task"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                            <line x1="10" y1="11" x2="10" y2="17" />
+                            <line x1="14" y1="11" x2="14" y2="17" />
+                          </svg>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -509,6 +574,21 @@ function CronTaskDetailPage() {
           deleteMutation.mutate();
         }}
         onCancel={() => setShowDeleteDialog(false)}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTaskName}
+        title="Delete Task"
+        message={`Are you sure you want to delete task "${deleteTaskName}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTaskName && namespace) {
+            deleteTaskMutation.mutate({ namespace, name: deleteTaskName });
+          }
+          setDeleteTaskName(null);
+        }}
+        onCancel={() => setDeleteTaskName(null)}
       />
     </div>
   );
