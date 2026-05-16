@@ -27,6 +27,6 @@ jobs:
         working-directory: website
         run: pnpm install --no-frozen-lockfile
 
-      - uses: stefanzweifel/git-auto-commit-action@v6
+      - uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "chore(deps): fix pnpm lockfile sync"
