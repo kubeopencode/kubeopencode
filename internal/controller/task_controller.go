@@ -44,6 +44,10 @@ const (
 	// DefaultQuotaRequeueDelay is the minimum delay for requeuing quota-blocked Tasks
 	DefaultQuotaRequeueDelay = 30 * time.Second
 
+	// quotaStatusUpdateRetries is the number of retries for optimistic concurrency
+	// conflicts when updating Agent status for quota tracking.
+	quotaStatusUpdateRetries = 3
+
 	// AnnotationStop is the annotation key for user-initiated task stop
 	AnnotationStop = "kubeopencode.io/stop"
 
@@ -1672,8 +1676,7 @@ func (r *TaskReconciler) recordTaskStart(ctx context.Context, agent *kubeopenv1a
 		return nil
 	}
 
-	maxRetries := 3
-	for i := 0; i < maxRetries; i++ {
+	for i := 0; i < quotaStatusUpdateRetries; i++ {
 		// Fetch fresh Agent
 		freshAgent := &kubeopenv1alpha1.Agent{}
 		if err := r.Get(ctx, types.NamespacedName{Name: agent.Name, Namespace: agent.Namespace}, freshAgent); err != nil {
@@ -1712,7 +1715,7 @@ func (r *TaskReconciler) recordTaskStart(ctx context.Context, agent *kubeopenv1a
 		return nil
 	}
 
-	return fmt.Errorf("failed to record task start after %d retries", maxRetries)
+	return fmt.Errorf("failed to record task start after %d retries", quotaStatusUpdateRetries)
 }
 
 // removeTaskStart removes a task start record from Agent status.
@@ -1724,8 +1727,7 @@ func (r *TaskReconciler) removeTaskStart(ctx context.Context, agent *kubeopenv1a
 		return nil
 	}
 
-	maxRetries := 3
-	for i := 0; i < maxRetries; i++ {
+	for i := 0; i < quotaStatusUpdateRetries; i++ {
 		// Fetch fresh Agent
 		freshAgent := &kubeopenv1alpha1.Agent{}
 		if err := r.Get(ctx, types.NamespacedName{Name: agent.Name, Namespace: agent.Namespace}, freshAgent); err != nil {
@@ -1757,7 +1759,7 @@ func (r *TaskReconciler) removeTaskStart(ctx context.Context, agent *kubeopenv1a
 		return nil
 	}
 
-	return fmt.Errorf("failed to remove task start after %d retries", maxRetries)
+	return fmt.Errorf("failed to remove task start after %d retries", quotaStatusUpdateRetries)
 }
 
 // recordTaskDuration records the task duration in the Prometheus histogram.
