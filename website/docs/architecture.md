@@ -124,8 +124,8 @@ flowchart LR
 | **CronTask** | Scheduled/recurring task execution | Stable |
 | **Agent** | Running AI agent instance (Deployment + Service) | Stable |
 | **AgentTemplate** | Reusable blueprint for Agents and ephemeral Tasks | Stable |
-| **KubeOpenCodeConfig** | Cluster-scoped system-level configuration | Stable |
-| **ContextItem** | Inline context for AI agents | Stable |
+| **KubeOpenCodeConfig** | Cluster-scoped system-level configuration (singleton named `cluster`) | Stable |
+| **Registry** | Enterprise agent catalog and marketplace (Alpha) | Alpha |
 
 ### Key Design Decisions
 
@@ -160,7 +160,8 @@ Task (single task execution)
 │   ├── description: *string                (syntactic sugar for /workspace/task.md)
 │   ├── contexts: []ContextItem             (inline context definitions)
 │   ├── agentRef: *AgentReference           (Agent reference, same namespace)
-│   └── templateRef: *AgentTemplateReference (AgentTemplate reference, alternative to agentRef)
+│   ├── templateRef: *AgentTemplateReference (AgentTemplate reference, alternative to agentRef)
+│   └── timeout: *metav1.Duration          (max execution duration, excludes queue time)
 └── TaskExecutionStatus
     ├── observedGeneration: int64
     ├── phase: TaskPhase
@@ -168,9 +169,9 @@ Task (single task execution)
     ├── templateRef: *AgentTemplateReference (resolved template reference)
     ├── podName: string
     ├── session: *SessionInfo              (OpenCode session info)
-    ├── startTime: Time
-    ├── completionTime: Time
-    └── conditions: []Condition
+    ├── startTime: *metav1.Time            (set when Task enters Running phase)
+    ├── completionTime: *metav1.Time
+    └── conditions: []metav1.Condition
 
 Agent (running AI agent instance — always creates Deployment + Service)
 └── AgentSpec
@@ -314,24 +315,146 @@ type AgentSpec struct {
     Share              *ShareConfig
 }
 
-// ShareConfig configures a shareable terminal link for an Agent
-type ShareConfig struct {
-    Enabled    bool       // Enable/disable the share link
-    ExpiresAt  *metav1.Time // Optional expiry time (link invalid after this)
-    AllowedIPs []string   // Optional CIDR allowlist (empty = all IPs allowed)
+type SessionInfo struct {
+    ID    string // OpenCode session ID
+    URL   string // OpenCode session URL (for agentRef Tasks)
+    Title string // Session title (set by OpenCode)
+    Summary *SessionSummary // Token usage and cost summary (Phase 3)
 }
 
-// ProxyConfig configures HTTP/HTTPS proxy for all containers
+type SessionSummary struct {
+    MessageCount int64   // Total messages in the session
+    TokenUsage   int64   // Total tokens consumed
+    Cost         float64 // Estimated cost in USD
+    FilesChanged int64   // Number of files modified
+    Additions    int64   // Lines added
+    Deletions    int64   // Lines removed
+}
+
+type InitContainerOverrides struct {
+    ExtraEnv         []corev1.EnvVar      // Additional environment variables for this container
+    ExtraVolumeMounts []corev1.VolumeMount // Additional volume mounts for this container
+}
+
+type SystemContainerOverrides struct {
+    OpenCodeInit *InitContainerOverrides // Overrides for the opencode-init container (copies OpenCode binary)
+    ContextInit  *InitContainerOverrides // Overrides for the context-init container (copies ConfigMap content)
+    GitInit      *InitContainerOverrides // Overrides for ALL git-init-* containers (clones Git repos)
+    GitSync      *InitContainerOverrides // Overrides for ALL git-sync-* sidecars (periodic Git sync)
+    PluginInit   *InitContainerOverrides // Overrides for the plugin-init container (installs OpenCode plugins)
+}
+
+type AgentPodSpec struct {
+    Labels              map[string]string           // Custom labels for the pod
+    Annotations         map[string]string           // Custom annotations for the Deployment
+    Scheduling          *PodScheduling              // Node selector, tolerations, and affinity
+    RuntimeClassName    *string                     // Runtime class (e.g., "sysbox" for DinD)
+    Resources           *corev1.ResourceRequirements // Container resource limits/requests
+    SecurityContext     *corev1.SecurityContext      // Container-level security context
+    PodSecurityContext  *corev1.PodSecurityContext   // Pod-level security context
+    Lifecycle           *corev1.Lifecycle            // Container lifecycle hooks (e.g., postStart)
+    ExtraVolumes        []corev1.Volume              // Additional volumes for the pod
+    ExtraVolumeMounts   []corev1.VolumeMount         // Additional volume mounts (executor container)
+    ExtraEnv            []corev1.EnvVar              // Additional env vars (all containers)
+    SystemContainers    *SystemContainerOverrides   // Per-container-type overrides for system containers
+}
+
+type PodScheduling struct {
+    NodeSelector map[string]string    // Node selection constraints
+    Tolerations  []corev1.Toleration  // Pod tolerations
+    Affinity     *corev1.Affinity     // Pod affinity/anti-affinity
+}
+
+type QuotaConfig struct {
+    MaxTaskStarts  int32 // Maximum number of Task starts within the window
+    WindowSeconds  int64 // Time window in seconds (default: 3600)
+}
+
+type ExtraPort struct {
+    Name        string // Port name (DNS-label format)
+    Port        int32  // Port number
+    TargetPort  int32  // Target port on the container
+    Protocol    string // TCP or UDP (default: TCP)
+}
+
+type ShareConfig struct {
+    Enabled    bool          // Enable/disable the share link
+    ExpiresAt  *metav1.Time  // Optional expiry time (link invalid after this)
+    AllowedIPs []string      // Optional CIDR allowlist (empty = all IPs allowed)
+}
+
+type ShareStatus struct {
+    SecretName string // Name of the Secret containing the share token
+    URL        string // Full URL for the share link (/s/{token})
+    Active     bool   // Whether the share link is currently active
+}
+
+type PersistenceConfig struct {
+    Sessions  *VolumePersistence // Persist conversation history (OpenCode SQLite)
+    Workspace *VolumePersistence  // Persist workspace files
+}
+
+type VolumePersistence struct {
+    StorageClassName *string // StorageClass (default: cluster default)
+    Size             string  // PVC size (e.g., "10Gi")
+}
+
+type StandbyConfig struct {
+    IdleTimeout string // Duration after which to suspend (e.g., "30m", "1h")
+}
+
+type PluginSpec struct {
+    Name    string             // Plugin name (e.g., "cc-safety-net" or "@scope/plugin-name")
+    Options *runtime.RawExtension // Plugin-specific configuration options
+}
+
+type Credential struct {
+    Name      string           // Credential identifier
+    SecretRef *SecretReference // Reference to a Kubernetes Secret
+    Env       string           // Environment variable name (for env injection)
+    MountPath string           // File mount path inside container
+    FileMode  *int32          // File permission mode (default: 0600)
+}
+
+type SecretReference struct {
+    Name string // Secret name (in the same namespace)
+    Key  string // Optional: specific key in Secret (default: all keys)
+}
+
+type CABundleConfig struct {
+    ConfigMapRef *CABundleReference // CA bundle from ConfigMap (default key: "ca-bundle.crt")
+    SecretRef    *CABundleReference // CA bundle from Secret (default key: "ca.crt")
+}
+
+type CABundleReference struct {
+    Name string // ConfigMap/Secret name
+    Key  string // Key within the ConfigMap/Secret
+}
+
 type ProxyConfig struct {
     HttpProxy  string // HTTP proxy URL (sets HTTP_PROXY and http_proxy)
     HttpsProxy string // HTTPS proxy URL (sets HTTPS_PROXY and https_proxy)
     NoProxy    string // Comma-separated bypass list (.svc,.cluster.local always appended)
 }
 
-// CABundleConfig configures custom CA certificates for TLS
-type CABundleConfig struct {
-    ConfigMapRef *CABundleReference // CA bundle from ConfigMap (default key: "ca-bundle.crt")
-    SecretRef    *CABundleReference // CA bundle from Secret (default key: "ca.crt")
+type GitSync struct {
+    Enabled  bool   // Enable auto-sync
+    Interval string // Sync interval (e.g., "5m")
+    Policy   string // HotReload or Rollout
+}
+
+type GitSyncStatus struct {
+    Name       string      // Agent context name
+    LastCommit string      // Last synced commit SHA
+    LastSync   *metav1.Time // Last successful sync time
+    Phase      string      // SyncPhase: Syncing, Ready, Error
+    Message    string      // Status message or error
+}
+
+type TaskStartRecord struct {
+    TaskName string       // Name of the Task
+    TaskUID  types.UID    // UID of the Task
+    StartTime *metav1.Time // When the Task started
 }
 
 // KubeOpenCodeConfig defines system-level configuration
@@ -493,8 +616,8 @@ helm template my-tasks ./chart | kubectl apply -f -
 For detailed usage and configuration of each feature, see the [Features](features/index.md) section:
 
 - [Live Agents](features/live-agents.md) — Persistent agents, interactive access, agent vs template tasks
-- [Context System](features/context-system.md) — Text, ConfigMap, Git, Runtime, URL contexts
-- [Agent Configuration](features/agent-configuration.md) — Credentials, OpenCode config
+- [Flexible Context System](features/context-system.md) — Text, ConfigMap, Git, Runtime, URL contexts
+- [Agent Configuration](features/agent-configuration.md) — All Agent spec fields and configuration reference
 - [Agent Templates](features/agent-templates.md) — Reusable blueprints, merge behavior
 - [Skills](features/skills.md) — External SKILL.md from Git repos
 - [Plugins](features/plugins.md) — OpenCode plugins for deep agent customization
@@ -502,4 +625,10 @@ For detailed usage and configuration of each feature, see the [Features](feature
 - [Concurrency & Quota](features/concurrency-quota.md) — Task limits, rate limiting
 - [Persistence & Lifecycle](features/persistence.md) — PVCs, suspend/resume, standby
 - [Enterprise](features/enterprise.md) — Proxy, CA certificates, private registry
-- [Pod Configuration](features/pod-configuration.md) — Security context, scheduling
+- [Pod Configuration](features/pod-configuration.md) — Security context, scheduling, system containers
+- [Task Timeout](features/task-timeout.md) — Automatic timeout for long-running tasks
+- [Task Stop](features/task-stop.md) — Stop running tasks via annotation
+- [Task Cleanup](features/task-cleanup.md) — Automatic cleanup of finished Tasks
+- [Agent Share Link](features/share-link.md) — Share terminal access via URL
+- [Git Auto-Sync](features/git-auto-sync.md) — Automatic sync with remote Git repositories
+- [Multi-AI Support](features/multi-ai.md) — Use different agent images for various AI backends

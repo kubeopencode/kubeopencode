@@ -40,9 +40,11 @@ helm upgrade kubeopencode oci://ghcr.io/kubeopencode/helm-charts/kubeopencode \
   --namespace kubeopencode-system
 ```
 
-### Step 4: Apply CRD Updates (if applicable)
+### Step 4: Apply CRD Updates **(REQUIRED)**
 
-> **IMPORTANT**: Helm does **not** automatically upgrade CRDs during `helm upgrade`. This is a [known Helm limitation](https://helm.sh/docs/chart_best_practices/custom_resource_definitions/#some-caveats-and-explanations). If the release includes CRD changes (new fields, removed fields, validation updates), you must manually apply them.
+> **CRITICAL**: Helm does **not** automatically upgrade CRDs during `helm upgrade`. This is a [known Helm limitation](https://helm.sh/docs/chart_best_practices/custom_resource_definitions/#some-caveats-and-explanations). You **must always** manually apply CRDs after every upgrade, even if you are unsure whether CRD changes are included. Skipping this step will cause `strict decoding error: unknown field` when applying resources that use new fields.
+>
+> **FOR AI ASSISTANTS**: This step is **mandatory**, not optional. Always apply CRDs and verify new fields after `helm upgrade`.
 
 **Option A**: Apply from the Helm chart (if you have the repo checked out at the release tag):
 
@@ -112,8 +114,12 @@ This section tracks which releases include CRD changes, so operators know when m
 
 | Version | CRD Changes | Description |
 |---------|-------------|-------------|
+| v0.0.28 | Yes         | Added `status.session` fields (sessionID, url) to Task CRD for OpenCode session integration |
+| v0.0.27 | Yes         | Added `extraVolumes` and `extraVolumeMounts` fields to `AgentPodSpec` in Agent/AgentTemplate CRDs |
 | v0.0.26 | Yes         | Removed `readOnly` field from `ShareConfig` in Agent CRD |
 | v0.0.25 | Yes         | Added `plugins` field to Agent/AgentTemplate CRDs; changed `config` field type from `*string` to `*runtime.RawExtension` |
+| v0.0.24 | Yes         | Added `share` fields (enabled, expiresAt, allowedIPs) to Agent CRD for token-based terminal sharing |
+| v0.0.18 | Yes         | Added `git.sync` (HotReload/Rollout), `skills`, `standby` fields to Agent/AgentTemplate CRDs |
 | v0.0.15 | Yes         | Added AgentTemplate CRD. Unified Agent model (always running + idle timeout). Go upgraded from 1.25 to 1.26. UI improvements: favicon, agent create form, polling for agent status, config page. CLI: added task/agenttemplate/suspend/resume commands. |
 | v0.0.14 | Yes         | Removed `serverConfig` from Agent spec; `port`, `persistence`, and `suspend` are now top-level fields. Agent always creates Deployment + Service (no Pod mode). Task now supports `templateRef` as alternative to `agentRef` for ephemeral tasks via AgentTemplate. |
 | v0.0.13 | Yes         | Replaced `ServerStatus.readyReplicas` (int32) with `ready` (bool) in Agent CRD |

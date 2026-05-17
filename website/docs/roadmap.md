@@ -18,6 +18,8 @@ KubeOpenCode is in **early alpha** (v0.1.x). The API (`v1alpha1`) may introduce 
 - **Other IM platforms** — Microsoft Teams, Lark/Feishu, and other enterprise messaging tools
 - **ChatOps patterns** — Trigger tasks, check agent status, and review results without leaving your messaging app
 
+Plugin infrastructure ([ADR 0034](https://github.com/kubeopencode/kubeopencode/blob/main/docs/adr/0034-plugin-support-and-slack-integration.md) Part 1) is implemented. Slack integration (Part 2) is pending.
+
 This direction focuses on **usability** — reducing the friction between "I need an AI agent to do something" and getting the result.
 
 ## Direction 2: Kubernetes Ecosystem Integration
@@ -52,6 +54,32 @@ AI agents often need to run E2E tests against Kind clusters, build container ima
 KubeOpenCode itself does not need code changes — the Agent `podSpec` already supports `runtimeClassName` passthrough. What's needed is **cluster configuration guidance**: documentation and best practices for administrators to enable DinD capabilities using approaches like Sysbox, Rootless Podman, or Kata Containers, depending on their security and platform requirements.
 
 See [ADR 0029](https://github.com/kubeopencode/kubeopencode/blob/main/docs/adr/0029-sysbox-dind-support.md) for the full evaluation of approaches and phased adoption strategy.
+
+## Recently Added
+
+These features have been implemented and are available in the current release:
+
+| Feature | Description | Docs |
+|---------|-------------|------|
+| **Plugin Support** | First-class OpenCode plugin support with npm-based installation | [Plugins](features/plugins.md) |
+| **Task Session Integration** | Session info, token usage, and cost in Task status | [Task Session](features/task-session.md) |
+| **Task Timeout** | Automatic timeout for long-running tasks | [Task Timeout](features/task-timeout.md) |
+| **Task Stop** | Stop running tasks via annotation | [Task Stop](features/task-stop.md) |
+| **Agent Share Link** | Share terminal access via URL | [Share Link](features/share-link.md) |
+| **Git Auto-Sync** | Automatic sync with remote Git repositories | [Git Auto-Sync](features/git-auto-sync.md) |
+| **CronTask** | Scheduled and recurring task execution | [CronTask](features/crontask.md) |
+| **Standby Mode** | Automatic suspend/resume for idle agents | [Persistence](features/persistence.md) |
+| **Extra Env & System Containers** | Additional environment variables and sidecar containers | [Pod Configuration](features/pod-configuration.md) |
+
+## Direction 5: Agent Registry (In Progress)
+
+**Goal**: Enterprise agent catalog and visual agent assembly marketplace.
+
+- **Visual Agent Builder** — UI for assembling agents from templates, skills, and plugins
+- **Public Registry** — Community-driven catalog of AgentTemplates, skills, and plugins
+- **Private Registry** — Enterprise registry for internal team templates and credentials
+
+See [ADR 0036](https://github.com/kubeopencode/kubeopencode/blob/main/docs/adr/0036-agent-registry.md) for the design.
 
 ## Deferred
 

@@ -130,6 +130,7 @@ At pod startup, the init container copies the OpenCode binary from `agentImage` 
 |-------|------|-------------|
 | `opencode` | Init Container | OpenCode CLI binary |
 | `devbox` | Worker (Executor) | Universal development environment with Go, Node.js, Python, kubectl, helm |
+| `attach` | Task Pod (agentRef) | Lightweight image for `--attach` mode |
 | `echo` | Testing | Minimal Alpine image for E2E testing |
 
 ### Default Images
@@ -138,6 +139,7 @@ If you don't specify images, KubeOpenCode uses these defaults:
 
 - **OpenCode init**: `ghcr.io/kubeopencode/kubeopencode-agent-opencode:latest`
 - **Devbox executor**: `ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest`
+- **Attach**: `ghcr.io/kubeopencode/kubeopencode-agent-attach:latest`
 
 For most users, the defaults work out of the box — you don't need to set `agentImage` or `executorImage`.
 
@@ -145,11 +147,64 @@ For most users, the defaults work out of the box — you don't need to set `agen
 
 When configuring an Agent, the controller resolves images as follows:
 
-| Configuration | Init Container | Worker Container |
-|--------------|----------------|------------------|
-| Both `agentImage` and `executorImage` set | `agentImage` | `executorImage` |
-| Only `agentImage` set (legacy) | Default OpenCode image | `agentImage` |
-| Neither set | Default OpenCode image | Default devbox image |
+| Configuration | Init Container | Worker Container | Task Pod (agentRef) |
+|--------------|----------------|------------------|---------------------|
+| All three images set | `agentImage` | `executorImage` | `attachImage` |
+| `agentImage` + `executorImage` | `agentImage` | `executorImage` | Default attach image |
+| Only `agentImage` set (legacy) | Default OpenCode image | `agentImage` | Default attach image |
+| Neither set | Default OpenCode image | Default devbox image | Default attach image |
+
+### Attach Image
+
+The `attachImage` field specifies the lightweight image used for Task Pods when running tasks via `agentRef` (connecting to a persistent Agent). This image contains only the OpenCode CLI binary and is used for the `opencode run --attach` command:
+
+```yaml
+spec:
+  attachImage: ghcr.io/kubeopencode/kubeopencode-agent-attach:latest
+```
+
+If not specified, the default attach image is used.
+
+### System Containers and Extra Environment Variables
+
+The `podSpec` field supports adding system container overrides and extra environment variables. This is useful for:
+
+- **OpenShift SCC compatibility**: Override `HOME` for `git-init` containers that need a writable home directory
+- **Private npm registries**: Inject authentication tokens into all containers
+- **Corporate CA bundles**: Mount certificates into specific init containers
+
+```yaml
+spec:
+  podSpec:
+    # Extra env vars injected into ALL containers (init + worker)
+    extraEnv:
+      - name: NODE_OPTIONS
+        value: "--max-old-space-size=4096"
+
+    # Per-container-type overrides for system containers
+    systemContainers:
+      gitInit:
+        extraEnv:
+          - name: HOME
+            value: /tmp
+      gitSync:
+        extraEnv:
+          - name: HOME
+            value: /tmp
+        extraVolumeMounts:
+          - name: corp-ca
+            mountPath: /etc/ssl/corp
+            readOnly: true
+```
+
+The `systemContainers` field has keys for each container type:
+- `openCodeInit` — Copies the OpenCode binary to `/tools`
+- `contextInit` — Copies ConfigMap content into the workspace
+- `gitInit` — Clones Git repositories (all `git-init-*` containers)
+- `gitSync` — Periodically syncs Git repos (HotReload sidecars)
+- `pluginInit` — Installs OpenCode plugins via npm
+
+See [Pod Configuration](features/pod-configuration.md) for detailed examples.
 
 ### Custom Executor Images
 

@@ -78,7 +78,11 @@ appVersion: "NEW_VERSION"    # e.g., v0.2.0 (with v prefix, matches image tags)
 
 Note: Helm chart `version` uses bare number (Helm convention); `appVersion` includes the `v` prefix and must match the image tags.
 
-#### 2.4 `AGENTS.md` (Project Status section)
+#### 2.4 `ui/package.json` (auto-synced)
+
+> **Note**: `ui/package.json` version is automatically synced by `make ui-build` (via `npm pkg set version=...`). No manual update is needed — the Makefile strips the `v` prefix and sets it before each build. However, you should verify it is correct after running `make verify`.
+
+#### 2.5 `AGENTS.md` (Project Status section)
 
 ```markdown
 - **Version**: NEW_VERSION
@@ -95,6 +99,8 @@ make verify
 # Run all test levels
 make test
 make integration-test
+
+# Run lint and fix ALL issues before proceeding
 make lint
 
 # Verify version command works
@@ -106,10 +112,12 @@ helm template kubeopencode charts/kubeopencode | grep 'image:'
 # Expected: ghcr.io/kubeopencode/kubeopencode:NEW_VERSION (e.g., v0.2.0)
 ```
 
-### Step 4: Commit and Create PR
+> **IMPORTANT**: `make lint` must report **0 issues** before proceeding to Step 4. The lint version is auto-detected from Go version (see `ci/lint/run-lint.sh`), so upgrading Go may surface new lint findings. Fix all issues on the release branch before creating the PR.
+
+### Step 4: Commit, Create PR, and Merge
 
 ```bash
-git add Makefile agents/Makefile charts/kubeopencode/Chart.yaml AGENTS.md
+git add Makefile agents/Makefile charts/kubeopencode/Chart.yaml ui/package.json AGENTS.md
 git commit -s -m "chore: prepare NEW_VERSION release
 
 - Update VERSION to NEW_VERSION in Makefile and agents/Makefile
@@ -119,7 +127,19 @@ git commit -s -m "chore: prepare NEW_VERSION release
 git push origin release/NEW_VERSION
 ```
 
-Create a PR targeting `main`, get it reviewed and merged.
+Create a PR targeting `main`, get it reviewed and merged:
+
+```bash
+gh pr create --title "chore: release NEW_VERSION" --body "..."
+
+# Poll until checks pass (or fail)
+gh pr checks <PR_NUMBER> --watch
+
+# If all checks pass, merge immediately
+gh pr merge <PR_NUMBER> --merge --delete-branch
+```
+
+> **IMPORTANT (for AI assistants)**: This step is fully automated. Do NOT stop to ask the user for merge approval. If CI checks pass, merge the PR and proceed to Step 5. Only escalate to the user if CI checks fail.
 
 ### Step 5: Tag and Push
 
@@ -141,7 +161,19 @@ This triggers the `.github/workflows/release.yaml` workflow, which:
 
 ### Step 6: Monitor the Release Workflow
 
-Go to the GitHub Actions tab and monitor the `Release` workflow. Ensure all jobs pass:
+Wait for the Release workflow to complete:
+
+```bash
+# Get the workflow run triggered by the tag
+gh run list --workflow=release.yaml --limit=1
+gh run watch <RUN_ID>
+```
+
+> **IMPORTANT (for AI assistants)**: Monitor the workflow automatically. If all jobs pass, proceed to Step 7. Only escalate to the user if any job fails.
+>
+> **IMPORTANT (for AI assistants)**: Use a **minimum 30-minute polling interval** when monitoring long-running workflows. Frequent polling (e.g., every 1-5 minutes) wastes conversation context without meaningful progress. A single workflow run typically takes 20-40 minutes; polling every 30 minutes is sufficient.
+
+Expected jobs:
 
 - `verify-versions`
 - `unit-test`, `integration-test`, `e2e-test`
@@ -266,6 +298,7 @@ echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u $GITHUB_ACTOR --password-s
 | `charts/kubeopencode/Chart.yaml` | Helm chart `version` and `appVersion` |
 | `cmd/kubeopencode/main.go` | `Version`, `GitCommit`, `BuildDate` variables (set via ldflags) |
 | `Dockerfile` | `ARG VERSION` passed to Go ldflags at build time |
+| `ui/package.json` | UI version (auto-synced by `make ui-build`) |
 | `.github/workflows/release.yaml` | Release workflow triggered by `v*` tags |
 | `AGENTS.md` | Project status version |
 

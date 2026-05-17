@@ -82,3 +82,41 @@ Each generated Task includes:
 | `startingDeadlineSeconds` | int64 | nil | Grace period for missed schedules |
 | `maxRetainedTasks` | int32 | 10 | Max child Tasks before blocking creation |
 | `taskTemplate` | object | (required) | Template for created Tasks (metadata + spec) |
+
+## Status Fields
+
+The CronTask status provides information about scheduled execution:
+
+```bash
+kubectl get crontask daily-vuln-scan -o yaml
+```
+
+```yaml
+status:
+  active: 1
+  activeRefs:
+    - name: daily-vuln-scan-1715904000
+      namespace: default
+      uid: abc123-def456
+  lastScheduleTime: "2026-05-17T09:00:00Z"
+  lastSuccessfulTime: "2026-05-17T09:12:34Z"
+  nextScheduleTime: "2026-05-18T09:00:00Z"
+  totalExecutions: 42
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: CronTaskReady
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+```
+
+### Status Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `active` | int32 | Number of currently active (Pending/Queued/Running) child Tasks |
+| `activeRefs` | []ObjectReference | References to currently active child Tasks (name, namespace, uid) |
+| `lastScheduleTime` | *metav1.Time | Last time a Task was successfully scheduled |
+| `lastSuccessfulTime` | *metav1.Time | Last time a scheduled Task completed successfully |
+| `nextScheduleTime` | *metav1.Time | Next calculated schedule time |
+| `totalExecutions` | int64 | Total number of Tasks created by this CronTask since creation |
+| `conditions` | []Condition | Standard Kubernetes conditions (type `Ready`) |

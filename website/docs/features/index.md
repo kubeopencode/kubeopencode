@@ -6,7 +6,7 @@ KubeOpenCode brings Agentic AI capabilities into the Kubernetes ecosystem. Here'
 
 - **[Live Agents](live-agents.md)** - Persistent, always-running AI agents as Kubernetes services
 - **[Flexible Context System](context-system.md)** - Provide knowledge to agents via Text, ConfigMap, Git, URL, and Runtime contexts
-- **[Agent Configuration](agent-configuration.md)** - Centralized execution environment and OpenCode configuration
+- **[Agent Configuration](agent-configuration.md)** - Complete reference for all Agent spec fields
 - **[Agent Templates](agent-templates.md)** - Reusable base configurations and ephemeral task blueprints
 - **[Skills](skills.md)** - Reusable AI agent capabilities from Git repositories
 - **[Plugins](plugins.md)** - OpenCode plugins for deep agent customization
@@ -18,6 +18,8 @@ KubeOpenCode brings Agentic AI capabilities into the Kubernetes ecosystem. Here'
 - **[Git Auto-Sync](git-auto-sync.md)** - Automatic sync with remote Git repositories
 - **[Task Timeout](task-timeout.md)** - Automatic timeout for long-running tasks
 - **[Task Stop](task-stop.md)** - Stop running tasks via annotation
+- **[Task Cleanup](task-cleanup.md)** - Automatic cleanup of finished Tasks
+- **[Task Session](task-session.md)** - OpenCode session info, token usage, and cost in Task status
 - **[Concurrency & Quota](concurrency-quota.md)** - Limit concurrent tasks and rate of task starts
 
 ## Collaboration
@@ -28,4 +30,4 @@ KubeOpenCode brings Agentic AI capabilities into the Kubernetes ecosystem. Here'
 
 - **[Persistence & Lifecycle](persistence.md)** - Session/workspace persistence, suspend/resume, and standby
 - **[Enterprise (Proxy, CA, Registry)](enterprise.md)** - Corporate proxy, custom CA certificates, and private registry authentication
-- **[Pod Configuration](pod-configuration.md)** - Pod security, scheduling, and advanced settings
+- **[Pod Configuration](pod-configuration.md)** - Pod security, scheduling, system containers, and advanced settings

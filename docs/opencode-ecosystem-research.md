@@ -1,6 +1,6 @@
 # OpenCode Ecosystem Research — KubeOpenCode Integration Opportunities
 
-> **Date**: 2026-03-26
+> **Date**: 2026-03-26 | **Last verified**: 2026-03-26
 >
 > This document surveys OpenCode's official components, community plugins, and the MCP server ecosystem to identify integration opportunities for KubeOpenCode.
 

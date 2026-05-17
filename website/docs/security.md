@@ -358,6 +358,39 @@ See [HTTP/HTTPS Proxy Configuration](features/enterprise.md#httphttps-proxy-conf
 - **Apply NetworkPolicies** to limit Agent Pod egress to required endpoints only
 - **Enable Kubernetes audit logging** to track Task creation and execution
 
+## Share Link Security
+
+When [Agent Share Links](features/share-link.md) are enabled, the controller generates a cryptographic token stored in a Secret:
+
+- **Token**: 32-byte random value, base64url-encoded (no padding)
+- **Storage**: Secret `{agent-name}-share` in the Agent's namespace
+- **Authentication**: Token-based, no Kubernetes credentials required
+- **Authorization**: Optional CIDR allowlist (`allowedIPs`) and expiry (`expiresAt`)
+- **Audit**: All share link access is logged in the server access log
+- **Cleanup**: Secret and corresponding Deployment volume are removed when `share.enabled` is set to `false`
+
+> **Security note**: Share links bypass Kubernetes RBAC by design. Use `allowedIPs` to restrict access to trusted networks, and set `expiresAt` to limit the lifetime of the token. See [Share Link](features/share-link.md) for full security details.
+
+## System Containers and Extra Environment Variables
+
+The `podSpec` field supports adding system containers and extra environment variables to Agent pods. This is commonly used for:
+
+- **OpenShift SCC compatibility**: Add sidecar containers that satisfy Security Context Constraints
+- **Private npm registries**: Inject authentication tokens via environment variables
+- **Corporate CA bundles**: Mount CA certificates from ConfigMaps
+
+See [Pod Configuration](features/pod-configuration.md) for detailed examples.
+
+## Controller RBAC
+
+The controller ClusterRole includes permissions for:
+
+- Tasks, Agents, AgentTemplates, CronTasks, KubeOpenCodeConfigs: full CRUD
+- Pods, ConfigMaps, Secrets, Services, Deployments: managed by the controller
+- Services/proxy: needed for `kubeoc agent attach`
+
+When adding custom RBAC, ensure the controller has `agents/finalizers` permission to set owner references with `blockOwnerDeletion` (required on OpenShift).
+
 ## Next Steps
 
 - [Getting Started](getting-started.md) - Installation and basic usage
