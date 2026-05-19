@@ -54,6 +54,25 @@ const (
 
 	// DefaultWorkspacePVCSize is the default size for the workspace PVC.
 	DefaultWorkspacePVCSize = "10Gi"
+
+	// DefaultProbeTimeoutSeconds is the default timeout for probe HTTP/TCP checks.
+	DefaultProbeTimeoutSeconds = 5
+
+	// DefaultProbeFailureThreshold is the default failure threshold before probe is considered failed.
+	DefaultProbeFailureThreshold = 3
+
+	// DefaultStartupFailureThreshold is the failure threshold for the startup probe.
+	// 2 + 2*30 = 62s max startup time.
+	DefaultStartupFailureThreshold = 30
+
+	// DefaultStartupPeriodSeconds is the period for the startup probe.
+	DefaultStartupPeriodSeconds = 2
+
+	// DefaultLivenessPeriodSeconds is the period for the liveness probe.
+	DefaultLivenessPeriodSeconds = 30
+
+	// DefaultReadinessPeriodSeconds is the period for the readiness probe.
+	DefaultReadinessPeriodSeconds = 10
 )
 
 // ServerDeploymentName returns the Deployment name for a Server-mode Agent.
@@ -538,10 +557,10 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 					Scheme: corev1.URISchemeHTTP,
 				},
 			},
-			InitialDelaySeconds: 2,
-			PeriodSeconds:       2,
-			TimeoutSeconds:      5,
-			FailureThreshold:    30, // 2 + 2*30 = 62s max startup time
+			InitialDelaySeconds: DefaultStartupPeriodSeconds,
+			PeriodSeconds:       DefaultStartupPeriodSeconds,
+			TimeoutSeconds:      DefaultProbeTimeoutSeconds,
+			FailureThreshold:    DefaultStartupFailureThreshold,
 		},
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -549,9 +568,9 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 					Port: intstr.FromInt32(port),
 				},
 			},
-			PeriodSeconds:    30,
-			TimeoutSeconds:   5,
-			FailureThreshold: 3,
+			PeriodSeconds:    DefaultLivenessPeriodSeconds,
+			TimeoutSeconds:   DefaultProbeTimeoutSeconds,
+			FailureThreshold: DefaultProbeFailureThreshold,
 		},
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -561,9 +580,9 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 					Scheme: corev1.URISchemeHTTP,
 				},
 			},
-			PeriodSeconds:    10,
-			TimeoutSeconds:   5,
-			FailureThreshold: 3,
+			PeriodSeconds:    DefaultReadinessPeriodSeconds,
+			TimeoutSeconds:   DefaultProbeTimeoutSeconds,
+			FailureThreshold: DefaultProbeFailureThreshold,
 		},
 	}
 
