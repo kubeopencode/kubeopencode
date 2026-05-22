@@ -1144,7 +1144,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 	}
 
 	// Get agent configuration with name
-	agentConfig, agentName, err := r.getAgentConfigWithName(ctx, task)
+	agentCfg, agentName, err := r.getAgentConfigWithName(ctx, task)
 	if err != nil {
 		log.Error(err, "unable to get Agent for queued task")
 		// Agent might be deleted, fail the task
@@ -1166,20 +1166,20 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 	}
 
 	// Check if agent is still suspended
-	if agentConfig.suspend {
+	if agentCfg.suspend {
 		log.V(1).Info("agent still suspended, remaining queued", "agent", agentName)
 		return ctrl.Result{RequeueAfter: DefaultQueuedRequeueDelay}, nil
 	}
 
 	// Check if agent server is ready
-	if !agentConfig.serverReady {
+	if !agentCfg.serverReady {
 		log.V(1).Info("agent server not ready, remaining queued", "agent", agentName)
 		return ctrl.Result{RequeueAfter: DefaultQueuedRequeueDelay}, nil
 	}
 
 	// Check if agent still has MaxConcurrentTasks set
-	hasCapacityLimit := agentConfig.maxConcurrentTasks != nil && *agentConfig.maxConcurrentTasks > 0
-	hasQuotaLimit := agentConfig.quota != nil
+	hasCapacityLimit := agentCfg.maxConcurrentTasks != nil && *agentCfg.maxConcurrentTasks > 0
+	hasQuotaLimit := agentCfg.quota != nil
 
 	// If neither limit is configured, proceed to initialize
 	if !hasCapacityLimit && !hasQuotaLimit {
@@ -1199,7 +1199,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 
 	// Check capacity if limit is set
 	if hasCapacityLimit {
-		hasCapacity, err := r.checkAgentCapacity(ctx, task.Namespace, agentName, *agentConfig.maxConcurrentTasks)
+		hasCapacity, err := r.checkAgentCapacity(ctx, task.Namespace, agentName, *agentCfg.maxConcurrentTasks)
 		if err != nil {
 			log.Error(err, "unable to check agent capacity")
 			return ctrl.Result{}, err
@@ -1213,7 +1213,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 	}
 
 	// Check agent quota if configured
-	if agentConfig.quota != nil {
+	if agentCfg.quota != nil {
 		agent, err := r.getAgentForQuota(ctx, agentName, task.Namespace)
 		if err != nil {
 			log.Error(err, "unable to get Agent for quota check")
@@ -1230,8 +1230,8 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 			// Quota still exceeded, update condition and requeue
 			log.V(1).Info("agent quota still exceeded, remaining queued",
 				"agent", agentName,
-				"maxTaskStarts", agentConfig.quota.MaxTaskStarts,
-				"windowSeconds", agentConfig.quota.WindowSeconds)
+				"maxTaskStarts", agentCfg.quota.MaxTaskStarts,
+				"windowSeconds", agentCfg.quota.WindowSeconds)
 
 			// Ensure AgentRef is set (may be missing from older tasks)
 			if task.Status.AgentRef == nil {
@@ -1245,7 +1245,7 @@ func (r *TaskReconciler) handleQueuedTask(ctx context.Context, task *kubeopenv1a
 				Status: metav1.ConditionTrue,
 				Reason: kubeopenv1alpha1.ReasonQuotaExceeded,
 				Message: fmt.Sprintf("Waiting for agent %q quota (max: %d per %ds)",
-					agentName, agentConfig.quota.MaxTaskStarts, agentConfig.quota.WindowSeconds),
+					agentName, agentCfg.quota.MaxTaskStarts, agentCfg.quota.WindowSeconds),
 			})
 
 			if err := r.Status().Update(ctx, task); err != nil {
