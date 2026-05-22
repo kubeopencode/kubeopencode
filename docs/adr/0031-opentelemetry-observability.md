@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Superseded by [ADR 0040](0040-opentelemetry-metrics-observability.md)
 
 ## Date
 
