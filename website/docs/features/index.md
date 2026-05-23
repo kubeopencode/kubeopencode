@@ -26,6 +26,10 @@ KubeOpenCode brings Agentic AI capabilities into the Kubernetes ecosystem. Here'
 
 - **[Agent Share Link](share-link.md)** - Share terminal access via URL — no Kubernetes credentials required
 
+## Observability
+
+- **[OpenTelemetry Observability](observability.md)** - LLM call traces, token usage, latency, and application-level spans via OpenTelemetry
+
 ## Infrastructure
 
 - **[Persistence & Lifecycle](persistence.md)** - Session/workspace persistence, suspend/resume, and standby

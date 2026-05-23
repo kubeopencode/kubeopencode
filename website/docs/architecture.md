@@ -219,7 +219,8 @@ KubeOpenCodeConfig (system configuration, cluster-scoped singleton named "cluste
 └── KubeOpenCodeConfigSpec
     ├── systemImage: *SystemImageConfig
     ├── cleanup: *CleanupConfig
-    └── proxy: *ProxyConfig
+    ├── proxy: *ProxyConfig
+    └── observability: *ObservabilitySpec
 ```
 
 ---
@@ -467,6 +468,7 @@ type KubeOpenCodeConfigSpec struct {
     SystemImage   *SystemImageConfig
     Cleanup       *CleanupConfig
     Proxy         *ProxyConfig
+    Observability *ObservabilitySpec // OpenTelemetry telemetry for agent Pods
 }
 
 type CleanupConfig struct {
@@ -504,6 +506,13 @@ spec:
     httpProxy: "http://proxy.corp.example.com:8080"
     httpsProxy: "http://proxy.corp.example.com:8080"
     noProxy: "localhost,127.0.0.1,10.0.0.0/8"
+
+  # OpenTelemetry observability (optional)
+  observability:
+    openTelemetry:
+      enabled: true
+      endpoint: "http://otel-collector.observability:4318"
+      enableLLMTraces: true
 ```
 
 | Field | Type | Description |
@@ -513,6 +522,7 @@ spec:
 | `cleanup.ttlSecondsAfterFinished` | *int32 | TTL for finished Tasks. nil = disabled |
 | `cleanup.maxRetainedTasks` | *int32 | Max completed Tasks per namespace. nil = unlimited |
 | `proxy` | *ProxyConfig | Cluster-wide proxy. See [Enterprise](features/enterprise.md#httphttps-proxy-configuration) |
+| `observability` | *ObservabilitySpec | OpenTelemetry telemetry for agent Pods. See [Observability](features/observability.md) |
 | `clusterDomain` | string | Cluster domain name for in-cluster service URLs (default: "cluster.local") |
 
 **Task Cleanup behavior:**
@@ -626,6 +636,7 @@ For detailed usage and configuration of each feature, see the [Features](feature
 - [Persistence & Lifecycle](features/persistence.md) — PVCs, suspend/resume, standby
 - [Enterprise](features/enterprise.md) — Proxy, CA certificates, private registry
 - [Pod Configuration](features/pod-configuration.md) — Security context, scheduling, system containers
+- [OpenTelemetry Observability](features/observability.md) — LLM call traces, token usage, and application-level spans
 - [Task Timeout](features/task-timeout.md) — Automatic timeout for long-running tasks
 - [Task Stop](features/task-stop.md) — Stop running tasks via annotation
 - [Task Cleanup](features/task-cleanup.md) — Automatic cleanup of finished Tasks
