@@ -14,33 +14,37 @@ This ADR supersedes [ADR 0031](0031-opentelemetry-observability.md) with updated
 
 ### OpenCode's Current OpenTelemetry Support (Source Analysis)
 
-OpenCode has **two distinct layers** of OTel support:
+OpenCode has **three layers** of OTel support. These layers are **complementary, not redundant** — each has a distinct responsibility, and they form a dependency chain where Layer 1 is the prerequisite infrastructure for Layers 2 and 3.
 
-#### Layer 1: Built-in OTel Exporter (Core Observability)
+#### Layer 1: Built-in OTel Infrastructure (Provider + Exporter)
 
 **Location**: `packages/core/src/effect/observability.ts`
 
-OpenCode has a **native, zero-config OTel exporter** activated by setting `OTEL_EXPORTER_OTLP_ENDPOINT`:
+OpenCode has a **native OTel infrastructure layer** activated by setting `OTEL_EXPORTER_OTLP_ENDPOINT`:
 
 ```bash
 OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318 opencode
 ```
 
 When this env var is set, OpenCode automatically:
-- **Traces**: Creates an `OTLPTraceExporter` sending to `${ENDPOINT}/v1/traces` via HTTP/JSON batch processor
+- **Traces**: Creates a `NodeTracerProvider` with `OTLPTraceExporter` sending to `${ENDPOINT}/v1/traces` via HTTP/JSON batch processor
 - **Logs**: Creates an `OtlpLogger` sending to `${ENDPOINT}/v1/logs` via Effect's OTLP log serialization
-- **Context Manager**: Registers `AsyncLocalStorageContextManager` so that non-Effect code (like AI SDK) correctly propagates span context (parent-child linkage works across the entire call stack)
+- **Context Manager**: Registers `AsyncLocalStorageContextManager` as the global context manager on `@opentelemetry/api`, so that non-Effect code (like the AI SDK) correctly propagates span context — parent-child linkage works across the entire call stack
 - **Resource Attributes**: Attaches `service.name=opencode`, `service.version`, `opencode.client`, `opencode.process_role`, `opencode.run_id`, `deployment.environment.name`, plus any user-set `OTEL_RESOURCE_ATTRIBUTES`
 
-**Key insight**: This is NOT the `experimental.openTelemetry` config flag. This is the foundation layer that creates the OTel provider and context manager.
+**Critical distinction**: Layer 1 does **not produce any business spans itself**. Its role is purely infrastructure — it creates the TracerProvider, registers the context manager, and wires exporters. Layers 2 and 3 are the business-span producers that rely on this infrastructure. Without Layer 1, Layers 2 and 3 have no provider to obtain tracers from and no exporter to send spans through.
 
-#### Layer 2: AI SDK Telemetry (Per-Request Spans)
+This is NOT the `experimental.openTelemetry` config flag. This is the foundation layer that creates the OTel provider and context manager.
+
+#### Layer 2: AI SDK Telemetry (LLM Call Spans — GenAI Semantic Conventions)
 
 **Location**: `packages/opencode/src/session/llm.ts` (lines 202-335), `packages/opencode/src/agent/agent.ts` (lines 392-406)
 
+**Dependency**: Requires Layer 1 to be active (`OTEL_EXPORTER_OTLP_ENDPOINT` must be set). Layer 2 obtains its tracer from Layer 1's TracerProvider via the `OtelTracer.OtelTracer` Effect service, and relies on Layer 1's `AsyncLocalStorageContextManager` for correct parent-child span linkage with Layer 3 spans.
+
 When `experimental.openTelemetry: true` is set in `opencode.json`, OpenCode:
 
-1. Gets the Effect OTel tracer via `OtelTracer.OtelTracer` service
+1. Gets the Effect OTel tracer from Layer 1's TracerProvider via `OtelTracer.OtelTracer` service
 2. Wraps it in a **Proxy** that injects `session.id` as an attribute on every span:
    ```typescript
    const telemetryTracer = tracer
@@ -66,27 +70,73 @@ When `experimental.openTelemetry: true` is set in `opencode.json`, OpenCode:
    }
    ```
 
-The AI SDK then emits **standard GenAI semantic convention spans** including:
+The AI SDK then emits spans with **partial GenAI semantic convention support** — it produces both its own `ai.*` private attributes and a subset of `gen_ai.*` standard attributes, including:
+- `gen_ai.system` — provider identifier
 - `gen_ai.request.model` — model name
 - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` — token counts
 - `gen_ai.response.finish_reasons` — stop reasons
-- `gen_ai.input.messages` / `gen_ai.output.messages` — full conversation (when content recording is enabled)
+- `gen_ai.response.model` — model actually used
+- `ai.model.id`, `ai.model.provider` — AI SDK private attributes
+- `ai.usage.inputTokens`, `ai.usage.outputTokens` — AI SDK private token attributes
+- `ai.response.finishReason`, `ai.response.text` — AI SDK private response attributes
 
-#### Layer 3: CLI Run Spans
+**Note**: The AI SDK does NOT fully conform to OTel GenAI Semantic Conventions. Span names use AI SDK's own convention (`ai.generateText`, `ai.streamText`, `ai.toolCall`) rather than the spec's `gen_ai.client.chat`. Some spec attributes (e.g., `gen_ai.operation.name`, `gen_ai.system_instructions`) are not emitted. Content recording (`gen_ai.input.messages`, `gen_ai.output.messages`) requires explicit opt-in. See [GitHub issue #2590](https://github.com/vercel/ai/issues/2590) for full compatibility tracking.
+
+#### Layer 3: CLI Run Spans (Application Operation Spans)
 
 **Location**: `packages/opencode/src/cli/cmd/run/otel.ts`
 
-OpenCode's CLI runtime wraps operations in spans via `withRunSpan(name, attributes, fn)`. This uses the `@opentelemetry/api` tracer directly (not Effect's), creating spans under the `"opencode.run"` tracer. This is used for tool execution, session operations, etc.
+**Dependency**: Requires Layer 1 to be active. Layer 3 explicitly initializes Layer 1 via `ManagedRuntime.make(Observability.layer)` and obtains its tracer from the global `@opentelemetry/api` provider that Layer 1 registers (`trace.getTracer("opencode.run")`). If `Observability.enabled` is false (i.e., Layer 1 is not active), Layer 3 silently degrades to a no-op span.
+
+OpenCode's CLI runtime wraps operations in spans via `withRunSpan(name, attributes, fn)`. This uses the `@opentelemetry/api` tracer directly (not Effect's), creating spans under the `"opencode.run"` tracer. Span names include:
+- `RunInteractive.session` — overall session lifecycle
+- `RunInteractive.turn` — a single user-AI interaction turn
+- `RunInteractive.localMode` / `RunInteractive.attachMode` — session mode
+- `RunLifecycle.boot` / `RunLifecycle.close` — runtime startup/shutdown
+- `RunScrollbackStream.complete`, `RunFooter.flush` — UI rendering operations
+
+These spans provide **application-level** visibility (session flow, turn boundaries, tool execution) at a coarser granularity than Layer 2's per-LLM-call spans.
+
+#### Layer Dependency & Span Hierarchy
+
+The three layers form a strict dependency chain:
+
+```
+Layer 1 (Infrastructure)  ← activated by OTEL_EXPORTER_OTLP_ENDPOINT
+  ├── Layer 2 (LLM spans) ← additionally requires experimental.openTelemetry: true
+  └── Layer 3 (App spans)  ← automatically active when Layer 1 is enabled
+```
+
+**Key relationships**:
+
+1. **Layer 1 is the prerequisite** — It creates the TracerProvider, registers the global context manager, and wires the OTLP exporters. Without it, Layers 2 and 3 have no tracers and no export path.
+
+2. **Layer 3 is automatically active with Layer 1** — Setting `OTEL_EXPORTER_OTLP_ENDPOINT` enables both Layer 1 and Layer 3. Layer 3's `withRunSpan()` checks `Observability.enabled` (which is `!!OTEL_EXPORTER_OTLP_ENDPOINT`) and degrades gracefully to a no-op when Layer 1 is off.
+
+3. **Layer 2 is an additional opt-in** — It requires both `OTEL_EXPORTER_OTLP_ENDPOINT` (Layer 1 infrastructure) AND `experimental.openTelemetry: true` (config flag). The OpenCode team placed this under `experimental` because it depends on the Vercel AI SDK's `experimental_telemetry` API, which was not yet stable at the time of implementation. Setting `experimental.openTelemetry: true` without `OTEL_EXPORTER_OTLP_ENDPOINT` has no effect — there is no TracerProvider to create tracers from.
+
+4. **Layers 2 and 3 produce a unified trace tree** — Because Layer 1 registers `AsyncLocalStorageContextManager` as the global context manager, spans from Layer 3 (e.g., `RunInteractive.turn`) correctly become parents of Layer 2 spans (e.g., AI SDK's `chat ..streamText`). The resulting trace in Jaeger/Tempo appears as:
+
+```
+RunInteractive.session                    ← Layer 3 (app-level)
+  └─ RunInteractive.turn                  ← Layer 3 (app-level)
+       └─ chat ..streamText               ← Layer 2 (LLM-level, AI SDK)
+            ├─ gen_ai.request.model       ← GenAI semantic convention attribute
+            ├─ gen_ai.usage.input_tokens  ← GenAI semantic convention attribute
+            └─ gen_ai.usage.output_tokens ← GenAI semantic convention attribute
+```
+
+5. **The layers are complementary, not redundant** — Layer 1 produces no business spans (infrastructure only). Layer 3 provides coarse-grained application flow (session → turn → lifecycle). Layer 2 provides fine-grained LLM call detail (model, tokens, latency). Together they give full-stack observability; individually each gives only a partial view.
 
 **Configuration Summary**:
 
-| Mechanism | Activation | What It Does |
-|-----------|-----------|--------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` env var | Set to collector URL | Enables trace + log export, context propagation |
-| `OTEL_EXPORTER_OTLP_HEADERS` env var | Optional headers | Auth/API keys for the collector |
-| `OTEL_RESOURCE_ATTRIBUTES` env var | Optional attributes | Custom resource attributes on all spans |
-| `experimental.openTelemetry: true` in config | In `opencode.json` | Enables AI SDK LLM call spans with session/user metadata |
-| `opencode-plugin-otel` | npm plugin | Community plugin for OTLP/gRPC export |
+| Mechanism | Activation | What It Does | Layer Dependency |
+|-----------|-----------|--------------|------------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` env var | Set to collector URL | Activates Layer 1 (TracerProvider + Exporter + ContextManager) and Layer 3 (app-level spans) | Standalone — this is the foundation |
+| `OTEL_EXPORTER_OTLP_HEADERS` env var | Optional headers | Auth/API keys for the collector | Requires `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| `OTEL_RESOURCE_ATTRIBUTES` env var | Optional attributes | Custom resource attributes on all spans | Requires `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| `experimental.openTelemetry: true` in config | In `opencode.json` | Activates Layer 2 (AI SDK LLM call spans with GenAI semantic conventions) | Requires `OTEL_EXPORTER_OTLP_ENDPOINT` (Layer 1) — without a TracerProvider, this flag has no effect |
+| `opencode-plugin-otel` | npm plugin | Community plugin for OTLP/gRPC export | Independent alternative |
 
 ### OTel GenAI Semantic Conventions (Best Practices)
 
@@ -125,39 +175,37 @@ The [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/spe
 **What's missing**:
 1. No way to activate OpenCode's OTel from KubeOpenCode (env vars not injected)
 2. No controller-side tracing (Task lifecycle spans)
-3. No LLM-specific metrics (tokens, latency, cost)
-4. No trace context propagation (controller → Agent Pod)
-5. No OTel Collector integration guidance
+3. No documentation for recommended Collector configuration examples
 
 ## Key Insight: OpenCode Already Does the Heavy Lifting
 
-The most important finding from this investigation is that **OpenCode has built-in, production-grade OTel support** that requires zero code changes. It is activated purely by environment variables:
+The most important finding from this investigation is that **OpenCode has built-in, production-grade OTel support** that requires zero code changes. It is activated through a two-tier configuration model that reflects the layer dependency chain:
 
-| Env Var | Effect |
-|---------|--------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Enables trace + log export via OTLP/HTTP |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Auth headers for collector |
-| `OTEL_RESOURCE_ATTRIBUTES` | Custom attributes on all spans |
-| `experimental.openTelemetry: true` (in config) | Enables AI SDK GenAI semantic convention spans |
+| Configuration | Activates | Depends On | What You Get |
+|---------------|-----------|------------|--------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` env var | Layer 1 (infrastructure) + Layer 3 (app-level spans) | Standalone | Session/turn/lifecycle spans, log export. No LLM detail. |
+| `experimental.openTelemetry: true` (in `opencode.json`) | Layer 2 (LLM call spans) | **Requires** `OTEL_EXPORTER_OTLP_ENDPOINT` | GenAI semantic convention spans: model, tokens, latency per LLM call. Adds detail **on top of** Layer 3's turn-level structure. |
 
-This means **Phase 1 is primarily a KubeOpenCode-side change** — inject env vars into Pod specs. OpenCode does the rest automatically.
+**The two configurations are not interchangeable alternatives** — they are a layered activation where Layer 2 is additive to Layer 1+3. Setting `experimental.openTelemetry: true` without `OTEL_EXPORTER_OTLP_ENDPOINT` has no effect because there is no TracerProvider for the AI SDK to create tracers from.
 
-The AI SDK's `experimental_telemetry` flag produces spans that follow the [OTel GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/), including:
+This means **Phase 1 is primarily a KubeOpenCode-side change** — inject the `OTEL_EXPORTER_OTLP_ENDPOINT` env var into Pod specs (activating Layers 1+3), and conditionally inject `experimental.openTelemetry: true` into the OpenCode config (activating Layer 2). OpenCode does the rest automatically.
+
+The AI SDK's `experimental_telemetry` flag produces spans with **partial** GenAI Semantic Conventions support — both `ai.*` private attributes and a subset of `gen_ai.*` standard attributes are emitted (see Layer 2 description for details). This includes:
 - Per-LLM-call spans with model, token counts, and latency
 - `session.id` and `userId` metadata (injected by OpenCode's tracer proxy)
 - Tool call spans with tool name and arguments
 
-This is the exact data needed for cost attribution, performance debugging, and enterprise audit trails.
+These Layer 2 spans nest within Layer 3's `RunInteractive.turn` span, producing a unified trace tree. This is the exact data needed for cost attribution, performance debugging, and enterprise audit trails.
 
 ## Decision
 
-Adopt a **4-phase approach** that leverages OpenCode's built-in OTel capabilities progressively, from zero-code-enablement to full distributed tracing.
+Adopt a **2-phase approach** that leverages OpenCode's built-in OTel capabilities progressively. Phase 1 exposes OpenCode's existing OTel data; Phase 2 adds KubeOpenCode controller-side observability after Phase 1 is validated. KubeOpenCode's responsibility boundary is clear: produce standardized OTLP data and expose an `endpoint` config; Collector deployment, processing, storage, and visualization are the user's responsibility.
 
 ### Phase 1: Enable OpenCode Built-in OTel (Zero code changes in OpenCode)
 
 **Goal**: Surface LLM-level traces and logs for every Task with minimal KubeOpenCode changes.
 
-**How**: OpenCode already exports OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. KubeOpenCode just needs to inject this env var into Agent Pods.
+**How**: OpenCode already exports OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (activating Layers 1+3). KubeOpenCode just needs to inject this env var into Agent Pods, and conditionally inject `experimental.openTelemetry: true` to additionally activate Layer 2 (LLM call detail).
 
 **Changes in KubeOpenCode**:
 
@@ -171,10 +219,16 @@ Adopt a **4-phase approach** that leverages OpenCode's built-in OTel capabilitie
      observability:
        openTelemetry:
          enabled: true
-         # Endpoint for the OTel Collector. Required when enabled.
-         # Supports both in-cluster and external URLs.
+         # OTLP/HTTP endpoint for the user's Collector. Required when enabled.
+         # This is the user's existing observability infrastructure —
+         # KubeOpenCode does NOT deploy or manage Collectors.
+         # Examples:
+         #   Gateway mode:  http://otel-collector.observability:4318
+         #   Sidecar mode:  http://localhost:4318
+         #   External SaaS: https://api.honeycomb.io
          endpoint: "http://otel-collector.observability:4318"
-         # Optional headers for collector authentication
+         # Optional headers for collector authentication (e.g., SaaS API keys).
+         # Values can be inline or resolved from a Secret via valueFrom.secretKeyRef.
          headers: {}
          # Inject experimental.openTelemetry into OpenCode config to enable LLM call traces
          enableLLMTraces: true
@@ -192,11 +246,9 @@ Adopt a **4-phase approach** that leverages OpenCode's built-in OTel capabilitie
 
 3. **Inject `experimental.openTelemetry: true` into OpenCode config** — When `enableLLMTraces: true`, the controller merges this into the OpenCode config JSON during Pod construction. This activates AI SDK's `experimental_telemetry` which produces GenAI semantic convention spans for every LLM call with token counts, model info, and session identity.
 
-4. **Add OTel Collector sidecar injection annotation** — When configured, add `sidecar.opentelemetry.io/inject: "kubeopencode-collector"` annotation to Agent/Task Pods. This works with the [OpenTelemetry Operator](https://opentelemetry.io/docs/kubernetes/operator/) for automatic sidecar injection. The annotation value is either `"true"` (use default Collector in same namespace) or the name of a specific `OpenTelemetryCollector` CR. KubeOpenCode uses the value configured in `collectorInjection.collectorName`, defaulting to `"true"` if unset.
+4. **Update `api/v1alpha1/config_types.go`** — Add `ObservabilitySpec` struct with `OpenTelemetryConfig` nested type.
 
-5. **Update `api/v1alpha1/config_types.go`** — Add `ObservabilitySpec` struct with `OpenTelemetryConfig` nested type.
-
-6. **Update Helm chart RBAC** — Controller needs to read `KubeOpenCodeConfig` for observability config.
+5. **Update Helm chart RBAC** — Controller needs to read `KubeOpenCodeConfig` for observability config.
 
 **What users get**: Every LLM call in every Task produces OTel spans with GenAI semantic conventions (token usage, model, latency) visible in Jaeger/Tempo/Grafana. Logs flow to the same OTLP endpoint. Zero code changes in OpenCode required.
 
@@ -204,9 +256,17 @@ Adopt a **4-phase approach** that leverages OpenCode's built-in OTel capabilitie
 
 **Effort**: Low (primarily pod_builder.go env var injection + config API)
 
-### Phase 2: Controller-Side Tracing (End-to-end trace correlation)
+### Phase 2: Controller-Side Observability (Tracing + Metrics)
 
-**Goal**: Create a single trace spanning the entire Task lifecycle from creation to completion.
+**Prerequisite**: Phase 1 must be validated in a real deployment before starting Phase 2. Specifically:
+- OpenCode's OTel output is confirmed complete and correctly attributed in Agent Pods
+- Span structure (names, attributes, parent-child linkage) is stable
+- Data volume is acceptable and Collector is processing it without issues
+- The `endpoint` config works for the user's Collector topology
+
+Starting Phase 2 before Phase 1 is validated risks building parent spans on top of unstable child spans.
+
+**Goal**: Add KubeOpenCode controller-side telemetry to create end-to-end trace correlation and expose controller-level metrics via OTel.
 
 **Changes**:
 
@@ -216,6 +276,7 @@ Adopt a **4-phase approach** that leverages OpenCode's built-in OTel capabilitie
    go.opentelemetry.io/otel/trace
    go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
    go.opentelemetry.io/otel/sdk/resource
+   go.opentelemetry.io/otel/metric
    semconv go.opentelemetry.io/otel/semconv/v1.30.0
    ```
 
@@ -241,97 +302,29 @@ Adopt a **4-phase approach** that leverages OpenCode's built-in OTel capabilitie
 
 5. **CronTask correlation** — Each Task created by a CronTask gets `kubeopencode.crontask.name` as a span attribute and an OTel Span Link (`go.opentelemetry.io/otel/trace`.Link) to the previous successful Task's root span when available. This enables both attribute-based queries ('show all traces for CronTask X') and graph-based navigation across recurring runs.
 
-**What users get**: A single trace view from Task creation → Pod scheduling → Init containers → LLM call chain → Tool execution → Completion. Full causal linkage.
+6. **Add OTel Metrics in controller** — Register OTel `Meter` for controller-side operations not covered by span-derived metrics:
+   ```go
+   meter := otel.GetMeterProvider().Meter("kubeopencode/controller")
 
-**Effort**: Medium (Go OTel SDK integration, reconcile instrumentation, trace propagation)
+   taskReconcileDuration, _ := meter.Float64Histogram(
+       "kubeopencode.task.reconcile.duration",
+       metric.WithDescription("Time spent in task reconciliation"),
+   )
+   ```
+   Additionally, expose **existing Prometheus metrics via OTel** by using the OTel Prometheus bridge (`go.opentelemetry.io/otel/exporters/prometheus`), making all existing `kubeopencode_*` metrics available in both Prometheus and OTLP formats. This allows gradual migration without breaking existing dashboards.
 
-### Phase 3: OTel Metrics for LLM Operations (Complement Prometheus)
+**What users get**: A single trace view from Task creation → Pod scheduling → Init containers → LLM call chain → Tool execution → Completion. Controller-level metrics available in both Prometheus and OTLP formats.
 
-**Goal**: Export LLM-specific metrics via OTel for cost dashboards and performance analysis.
-
-This phase has two paths:
-
-#### Path A: Span-to-Metrics via OTel Collector (Zero code, recommended first)
-
-Use the [OTel Collector Span Metrics Connector](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/connector/spanmetricsconnector) to derive metrics from GenAI spans produced by Phase 1:
-
-```yaml
-# OTel Collector config example
-connectors:
-  spanmetrics:
-    histogram:
-      explicit:
-        buckets: [100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s]
-    dimensions:
-      - name: gen_ai.request.model
-      - name: gen_ai.system
-      - name: kubeopencode.agent.name
-      - name: kubeopencode.task.namespace
-    metrics_flush_interval: 15s
-```
-
-This produces standard metrics from existing spans:
-| Metric | Source | Purpose |
-|--------|--------|---------|
-| `gen_ai.client.operation.duration` | OTel spans | LLM latency by model/agent |
-| `gen_ai.client.token.usage` | OTel spans | Token cost by namespace/agent |
-| `calls` (span count) | OTel spans | LLM call volume |
-
-**No KubeOpenCode code changes** — just collector configuration.
-
-#### Path B: Native OTel Metrics in Controller (Additional custom metrics)
-
-Add Go OTel metrics for controller-side operations not covered by span metrics:
-
-```go
-// In the controller's init or setup function
-meter := otel.GetMeterProvider().Meter("kubeopencode/controller")
-
-llmTokenInput, _ := meter.Int64Counter(
-    "kubeopencode.llm.tokens.input",
-    metric.WithDescription("Input tokens consumed"),
-)
-
-llmTokenOutput, _ := meter.Int64Counter(
-    "kubeopencode.llm.tokens.output",
-    metric.WithDescription("Output tokens consumed"),
-)
-
-taskReconcileDuration, _ := meter.Float64Histogram(
-    "kubeopencode.task.reconcile.duration",
-    metric.WithDescription("Time spent in task reconciliation"),
-)
-```
-
-Additionally, expose **existing Prometheus metrics via OTel** by using the OTel Prometheus bridge (`go.opentelemetry.io/otel/exporters/prometheus`), making all existing `kubeopencode_*` metrics available in both Prometheus and OTLP formats.
-
-**What users get**: Grafana dashboards with token costs by namespace/agent/model, LLM latency trends, and tool usage breakdown. Existing Prometheus metrics are also available via OTLP.
-
-**Effort**: Low (Path A is config-only) / Medium (Path B requires Go metrics code)
-
-### Phase 4: UI Observability Dashboard
-
-**Goal**: Surface key observability data in the KubeOpenCode UI without requiring external tools.
-
-**Changes**:
-
-1. **Task detail page metrics panel** — Show token usage, LLM call count, and latency summary from the server API. The server queries the user-configured metrics backend (Prometheus/Mimir/VictoriaMetrics) — KubeOpenCode does NOT query the Collector directly. The backend URL is configured via `KubeOpenCodeConfig.spec.observability.metricsBackend.queryURL`.
-
-2. **Agent metrics page** — Show capacity, queue depth, and LLM cost over time. Use existing Prometheus metrics + new OTel metrics.
-
-3. **Trace link** — For each Task, show a "View Trace" link that opens Jaeger/Tempo/Grafana filtered to that Task's trace ID. This requires storing the root trace ID in `status.traceID` (set in Phase 2).
-
-4. **CronTask trend graphs** — Show performance trends across recurring Task runs.
-
-**Effort**: Medium (UI + server API endpoints)
+**Effort**: Medium (Go OTel SDK integration, reconcile instrumentation, trace propagation, metrics registration)
 
 ### What We Explicitly Do NOT Build
 
-- **Custom tracing UI** — Use existing tools (Jaeger, Grafana Tempo, SigNoz)
-- **Built-in OTel Collector** — Users bring their own via the OTel Operator
-- **Mandatory dependency** — OTel is opt-in; KubeOpenCode works without it
-- **Log aggregation** — Out of scope; handled by standard K8s logging stacks
-- **Our own OTel SDK for OpenCode** — OpenCode already has native support
+- **Custom observability UI** — Users already have Grafana, Jaeger, SigNoz, Datadog, or other dashboards. KubeOpenCode produces OTLP data that flows into these tools natively; building our own UI is redundant and would compete with the user's existing investment in their observability platform.
+- **Built-in OTel Collector** — The Collector is the user's observability infrastructure. KubeOpenCode only produces data and exposes an `endpoint` config.
+- **Mandatory dependency** — OTel is opt-in; KubeOpenCode works without it.
+- **Log aggregation** — Out of scope; handled by standard K8s logging stacks.
+- **Our own OTel SDK for OpenCode** — OpenCode already has native support.
+- **Metrics backend query proxy** — KubeOpenCode does NOT query Prometheus/Mimir on behalf of a UI. Users view metrics directly in their own dashboards.
 
 ### Security & Privacy Considerations
 
@@ -373,11 +366,35 @@ GenAI telemetry can expose sensitive data. KubeOpenCode must apply the following
 **Sampling for sensitive workloads**:
 - For regulated workloads, configure tail-sampling in the OTel Collector to drop spans containing prompts before they leave the cluster boundary.
 
-## Kubernetes OpenTelemetry Ecosystem Integration
+## KubeOpenCode's Observability Responsibility Boundary
 
-KubeOpenCode runs in Kubernetes, where a mature OTel ecosystem already exists. Rather than reinventing collection, processing, or storage, KubeOpenCode integrates with these established projects. This section describes the integration surface for each major K8s OTel product.
+A core design principle of this ADR is that **KubeOpenCode produces standardized telemetry; the user's observability infrastructure collects, processes, and stores it.** The OTel Collector belongs to the user's infrastructure, not to KubeOpenCode.
 
-### The Big Picture
+This follows the established pattern in the Kubernetes ecosystem (cert-manager, Argo CD, Flux, etc.): the product exposes an OTLP endpoint configuration, produces well-attributed data, and documents what it emits. The user decides how to deploy, configure, and route their Collectors.
+
+### What KubeOpenCode Does
+
+- **Produces** OTLP-compliant traces, metrics, and logs via standard OTel SDKs
+- **Exposes** a single `endpoint` config in `KubeOpenCodeConfig` — the user fills in their Collector address
+- **Injects** K8s semantic convention resource attributes (`k8s.pod.name`, `k8s.namespace.name`) so that the user's Collector `k8sattributes` processor can correlate spans with Pods
+- **Ships** optional `PodMonitor`/`ServiceMonitor` manifests in the Helm chart (gated by `metrics.serviceMonitor.enabled: true`) for existing Prometheus Operator integrations
+- **Documents** what telemetry is produced, which semantic conventions are used, and recommended Collector configuration examples
+
+### What KubeOpenCode Does NOT Do
+
+- **Does NOT deploy or manage Collectors** — No Collector CRs, no Collector containers, no Collector configs in the Helm chart
+- **Does NOT prescribe Collector deployment topology** — DaemonSet, Gateway, or Sidecar is the user's architecture decision; KubeOpenCode only needs an `endpoint` URL
+- **Does NOT inject sidecar annotations** — If users want OTel Operator sidecar injection, they add `sidecar.opentelemetry.io/inject` annotations themselves (via `podSpec` on Agent, or via namespace-level defaults)
+- **Does NOT handle Collector configuration** — Sampling rates, processors, exporters, and backend routing are the user's operational concern
+- **Does NOT bundle vendor-specific exporters** — The Collector's exporter config is the user's choice
+
+### Why This Boundary Matters
+
+1. **No conflict with existing infrastructure** — Users likely already have Collectors (DaemonSet, Grafana Alloy, Datadog Agent, cloud-vendor variants). KubeOpenCode must not introduce a competing Collector.
+2. **No forced architecture decisions** — Collector topology (sidecar vs. DaemonSet vs. gateway) is a cluster-level decision that depends on scale, isolation needs, and team structure. KubeOpenCode must not prescribe one.
+3. **Clear maintenance responsibility** — Collector config (backends, sampling, label enrichment) is environment-specific and evolves independently of KubeOpenCode releases.
+
+### Data Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -395,217 +412,54 @@ KubeOpenCode runs in Kubernetes, where a mature OTel ecosystem already exists. R
                               │
                               ▼
               ┌─────────────────────────────────┐
-              │  OpenTelemetry Collector        │
-              │  (DaemonSet / Sidecar / Gateway)│
-              │  - k8sattributes processor      │
-              │  - batch processor              │
-              │  - spanmetrics connector        │
-              └────────────────┬────────────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              │                │                │
-              ▼                ▼                ▼
-       ┌──────────┐     ┌──────────┐    ┌──────────┐
-       │ Jaeger / │     │Prometheus│    │   Loki   │
-       │  Tempo   │     │/Mimir/VM │    │          │
-       │ (traces) │     │ (metrics)│    │  (logs)  │
-       └──────────┘     └──────────┘    └──────────┘
-                               │
-                               ▼
-                         ┌──────────┐
-                         │ Grafana /│
-                         │ SigNoz / │
-                         │ Datadog  │
-                         └──────────┘
+              │  User's OTel Collector          │
+              │  (DaemonSet / Sidecar / Gateway) │
+              │  User's config, user's backends  │
+              └─────────────────────────────────┘
 ```
 
-KubeOpenCode produces telemetry; the OTel Collector routes it; backends store and visualize it. KubeOpenCode commits to producing **standard, well-attributed OTLP data**, leaving routing/storage/visualization choices entirely to the user.
+KubeOpenCode commits to producing **standard, well-attributed OTLP data**. Everything to the right of the `│` boundary is the user's responsibility.
 
-### 1. OpenTelemetry Operator (Sidecar & Auto-Instrumentation)
+### Protocol Note
 
-The [OpenTelemetry Operator](https://opentelemetry.io/docs/kubernetes/operator/) is the recommended way to deploy and manage Collectors in K8s. KubeOpenCode integrates in two ways:
+OpenCode uses OTLP/HTTP (port 4318), not gRPC (port 4317). The configured `endpoint` MUST point to an OTLP/HTTP receiver. If the user's Collector exposes only gRPC, they can enable the HTTP receiver or front it with the HTTP-to-gRPC bridge — this is a Collector-side configuration, not a KubeOpenCode concern.
 
-**A. OpenTelemetryCollector CRD** — Users deploy a Collector via:
+### Recommended Collector Configuration (Documentation Scope)
 
-```yaml
-apiVersion: opentelemetry.io/v1beta1
-kind: OpenTelemetryCollector
-metadata:
-  name: kubeopencode-collector
-  namespace: observability
-spec:
-  mode: sidecar  # or daemonset/deployment/statefulset
-  config:
-    receivers:
-      otlp:
-        protocols:
-          http:
-            endpoint: 0.0.0.0:4318
-    processors:
-      k8sattributes:
-        passthrough: false
-        extract:
-          metadata:
-            - k8s.pod.name
-            - k8s.namespace.name
-            - k8s.node.name
-      batch:
-        timeout: 10s
-    exporters:
-      otlphttp/tempo:
-        endpoint: http://tempo.observability:4318
-    service:
-      pipelines:
-        traces: { receivers: [otlp], processors: [k8sattributes, batch], exporters: [otlphttp/tempo] }
-```
+The following are **not ADR decisions** — they are examples that will live in `website/docs/observability.md` to help users integrate KubeOpenCode with their existing Collectors:
 
-**B. Sidecar injection annotation** — When `KubeOpenCodeConfig.spec.observability.openTelemetry.collectorInjection: true`, the controller adds the annotation to Agent/Task Pods:
+- **k8sattributes processor** — Recommended to auto-enrich spans with K8s metadata. KubeOpenCode already sets `k8s.pod.name` and `k8s.namespace.name` resource attributes for correlation.
+- **spanmetrics connector** — Recommended to derive `gen_ai.client.operation.duration` and `gen_ai.client.token.usage` metrics from GenAI spans. This is a Collector-side configuration that requires zero KubeOpenCode code changes — once Phase 1 produces GenAI spans, the user's Collector can automatically derive metrics from them. Example:
+  ```yaml
+  connectors:
+    spanmetrics:
+      histogram:
+        explicit:
+          buckets: [100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s]
+      dimensions:
+        - name: gen_ai.request.model
+        - name: gen_ai.system
+        - name: kubeopencode.agent.name
+        - name: kubeopencode.task.namespace
+      metrics_flush_interval: 15s
+  ```
+- **Prometheus receiver** — Can scrape existing `/metrics` endpoints to bridge KubeOpenCode's Prometheus metrics into OTLP.
+- **OTel Operator sidecar injection** — Users who want per-Pod Collectors can add `sidecar.opentelemetry.io/inject` annotations via `Agent.spec.podSpec` and set `endpoint: http://localhost:4318`.
+- **Service mesh integration** — When running under Istio/Linkerd, KubeOpenCode's OTel spans carry `traceparent` (Phase 2) so mesh traces merge with application traces.
 
-```yaml
-metadata:
-  annotations:
-    sidecar.opentelemetry.io/inject: "kubeopencode-collector"
-```
+### Backend Compatibility
 
-The OTel Operator's mutating webhook then injects the Collector sidecar automatically. **No KubeOpenCode code touches the Operator API directly** — we just add the annotation.
+KubeOpenCode produces OTLP-compliant data. Any OTLP-capable backend can receive it through the user's Collector:
 
-**C. Auto-instrumentation (NOT used)** — The Operator's `Instrumentation` CRD for Java/Python/Node auto-instrumentation is **not applicable** to KubeOpenCode because OpenCode is already instrumented natively.
+| Backend | Notes |
+|---------|-------|
+| **Jaeger** | Native OTLP support in Jaeger v1.35+ |
+| **Grafana Tempo** | First-class OTLP; recommended for K8s |
+| **Prometheus / Mimir / VictoriaMetrics** | Via Collector's `prometheusremotewrite` exporter |
+| **SigNoz** | Native OTLP; [tested with OpenCode](https://signoz.io/docs/opencode-observability/) |
+| **Datadog, New Relic, Honeycomb, Elastic, Splunk, Dynatrace** | All support OTLP via vendor or standard exporters |
 
-**Minimum versions**: OTel Operator v0.90.0+ (for v1beta1 OpenTelemetryCollector CRD), OTel Collector Contrib v0.95.0+ (for spanmetrics connector with GenAI attributes), Kubernetes 1.26+ (for stable Downward API features used in DaemonSet mode).
-
-### 2. OpenTelemetry Collector Deployment Patterns
-
-KubeOpenCode supports all three Collector deployment patterns. Users choose based on scale and isolation needs:
-
-| Pattern | When to Use | KubeOpenCode Config |
-|---------|------------|--------------------|
-| **Sidecar** (per Pod) | Strong isolation, per-tenant Collectors, dev/test | `endpoint: http://localhost:4318` + sidecar annotation |
-| **DaemonSet** (per Node) | Most production K8s clusters, balanced perf/cost | `endpoint: http://$(HOST_IP):4318` (uses Downward API) |
-| **Gateway** (centralized) | Multi-cluster, large scale, central control | `endpoint: http://otel-gateway.observability:4318` |
-
-The `endpoint` field in `KubeOpenCodeConfig.spec.observability.openTelemetry` is the only required setting; the deployment topology is the user's choice.
-
-For DaemonSet mode, KubeOpenCode injects the Node IP via Downward API:
-
-```yaml
-env:
-- name: OTEL_EXPORTER_OTLP_ENDPOINT
-  value: "http://$(HOST_IP):4318"
-- name: HOST_IP
-  valueFrom:
-    fieldRef:
-      fieldPath: status.hostIP
-```
-
-This is handled transparently in `pod_builder.go` when `endpoint` contains the `$(HOST_IP)` template.
-
-### 3. K8s Attributes Processor (Automatic Enrichment)
-
-The [k8sattributes processor](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/k8sattributesprocessor) auto-enriches all telemetry with K8s metadata (pod name, namespace, node, labels, annotations) by querying the K8s API.
-
-**KubeOpenCode's role**: Set the [Kubernetes Semantic Convention](https://opentelemetry.io/docs/specs/semconv/resource/k8s/) attributes that allow the processor to correlate spans with Pods. We already inject these in Phase 1:
-
-```
-OTEL_RESOURCE_ATTRIBUTES=k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE),...
-```
-
-**User's role**: Configure the processor in their Collector to add additional metadata (labels, annotations, node info). No KubeOpenCode change needed.
-
-**Critical**: Pod IP-based discovery works automatically when the processor runs with proper RBAC (`get`, `list`, `watch` on pods/namespaces/nodes). The OTel Operator handles this RBAC when deploying via the `OpenTelemetryCollector` CRD.
-
-### 4. Prometheus Integration (Existing Metrics Bridge)
-
-KubeOpenCode currently exposes Prometheus metrics on `/metrics`. The K8s ecosystem provides multiple paths to integrate these with OTel:
-
-**Path A: Prometheus Receiver in Collector** (recommended, no KubeOpenCode change):
-
-```yaml
-receivers:
-  prometheus:
-    config:
-      scrape_configs:
-      - job_name: 'kubeopencode-controller'
-        kubernetes_sd_configs:
-        - role: pod
-        relabel_configs:
-        - source_labels: [__meta_kubernetes_pod_label_app]
-          action: keep
-          regex: kubeopencode-controller
-```
-
-The Collector scrapes existing `/metrics` endpoints and converts to OTLP. **Zero KubeOpenCode code change.**
-
-**Path B: Target Allocator** (for large clusters):
-
-The [OTel Target Allocator](https://github.com/open-telemetry/opentelemetry-operator/tree/main/cmd/otel-allocator) shards Prometheus targets across Collector replicas. Configured via the `OpenTelemetryCollector` CRD with `spec.targetAllocator.enabled: true`. **No KubeOpenCode change needed**; the existing `PodMonitor`/`ServiceMonitor` resources are discovered automatically.
-
-**Path C: OTel Prometheus Exporter in Controller** (Phase 3 Path B):
-
-The controller registers an OTel `Meter` and exposes metrics in both Prometheus (`/metrics`) and OTLP formats simultaneously. Allows gradual migration without breaking existing dashboards.
-
-### 5. Prometheus Operator Integration (PodMonitor/ServiceMonitor)
-
-KubeOpenCode Pods already carry labels suitable for [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator) discovery:
-
-```yaml
-# Helm chart adds these
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: kubeopencode-agents
-spec:
-  selector:
-    matchLabels:
-      kubeopencode.io/agent: "true"
-  podMetricsEndpoints:
-  - port: metrics
-    interval: 30s
-```
-
-**Phase 1 addition**: Helm chart will ship optional `PodMonitor`/`ServiceMonitor` manifests for the controller, server, and Agent Pods, gated by `metrics.serviceMonitor.enabled: true`. These work with Prometheus Operator, Grafana Mimir, VictoriaMetrics Operator, and any compatible collector.
-
-### 6. Service Mesh Integration (Istio, Linkerd)
-
-If users run KubeOpenCode under a service mesh, mesh-level traces (HTTP/gRPC calls between Pods) are automatically captured by the mesh. **KubeOpenCode's OTel spans must carry the W3C `traceparent` header to merge with mesh traces.**
-
-**Phase 2 requirement**: The controller's outgoing HTTP client (when calling OpenCode API or external services) must inject `traceparent`. The Go OTel SDK does this automatically via `otelhttp.NewTransport()`. OpenCode's HTTP client already supports this via its OTel context manager.
-
-Result: A single trace shows `Istio Envoy → KubeOpenCode Controller → Agent Pod (OpenCode) → LLM API` as one continuous trace.
-
-### 7. Backend-Agnostic Output
-
-KubeOpenCode commits to OTLP-compliant output. The Collector's exporters handle translation to any backend:
-
-| Backend | Collector Exporter | Notes |
-|---------|-------------------|-------|
-| **Jaeger** | `jaeger` / `otlp` | Native OTLP support in Jaeger v1.35+ |
-| **Grafana Tempo** | `otlphttp` | First-class OTLP; recommended for K8s |
-| **Grafana Loki** | `loki` | Logs only |
-| **Prometheus / Mimir / VictoriaMetrics** | `prometheusremotewrite` / `otlphttp` | Metrics |
-| **SigNoz** (open-source) | `otlp` | Native; tested with OpenCode per [SigNoz docs](https://signoz.io/docs/opencode-observability/) |
-| **Datadog** | `datadog` | Commercial |
-| **New Relic** | `otlp` | Native OTLP |
-| **Honeycomb** | `otlp` | Native OTLP |
-| **Dash0, Elastic, Splunk, Dynatrace** | `otlp` / vendor-specific | All support OTLP |
-
-**KubeOpenCode does not bundle any vendor-specific exporter.** Users choose by editing their Collector config.
-
-### 8. KubeCon-Native Patterns (CNCF Stack)
-
-The default "open-source CNCF stack" we test against:
-
-```
-KubeOpenCode → OTel Collector (DaemonSet via OTel Operator)
-            ├─ Tempo (traces, backed by S3)
-            ├─ Mimir (metrics, backed by S3)
-            └─ Loki (logs, backed by S3)
-                    ↓
-                Grafana (visualization)
-```
-
-This is the reference deployment we will document in `website/docs/observability.md` and validate in E2E tests with the [opentelemetry-demo](https://github.com/open-telemetry/opentelemetry-demo) infrastructure.
-
-### 9. KubeOpenCodeConfig Schema Updates
+### KubeOpenCodeConfig Schema
 
 To support the above, the schema becomes:
 
@@ -619,11 +473,12 @@ spec:
     openTelemetry:
       enabled: true
 
-      # Where to send telemetry. Supports:
-      # - In-cluster service: http://otel-collector.observability:4318
-      # - DaemonSet via Downward API: http://$(HOST_IP):4318
-      # - Sidecar: http://localhost:4318
-      # - External: https://api.honeycomb.io
+      # Where to send telemetry. The user's Collector address.
+      # KubeOpenCode does NOT deploy or manage Collectors.
+      # Examples:
+      # - In-cluster: http://otel-collector.observability:4318
+      # - Sidecar:    http://localhost:4318
+      # - External:   https://api.honeycomb.io
       endpoint: "http://otel-collector.observability:4318"
 
       # Optional headers (e.g., for SaaS backends). Values can be inline or
@@ -635,12 +490,6 @@ spec:
             secretKeyRef:
               name: honeycomb-credentials
               key: api-key
-
-      # OTel Operator sidecar injection
-      collectorInjection:
-        enabled: false
-        # Name of the OpenTelemetryCollector CR to inject from
-        collectorName: "kubeopencode-collector"
 
       # Inject experimental.openTelemetry into OpenCode config to enable LLM call traces
       enableLLMTraces: true
@@ -654,21 +503,9 @@ spec:
       # Additional resource attributes for all spans
       resourceAttributes:
         kubeopencode.cluster.name: "production"
-
-      # Signal-level toggles
-      signals:
-        traces: true
-        metrics: true
-        logs: false  # logs default off to reduce volume
-
-    # Metrics backend used by Phase 4 UI dashboards. KubeOpenCode does NOT
-    # query the OTel Collector directly; it queries the user-configured
-    # metrics backend (Prometheus/Mimir/VictoriaMetrics).
-    metricsBackend:
-      queryURL: "http://prometheus.observability:9090"
 ```
 
-This schema is intentionally **declarative and backend-agnostic**. KubeOpenCode never knows about Jaeger, Tempo, or any specific backend — that's the Collector's job.
+This schema is intentionally **declarative and backend-agnostic**. KubeOpenCode produces OTLP data and sends it to the user-configured `endpoint`. Everything beyond that — Collector deployment, processing, storage, visualization — is the user's responsibility.
 
 ## Consequences
 
@@ -676,18 +513,18 @@ This schema is intentionally **declarative and backend-agnostic**. KubeOpenCode 
 
 - **Phase 1 is extremely low effort** — OpenCode already implements OTel; we just wire it up
 - **Zero-dependency for basic use** — OTel is opt-in via `KubeOpenCodeConfig`
-- **Leverages existing ecosystem** — OTel Operator + Collector + Grafana; no custom infrastructure
+- **Leverages existing ecosystem** — Users bring their own Collectors and dashboards; no custom infrastructure required
 - **Enterprise value** — Cost visibility, debugging, and audit trails are top enterprise requirements
 - **Standards-aligned** — GenAI semantic conventions ensure compatibility with all OTel backends
 - **Incremental** — Each phase delivers standalone value; no big-bang rollout
 - **No OpenCode fork required** — All integration points are env vars and config injection
 - **Backward compatible** — Existing `kubeopencode_*` Prometheus metrics are preserved; OTel metrics are additive. Users can adopt OTel incrementally without breaking existing Prometheus/Grafana dashboards.
+- **Clear responsibility boundary** — KubeOpenCode produces data, users' infrastructure collects and visualizes it. No redundant UI or Collector.
 
 ### Negative
 
-- **OTel Operator dependency for sidecar injection** — Users need to install it separately (but it's optional)
+- **OTel Operator dependency for sidecar injection** — If users want sidecar Collectors, they need the OTel Operator (but this is purely a user-side choice, not a KubeOpenCode requirement)
 - **Experimental flag risk** — AI SDK's `experimental_telemetry` is technically experimental, though OTel GenAI semconv are maturing rapidly (GA as of May 2026)
-- **Sidecar overhead** — OTel Collector sidecar adds ~50MB memory per Pod (only when using sidecar mode; gateway mode has no per-Pod overhead)
 - **Phase 2 adds Go dependencies** — `go.opentelemetry.io/otel` and related packages increase binary size
 
 ### Risks and Mitigations
@@ -705,10 +542,7 @@ This schema is intentionally **declarative and backend-agnostic**. KubeOpenCode 
 | Phase | Effort | Value | Priority |
 |-------|--------|-------|----------|
 | Phase 1: Enable OpenCode OTel | Low | High | P0 — Immediate |
-| Phase 3 Path A: Span-to-Metrics | Low (config-only) | High | P0 — With Phase 1 |
-| Phase 2: Controller Tracing | Medium | Medium | P1 — Next iteration |
-| Phase 3 Path B: Native OTel Metrics | Medium | Medium | P2 — As needed |
-| Phase 4: UI Dashboard | Medium | Low-Medium | P3 — After core metrics work |
+| Phase 2: Controller Observability | Medium | Medium | P1 — After Phase 1 validated |
 
 ## References
 
