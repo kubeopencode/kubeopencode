@@ -39,7 +39,7 @@
 #
 
 # Stage 1: download and verify the binary using glibc (Debian)
-FROM debian:bookworm-20260505-slim AS downloader
+FROM debian:bookworm-20260518-slim AS downloader
 
 # OpenCode version to download — must be passed via --build-arg (no default).
 # Single source of truth: agents/Makefile (OPENCODE_VERSION variable).
