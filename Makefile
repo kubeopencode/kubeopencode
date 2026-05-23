@@ -535,6 +535,20 @@ local-dev-teardown: local-dev-check-context ## Delete Kind cluster and all local
 	@echo "Teardown complete"
 .PHONY: local-dev-teardown
 
+# OpenTelemetry observability images for local-dev testing
+OTEL_COLLECTOR_IMG := otel/opentelemetry-collector-contrib:0.119.0
+JAEGER_IMG := jaegertracing/all-in-one:latest
+
+load-otel-images: ## Pull and load OTel Collector + Jaeger images into Kind for local-dev testing
+	@echo "=== Loading OTel observability images into Kind ==="
+	@docker pull $(OTEL_COLLECTOR_IMG)
+	@docker pull $(JAEGER_IMG)
+	@kind load docker-image $(OTEL_COLLECTOR_IMG) --name $(LOCAL_DEV_CLUSTER)
+	@kind load docker-image $(JAEGER_IMG) --name $(LOCAL_DEV_CLUSTER)
+	@echo "Images loaded. Deploy the stack with:"
+	@echo "  kubectl apply -f deploy/local-dev/otel-observability.yaml"
+.PHONY: load-otel-images
+
 ##@ Agent
 
 agent-base-build: ## Build universal base image

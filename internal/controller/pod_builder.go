@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -125,6 +127,9 @@ type systemConfig struct {
 	// clusterDomain is the cluster domain name (e.g., "cluster.local")
 	// Defaults to "cluster.local" if not specified in KubeOpenCodeConfig
 	clusterDomain string
+	// observability is the cluster-wide observability configuration from KubeOpenCodeConfig.
+	// When set and enabled, OTel env vars are injected into agent Pods.
+	observability *kubeopenv1alpha1.ObservabilitySpec
 }
 
 // applySystemDefaults merges cluster-level configuration from KubeOpenCodeConfig
@@ -868,6 +873,275 @@ func buildProxyEnvVars(proxy *kubeopenv1alpha1.ProxyConfig, clusterDomain string
 	return envVars
 }
 
+// OTel environment variable constants for OpenTelemetry integration.
+const (
+	// OtelExporterEndpointEnvVar is the standard OTel env var for the OTLP exporter endpoint.
+	OtelExporterEndpointEnvVar = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	// OtelExporterHeadersEnvVar is the standard OTel env var for exporter headers.
+	OtelExporterHeadersEnvVar = "OTEL_EXPORTER_OTLP_HEADERS"
+	// OtelResourceAttributesEnvVar is the standard OTel env var for resource attributes.
+	OtelResourceAttributesEnvVar = "OTEL_RESOURCE_ATTRIBUTES"
+	// OtelInstrumentationGenAICaptureMessageContentEnvVar enables recording full prompt/response
+	// content on LLM spans per OTel GenAI semantic conventions.
+	OtelInstrumentationGenAICaptureMessageContentEnvVar = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+	// OtelPodNameEnvVar is the env var for the Pod name resolved via Downward API.
+	// Used in OTEL_RESOURCE_ATTRIBUTES as $(OTEL_POD_NAME) for Deployments where
+	// the Pod name is not known at construction time.
+	OtelPodNameEnvVar = "OTEL_POD_NAME"
+)
+
+// otelResourceIDs holds resource-identifying attributes for OTel env var injection.
+// Using a struct avoids positional-parameter sprawl in buildOTelEnvVars.
+type otelResourceIDs struct {
+	TaskName      string // Empty for server-mode Deployments
+	TaskNamespace string
+	AgentName     string
+	PodName       string // Empty for server-mode Deployments (uses Downward API instead)
+}
+
+// otelEnabled returns true if OpenTelemetry is configured and ready to use.
+// This checks the full nil/Enabled/Endpoint chain in one place,
+// avoiding duplication of this guard condition across callers.
+func otelEnabled(o *kubeopenv1alpha1.ObservabilitySpec) bool {
+	return o != nil && o.OpenTelemetry != nil && o.OpenTelemetry.Enabled && o.OpenTelemetry.Endpoint != ""
+}
+
+// buildOTelEnvVars creates environment variables for OpenTelemetry integration.
+// When observability is enabled with a valid endpoint, it injects:
+// - OTEL_EXPORTER_OTLP_ENDPOINT: the user's Collector address
+// - OTEL_EXPORTER_OTLP_HEADERS: optional headers (inline or from Secrets)
+// - OTEL_RESOURCE_ATTRIBUTES: standard K8s + KubeOpenCode + user-defined attributes
+// - OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: if recordContent is true
+//
+// Headers with secretKeyRef are resolved at container startup by kubelet,
+// so no controller-side Secret reading is needed.
+//
+// When ids.PodName is empty (server-mode Deployment where Pod name is not known at
+// construction time), the k8s.pod.name attribute uses a Downward API env var
+// reference $(OTEL_POD_NAME) that Kubernetes resolves at container startup.
+// The caller must also inject the OTEL_POD_NAME env var with fieldRef: metadata.name.
+func buildOTelEnvVars(observability *kubeopenv1alpha1.ObservabilitySpec, ids otelResourceIDs) []corev1.EnvVar {
+	if !otelEnabled(observability) {
+		return nil
+	}
+
+	otel := observability.OpenTelemetry
+
+	var envVars []corev1.EnvVar
+
+	// OTEL_EXPORTER_OTLP_ENDPOINT
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  OtelExporterEndpointEnvVar,
+		Value: otel.Endpoint,
+	})
+
+	// OTEL_EXPORTER_OTLP_HEADERS
+	if len(otel.Headers) > 0 {
+		// Sort header names for deterministic output.
+		// Without sorting, Go map iteration order is randomized, causing
+		// Deployment specs to diff on every reconcile and trigger infinite rollouts.
+		headerNames := make([]string, 0, len(otel.Headers))
+		for name := range otel.Headers {
+			headerNames = append(headerNames, name)
+		}
+		sort.Strings(headerNames)
+
+		var headerParts []string
+		for _, name := range headerNames {
+			src := otel.Headers[name]
+			if src.Value != "" {
+				// Inline value: include directly in the headers string
+				headerParts = append(headerParts, fmt.Sprintf("%s=%s", name, src.Value))
+			} else if src.ValueFrom != nil && src.ValueFrom.SecretKeyRef != nil {
+				// Secret reference: use EnvVar with ValueFrom so kubelet resolves it
+				// We can't use ValueFrom for a single env var that aggregates multiple headers,
+				// so we use a helper approach: inject the header value as a separate env var
+				// and reference it in the OTEL_EXPORTER_OTLP_HEADERS value.
+				// However, OTel SDK expects a single comma-separated string.
+				// The solution is to use $(VAR_NAME) expansion in the Value field,
+				// which Kubernetes resolves at container startup.
+				helperVarName := sanitizeOTelHeaderEnvVarName(name)
+				envVars = append(envVars, corev1.EnvVar{
+					Name: helperVarName,
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: src.ValueFrom.SecretKeyRef,
+					},
+				})
+				headerParts = append(headerParts, fmt.Sprintf("%s=$(%s)", name, helperVarName))
+			}
+		}
+		if len(headerParts) > 0 {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  OtelExporterHeadersEnvVar,
+				Value: strings.Join(headerParts, ","),
+			})
+		}
+	}
+
+	// OTEL_RESOURCE_ATTRIBUTES: standard K8s + KubeOpenCode + user-defined
+	// Sort user-defined attributes for deterministic output (see headers comment above).
+	var attrParts []string
+	// Task name is only applicable for Task Pods, not for server-mode Deployments.
+	if ids.TaskName != "" {
+		attrParts = append(attrParts, fmt.Sprintf("kubeopencode.task.name=%s", ids.TaskName))
+	}
+	attrParts = append(attrParts,
+		fmt.Sprintf("kubeopencode.task.namespace=%s", ids.TaskNamespace),
+		fmt.Sprintf("kubeopencode.agent.name=%s", ids.AgentName),
+		fmt.Sprintf("k8s.namespace.name=%s", ids.TaskNamespace),
+	)
+	// For k8s.pod.name: use the literal value when known (Task Pods),
+	// or reference a Downward API env var when not (Server Deployments).
+	if ids.PodName != "" {
+		attrParts = append(attrParts, fmt.Sprintf("k8s.pod.name=%s", ids.PodName))
+	} else {
+		attrParts = append(attrParts, "k8s.pod.name=$(OTEL_POD_NAME)")
+	}
+	if len(otel.ResourceAttributes) > 0 {
+		attrKeys := make([]string, 0, len(otel.ResourceAttributes))
+		for k := range otel.ResourceAttributes {
+			attrKeys = append(attrKeys, k)
+		}
+		sort.Strings(attrKeys)
+		for _, k := range attrKeys {
+			attrParts = append(attrParts, fmt.Sprintf("%s=%s", k, otel.ResourceAttributes[k]))
+		}
+	}
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  OtelResourceAttributesEnvVar,
+		Value: strings.Join(attrParts, ","),
+	})
+
+	// OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+	if otel.RecordContent {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  OtelInstrumentationGenAICaptureMessageContentEnvVar,
+			Value: "true",
+		})
+	}
+
+	return envVars
+}
+
+// buildOTelConfigContent creates the OPENCODE_CONFIG_CONTENT value for injecting
+// experimental.openTelemetry into OpenCode config. This activates Layer 2
+// (AI SDK LLM call traces with GenAI semantic conventions).
+// OpenCode merges OPENCODE_CONFIG_CONTENT with OPENCODE_CONFIG, so this
+// doesn't conflict with user-provided config.
+func buildOTelConfigContent(enableLLMTraces bool) string {
+	if !enableLLMTraces {
+		return ""
+	}
+	return `{"experimental":{"openTelemetry":true}}`
+}
+
+// agentNameFromTask extracts the agent name from a Task for OTel resource attributes.
+// For agentRef tasks, it returns the Agent name. For templateRef tasks, it returns the template name.
+func agentNameFromTask(task *kubeopenv1alpha1.Task) string {
+	if task.Status.AgentRef != nil {
+		return task.Status.AgentRef.Name
+	}
+	if task.Status.TemplateRef != nil {
+		return task.Status.TemplateRef.Name
+	}
+	if task.Spec.AgentRef != nil {
+		return task.Spec.AgentRef.Name
+	}
+	if task.Spec.TemplateRef != nil {
+		return task.Spec.TemplateRef.Name
+	}
+	return ""
+}
+
+// mergeOpenCodeConfigContent merges two OPENCODE_CONFIG_CONTENT JSON values.
+// Both values are JSON objects; their fields are merged (deep merge for nested objects).
+// This is needed when both context file instructions and OTel experimental config
+// need to be injected via OPENCODE_CONFIG_CONTENT simultaneously.
+func mergeOpenCodeConfigContent(existing, additional string) string {
+	var existingMap, additionalMap map[string]interface{}
+	if err := json.Unmarshal([]byte(existing), &existingMap); err != nil {
+		// If existing is not valid JSON, just append the additional
+		return additional
+	}
+	if err := json.Unmarshal([]byte(additional), &additionalMap); err != nil {
+		// If additional is not valid JSON, keep existing
+		return existing
+	}
+	// Merge additional into existing
+	for k, v := range additionalMap {
+		existingMap[k] = v
+	}
+	merged, err := json.Marshal(existingMap)
+	if err != nil {
+		return existing
+	}
+	return string(merged)
+}
+
+// upsertOpenCodeConfigContent finds an existing OPENCODE_CONFIG_CONTENT env var
+// and merges additionalContent into it, or appends a new entry if not found.
+func upsertOpenCodeConfigContent(envVars *[]corev1.EnvVar, additionalContent string) {
+	for i, ev := range *envVars {
+		if ev.Name == OpenCodeConfigContentEnvVar {
+			(*envVars)[i].Value = mergeOpenCodeConfigContent(ev.Value, additionalContent)
+			return
+		}
+	}
+	*envVars = append(*envVars, corev1.EnvVar{
+		Name:  OpenCodeConfigContentEnvVar,
+		Value: additionalContent,
+	})
+}
+
+// injectOTelEnv adds OpenTelemetry environment variables to all containers.
+// This is the shared injection logic used by both buildPod (Task Pods) and
+// BuildServerDeployment (Agent server Deployments).
+//
+// When ids.PodName is empty (server-mode), the caller should also inject the
+// OTEL_POD_NAME env var via Downward API (fieldRef: metadata.name) before calling
+// this function, so that $(OTEL_POD_NAME) in OTEL_RESOURCE_ATTRIBUTES resolves.
+func injectOTelEnv(observability *kubeopenv1alpha1.ObservabilitySpec, ids otelResourceIDs, initContainers []corev1.Container, envVars *[]corev1.EnvVar) {
+	if !otelEnabled(observability) {
+		return
+	}
+
+	otelEnvs := buildOTelEnvVars(observability, ids)
+
+	// Add to all init containers (so any OTel-instrumented init code can export)
+	for i := range initContainers {
+		initContainers[i].Env = append(initContainers[i].Env, otelEnvs...)
+	}
+	// Add to worker container env vars
+	*envVars = append(*envVars, otelEnvs...)
+
+	// Inject experimental.openTelemetry into OpenCode config via OPENCODE_CONFIG_CONTENT.
+	// OpenCode merges OPENCODE_CONFIG_CONTENT with OPENCODE_CONFIG, so this doesn't
+	// conflict with user-provided config. This activates Layer 2 (AI SDK telemetry
+	// producing GenAI semantic convention spans for LLM calls).
+	otelConfigContent := buildOTelConfigContent(observability.OpenTelemetry.EnableLLMTraces)
+	if otelConfigContent != "" {
+		upsertOpenCodeConfigContent(envVars, otelConfigContent)
+	}
+}
+
+// sanitizeOTelHeaderEnvVarName converts an HTTP header name to a valid Kubernetes
+// env var name for use as a helper variable in OTEL_EXPORTER_OTLP_HEADERS expansion.
+// Kubernetes env var names must match [a-zA-Z_][a-zA-Z0-9_]*.
+// All non-alphanumeric characters are replaced with underscores, and the result
+// is prefixed with "OTEL_HEADER_".
+func sanitizeOTelHeaderEnvVarName(headerName string) string {
+	var b strings.Builder
+	b.WriteString("OTEL_HEADER_")
+	for _, r := range headerName {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(unicode.ToUpper(r))
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
 // defaultResources returns the default resource requirements for agent containers.
 // This prevents unbounded memory growth from triggering node-level OOM.
 // Users can override via podSpec.resources in Agent or AgentTemplate spec.
@@ -1318,6 +1592,18 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		// Add to worker container env vars
 		envVars = append(envVars, proxyEnvs...)
 	}
+
+	// Add OpenTelemetry environment variables if observability is configured.
+	// OpenCode has built-in OTel support: setting OTEL_EXPORTER_OTLP_ENDPOINT
+	// activates Layer 1 (TracerProvider + Exporter) and Layer 3 (app-level spans).
+	// When enableLLMTraces is true, OPENCODE_CONFIG_CONTENT injects
+	// experimental.openTelemetry to additionally activate Layer 2 (LLM call spans).
+	injectOTelEnv(sysCfg.observability, otelResourceIDs{
+		TaskName:      task.Name,
+		TaskNamespace: task.Namespace,
+		AgentName:     agentNameFromTask(task),
+		PodName:       podName,
+	}, initContainers, &envVars)
 
 	// Apply user-defined extraEnv and per-container-type systemContainers overrides.
 	applyExtraEnvAndSystemOverrides(initContainers, &envVars, cfg)

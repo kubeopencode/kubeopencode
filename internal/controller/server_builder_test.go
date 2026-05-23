@@ -5,6 +5,7 @@
 package controller
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -2478,5 +2479,141 @@ func TestBuildServerDeployment_DefaultPort(t *testing.T) {
 	container := deployment.Spec.Template.Spec.Containers[0]
 	if container.Ports[0].ContainerPort != DefaultServerPort {
 		t.Errorf("expected default port %d, got %d", DefaultServerPort, container.Ports[0].ContainerPort)
+	}
+}
+
+func TestBuildServerDeployment_OTelEnabled(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "myns",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+	}
+
+	sysCfg := systemConfig{
+		systemImage:           DefaultKubeOpenCodeImage,
+		systemImagePullPolicy: corev1.PullIfNotPresent,
+		observability: &kubeopenv1alpha1.ObservabilitySpec{
+			OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+				Enabled:  true,
+				Endpoint: "http://otel-collector.observability:4318",
+				ResourceAttributes: map[string]string{
+					"kubeopencode.cluster.name": "production",
+				},
+			},
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, sysCfg, nil, nil, nil, nil, nil)
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	container := deployment.Spec.Template.Spec.Containers[0]
+
+	// Verify OTEL_EXPORTER_OTLP_ENDPOINT
+	foundEndpoint := false
+	for _, env := range container.Env {
+		if env.Name == OtelExporterEndpointEnvVar {
+			foundEndpoint = true
+			if env.Value != "http://otel-collector.observability:4318" {
+				t.Errorf("expected endpoint http://otel-collector.observability:4318, got %s", env.Value)
+			}
+		}
+	}
+	if !foundEndpoint {
+		t.Error("expected OTEL_EXPORTER_OTLP_ENDPOINT to be set")
+	}
+
+	// Verify OTEL_RESOURCE_ATTRIBUTES contains agent info and Downward API pod name reference
+	foundAttrs := false
+	for _, env := range container.Env {
+		if env.Name == OtelResourceAttributesEnvVar {
+			foundAttrs = true
+			for _, expected := range []string{
+				"kubeopencode.agent.name=test-agent",
+				"k8s.namespace.name=myns",
+				"kubeopencode.cluster.name=production",
+				"k8s.pod.name=$(OTEL_POD_NAME)",
+			} {
+				if !strings.Contains(env.Value, expected) {
+					t.Errorf("expected OTEL_RESOURCE_ATTRIBUTES to contain %q, got %q", expected, env.Value)
+				}
+			}
+			// Server-mode should NOT have kubeopencode.task.name
+			if strings.Contains(env.Value, "kubeopencode.task.name=") {
+				t.Errorf("OTEL_RESOURCE_ATTRIBUTES should not contain kubeopencode.task.name for server-mode, got: %s", env.Value)
+			}
+		}
+	}
+	if !foundAttrs {
+		t.Error("expected OTEL_RESOURCE_ATTRIBUTES to be set")
+	}
+
+	// Verify OTEL_POD_NAME env var uses Downward API (fieldRef: metadata.name)
+	foundPodNameEnv := false
+	for _, env := range container.Env {
+		if env.Name == OtelPodNameEnvVar {
+			foundPodNameEnv = true
+			if env.ValueFrom == nil || env.ValueFrom.FieldRef == nil {
+				t.Error("expected OTEL_POD_NAME to use Downward API fieldRef")
+			}
+			if env.ValueFrom.FieldRef.FieldPath != "metadata.name" {
+				t.Errorf("expected OTEL_POD_NAME fieldRef metadata.name, got %s", env.ValueFrom.FieldRef.FieldPath)
+			}
+		}
+	}
+	if !foundPodNameEnv {
+		t.Error("expected OTEL_POD_NAME env var to be set")
+	}
+}
+
+func TestBuildServerDeployment_OTelEnableLLMTraces(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+	}
+
+	sysCfg := systemConfig{
+		systemImage:           DefaultKubeOpenCodeImage,
+		systemImagePullPolicy: corev1.PullIfNotPresent,
+		observability: &kubeopenv1alpha1.ObservabilitySpec{
+			OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+				Enabled:        true,
+				Endpoint:       "http://otel-collector.observability:4318",
+				EnableLLMTraces: true,
+			},
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, sysCfg, nil, nil, nil, nil, nil)
+	container := deployment.Spec.Template.Spec.Containers[0]
+
+	// Verify OPENCODE_CONFIG_CONTENT contains experimental.openTelemetry
+	foundConfigContent := false
+	for _, env := range container.Env {
+		if env.Name == OpenCodeConfigContentEnvVar {
+			foundConfigContent = true
+			if !strings.Contains(env.Value, "openTelemetry") {
+				t.Errorf("expected OPENCODE_CONFIG_CONTENT to contain openTelemetry, got %s", env.Value)
+			}
+		}
+	}
+	if !foundConfigContent {
+		t.Error("expected OPENCODE_CONFIG_CONTENT to be set when enableLLMTraces is true")
 	}
 }

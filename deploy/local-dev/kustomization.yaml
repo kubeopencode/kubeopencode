@@ -11,6 +11,11 @@
 #   4. Update agenttemplate.yaml model + uncomment credentials in agent YAMLs
 #   5. kubectl apply -k deploy/local-dev/
 #
+# For OpenTelemetry observability testing:
+#   1. make load-otel-images  # Load OTel Collector + Jaeger images into Kind
+#   2. kubectl apply -f deploy/local-dev/otel-observability.yaml
+#   3. Enable OTel in KubeOpenCodeConfig (see otel-observability.yaml header comments)
+#
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
