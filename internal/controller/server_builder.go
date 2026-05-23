@@ -510,6 +510,34 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		envVars = append(envVars, proxyEnvs...)
 	}
 
+	// Add OpenTelemetry environment variables if observability is configured.
+	// For server-mode Agents, the agent name comes from the Agent resource itself.
+	if otelEnabled(sysCfg.observability) {
+		// Server Deployments generate Pod names at runtime (deploy-hash-random),
+		// so k8s.pod.name cannot be hardcoded. Instead, buildOTelEnvVars uses
+		// $(OTEL_POD_NAME) in OTEL_RESOURCE_ATTRIBUTES, and we inject the
+		// OTEL_POD_NAME env var via the Downward API (fieldRef: metadata.name).
+		podNameEnv := corev1.EnvVar{
+			Name: OtelPodNameEnvVar,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.name",
+				},
+			},
+		}
+		// Add Downward API pod name to all containers before OTel env vars
+		// so $(OTEL_POD_NAME) in OTEL_RESOURCE_ATTRIBUTES can reference it.
+		for i := range initContainers {
+			initContainers[i].Env = append(initContainers[i].Env, podNameEnv)
+		}
+		envVars = append(envVars, podNameEnv)
+
+		injectOTelEnv(sysCfg.observability, otelResourceIDs{
+			TaskNamespace: agent.Namespace,
+			AgentName:     agent.Name,
+		}, initContainers, &envVars)
+	}
+
 	// Apply user-defined extraEnv and per-container-type systemContainers overrides.
 	// Note: git-sync sidecar overrides are applied separately below (after sidecar construction)
 	// because sidecars are not init containers and are only present in Agent Deployments.

@@ -2,11 +2,15 @@
 
 ## Status
 
-Proposed
+Implemented (Phase 1)
 
 ## Date
 
 2026-05-22
+
+## Updated
+
+2026-05-23 — Phase 1 validation complete. Updated Layer 2 description with actual Jaeger observations: AI SDK emits `ai.*` attributes, not `gen_ai.*`. Added `transform` processor example for spanmetrics connector compatibility.
 
 ## Context
 
@@ -70,17 +74,45 @@ When `experimental.openTelemetry: true` is set in `opencode.json`, OpenCode:
    }
    ```
 
-The AI SDK then emits spans with **partial GenAI semantic convention support** — it produces both its own `ai.*` private attributes and a subset of `gen_ai.*` standard attributes, including:
-- `gen_ai.system` — provider identifier
-- `gen_ai.request.model` — model name
-- `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` — token counts
-- `gen_ai.response.finish_reasons` — stop reasons
-- `gen_ai.response.model` — model actually used
-- `ai.model.id`, `ai.model.provider` — AI SDK private attributes
-- `ai.usage.inputTokens`, `ai.usage.outputTokens` — AI SDK private token attributes
-- `ai.response.finishReason`, `ai.response.text` — AI SDK private response attributes
+The AI SDK then emits spans using its own `ai.*` attribute namespace. **Contrary to earlier documentation, the AI SDK does NOT emit `gen_ai.*` semantic convention attributes in the current version (OpenCode v1.15.5 / AI SDK v4.x).** The actual span attributes observed in Jaeger during Phase 1 validation are:
 
-**Note**: The AI SDK does NOT fully conform to OTel GenAI Semantic Conventions. Span names use AI SDK's own convention (`ai.generateText`, `ai.streamText`, `ai.toolCall`) rather than the spec's `gen_ai.client.chat`. Some spec attributes (e.g., `gen_ai.operation.name`, `gen_ai.system_instructions`) are not emitted. Content recording (`gen_ai.input.messages`, `gen_ai.output.messages`) requires explicit opt-in. See [GitHub issue #2590](https://github.com/vercel/ai/issues/2590) for full compatibility tracking.
+- `ai.streamText` — span for each LLM streaming call
+- `ai.streamText.doStream` — sub-span for the actual HTTP streaming execution
+- `ai.toolCall` — span for each tool invocation
+
+**Key attributes observed on `ai.streamText` spans**:
+- `ai.model.id` — model identifier (e.g., `big-pickle`)
+- `ai.model.provider` — provider identifier (e.g., `opencode.chat`)
+- `ai.usage.inputTokens` / `ai.usage.outputTokens` / `ai.usage.totalTokens` — token counts
+- `ai.usage.cachedInputTokens` / `ai.usage.reasoningTokens` — token count breakdowns
+- `ai.usage.inputTokenDetails.cacheReadTokens` / `ai.usage.inputTokenDetails.noCacheTokens` — cache detail
+- `ai.usage.outputTokenDetails.reasoningTokens` / `ai.usage.outputTokenDetails.textTokens` — output detail
+- `ai.response.finishReason` — stop reason (e.g., `tool-calls`, `stop`)
+- `ai.response.text` — response text (empty when tool calls are returned)
+- `ai.response.toolCalls` — JSON array of tool call details
+- `ai.response.reasoning` — model's chain-of-thought (for reasoning models)
+- `ai.prompt` — full prompt messages (JSON)
+- `ai.telemetry.functionId` — e.g., `session.llm`
+- `ai.telemetry.metadata.sessionId` / `ai.telemetry.metadata.userId` — session context
+
+**Key attributes observed on `ai.toolCall` spans**:
+- `ai.toolCall.name` — tool name (e.g., `read`, `glob`)
+- `ai.toolCall.args` — tool arguments (JSON)
+- `ai.toolCall.result` — tool output (JSON)
+
+**Key attributes observed on `LLM.run` spans** (OpenCode's own orchestration span):
+- `otel.scope.name=opencode` — identifies the OpenCode tracer
+- No GenAI-specific attributes (purely an orchestration wrapper)
+
+**GenAI Semantic Conventions compatibility**: The AI SDK uses its own `ai.*` namespace exclusively. The `gen_ai.*` attributes described in earlier versions of this ADR were based on source-code analysis and AI SDK documentation claims, but **actual Jaeger validation shows no `gen_ai.*` attributes are emitted**. The AI SDK tracks GenAI semconv compatibility in [GitHub issue #2590](https://github.com/vercel/ai/issues/2590). When the AI SDK adds `gen_ai.*` support in a future version, those attributes will automatically appear without any KubeOpenCode changes, since KubeOpenCode only configures the activation flag (`experimental.openTelemetry: true`).
+
+**Practical impact**: Although the span attributes use `ai.*` rather than `gen_ai.*`, the data is functionally equivalent for observability purposes:
+- Token counts are available (input, output, cached, reasoning) — sufficient for cost attribution
+- Model identification is available (`ai.model.id`, `ai.model.provider`) — sufficient for model tracking
+- Finish reasons and tool calls are available — sufficient for behavior analysis
+- Span names are searchable in Jaeger by filtering for `ai.streamText` and `ai.toolCall`
+
+The main limitation is that **OTel Collector's `spanmetrics` connector cannot derive `gen_ai.client.operation.duration` and `gen_ai.client.token.usage` metrics from `ai.*` attributes**, because it looks for `gen_ai.*` attribute names. Users who need standard GenAI metrics should configure the Collector with attribute renaming processors or wait for AI SDK upstream support.
 
 #### Layer 3: CLI Run Spans (Application Operation Spans)
 
@@ -115,15 +147,18 @@ Layer 1 (Infrastructure)  ← activated by OTEL_EXPORTER_OTLP_ENDPOINT
 
 3. **Layer 2 is an additional opt-in** — It requires both `OTEL_EXPORTER_OTLP_ENDPOINT` (Layer 1 infrastructure) AND `experimental.openTelemetry: true` (config flag). The OpenCode team placed this under `experimental` because it depends on the Vercel AI SDK's `experimental_telemetry` API, which was not yet stable at the time of implementation. Setting `experimental.openTelemetry: true` without `OTEL_EXPORTER_OTLP_ENDPOINT` has no effect — there is no TracerProvider to create tracers from.
 
-4. **Layers 2 and 3 produce a unified trace tree** — Because Layer 1 registers `AsyncLocalStorageContextManager` as the global context manager, spans from Layer 3 (e.g., `RunInteractive.turn`) correctly become parents of Layer 2 spans (e.g., AI SDK's `chat ..streamText`). The resulting trace in Jaeger/Tempo appears as:
+4. **Layers 2 and 3 produce a unified trace tree** — Because Layer 1 registers `AsyncLocalStorageContextManager` as the global context manager, spans from Layer 3 correctly become parents of Layer 2 spans. The resulting trace in Jaeger/Tempo appears as (observed during Phase 1 validation):
 
 ```
-RunInteractive.session                    ← Layer 3 (app-level)
-  └─ RunInteractive.turn                  ← Layer 3 (app-level)
-       └─ chat ..streamText               ← Layer 2 (LLM-level, AI SDK)
-            ├─ gen_ai.request.model       ← GenAI semantic convention attribute
-            ├─ gen_ai.usage.input_tokens  ← GenAI semantic convention attribute
-            └─ gen_ai.usage.output_tokens ← GenAI semantic convention attribute
+Config.get / Agent.state / ...           ← Layer 3 (app-level, OpenCode internal spans)
+  └─ LLM.run                             ← Layer 3 (OpenCode LLM orchestration)
+       └─ ai.streamText                  ← Layer 2 (AI SDK streaming span)
+            ├─ ai.model.id=big-pickle    ← AI SDK attribute
+            ├─ ai.usage.inputTokens=8247 ← AI SDK attribute
+            ├─ ai.usage.outputTokens=117 ← AI SDK attribute
+            └─ ai.toolCall               ← Layer 2 (AI SDK tool call span)
+                 ├─ ai.toolCall.name=read
+                 └─ ai.toolCall.args={"filePath":"/workspace/task.md"}
 ```
 
 5. **The layers are complementary, not redundant** — Layer 1 produces no business spans (infrastructure only). Layer 3 provides coarse-grained application flow (session → turn → lifecycle). Layer 2 provides fine-grained LLM call detail (model, tokens, latency). Together they give full-stack observability; individually each gives only a partial view.
@@ -190,10 +225,10 @@ The most important finding from this investigation is that **OpenCode has built-
 
 This means **Phase 1 is primarily a KubeOpenCode-side change** — inject the `OTEL_EXPORTER_OTLP_ENDPOINT` env var into Pod specs (activating Layers 1+3), and conditionally inject `experimental.openTelemetry: true` into the OpenCode config (activating Layer 2). OpenCode does the rest automatically.
 
-The AI SDK's `experimental_telemetry` flag produces spans with **partial** GenAI Semantic Conventions support — both `ai.*` private attributes and a subset of `gen_ai.*` standard attributes are emitted (see Layer 2 description for details). This includes:
-- Per-LLM-call spans with model, token counts, and latency
+The AI SDK's `experimental_telemetry` flag produces spans with `ai.*` private attributes (not `gen_ai.*` standard attributes — see Layer 2 description for details from Phase 1 validation). This includes:
+- Per-LLM-call spans (`ai.streamText`, `ai.toolCall`) with model, token counts (including cached/reasoning breakdown), and latency
 - `session.id` and `userId` metadata (injected by OpenCode's tracer proxy)
-- Tool call spans with tool name and arguments
+- Tool call spans with tool name, arguments, and results
 
 These Layer 2 spans nest within Layer 3's `RunInteractive.turn` span, producing a unified trace tree. This is the exact data needed for cost attribution, performance debugging, and enterprise audit trails.
 
@@ -244,13 +279,13 @@ Adopt a **2-phase approach** that leverages OpenCode's built-in OTel capabilitie
    OTEL_RESOURCE_ATTRIBUTES=kubeopencode.task.name=<task>,kubeopencode.task.namespace=<ns>,kubeopencode.agent.name=<agent>,k8s.namespace.name=<ns>,k8s.pod.name=<pod>
    ```
 
-3. **Inject `experimental.openTelemetry: true` into OpenCode config** — When `enableLLMTraces: true`, the controller merges this into the OpenCode config JSON during Pod construction. This activates AI SDK's `experimental_telemetry` which produces GenAI semantic convention spans for every LLM call with token counts, model info, and session identity.
+3. **Inject `experimental.openTelemetry: true` into OpenCode config** — When `enableLLMTraces: true`, the controller merges this into the OpenCode config JSON during Pod construction. This activates AI SDK's `experimental_telemetry` which produces `ai.streamText` and `ai.toolCall` spans for every LLM call with token counts, model info, and session identity. Note: the AI SDK uses its own `ai.*` attribute namespace, not OTel GenAI `gen_ai.*` semantic conventions (see Layer 2 description for details).
 
 4. **Update `api/v1alpha1/config_types.go`** — Add `ObservabilitySpec` struct with `OpenTelemetryConfig` nested type.
 
 5. **Update Helm chart RBAC** — Controller needs to read `KubeOpenCodeConfig` for observability config.
 
-**What users get**: Every LLM call in every Task produces OTel spans with GenAI semantic conventions (token usage, model, latency) visible in Jaeger/Tempo/Grafana. Logs flow to the same OTLP endpoint. Zero code changes in OpenCode required.
+**What users get**: Every LLM call in every Task produces OTel spans with AI SDK telemetry attributes (model, token usage with cached/reasoning breakdown, latency, finish reason, tool calls) visible in Jaeger/Tempo/Grafana. Logs flow to the same OTLP endpoint. Zero code changes in OpenCode required.
 
 **Protocol note**: OpenCode uses OTLP/HTTP (port 4318), not gRPC (port 4317). The configured `endpoint` MUST point to an OTLP/HTTP receiver. The controller appends `/v1/traces`, `/v1/logs`, and `/v1/metrics` automatically per OTel spec. If your existing OTel Collector exposes only gRPC, enable the HTTP receiver in its config or front it with the HTTP-to-gRPC bridge.
 
@@ -429,8 +464,18 @@ OpenCode uses OTLP/HTTP (port 4318), not gRPC (port 4317). The configured `endpo
 The following are **not ADR decisions** — they are examples that will live in `website/docs/observability.md` to help users integrate KubeOpenCode with their existing Collectors:
 
 - **k8sattributes processor** — Recommended to auto-enrich spans with K8s metadata. KubeOpenCode already sets `k8s.pod.name` and `k8s.namespace.name` resource attributes for correlation.
-- **spanmetrics connector** — Recommended to derive `gen_ai.client.operation.duration` and `gen_ai.client.token.usage` metrics from GenAI spans. This is a Collector-side configuration that requires zero KubeOpenCode code changes — once Phase 1 produces GenAI spans, the user's Collector can automatically derive metrics from them. Example:
+- **spanmetrics connector** — Can derive metrics from LLM spans, but requires attribute mapping because the AI SDK emits `ai.*` attributes instead of `gen_ai.*`. Users should configure the Collector's `transform` processor to rename attributes before the `spanmetrics` connector, or wait for AI SDK upstream `gen_ai.*` support. Example with attribute renaming:
   ```yaml
+  processors:
+    transform/ai-to-genai:
+      error_mode: ignore
+      trace_statements:
+        - context: span
+          statements:
+            - set(attributes["gen_ai.system"], attributes["ai.model.provider"]) where attributes["ai.model.provider"] != nil
+            - set(attributes["gen_ai.request.model"], attributes["ai.model.id"]) where attributes["ai.model.id"] != nil
+            - set(attributes["gen_ai.usage.input_tokens"], attributes["ai.usage.inputTokens"]) where attributes["ai.usage.inputTokens"] != nil
+            - set(attributes["gen_ai.usage.output_tokens"], attributes["ai.usage.outputTokens"]) where attributes["ai.usage.outputTokens"] != nil
   connectors:
     spanmetrics:
       histogram:
@@ -515,7 +560,7 @@ This schema is intentionally **declarative and backend-agnostic**. KubeOpenCode 
 - **Zero-dependency for basic use** — OTel is opt-in via `KubeOpenCodeConfig`
 - **Leverages existing ecosystem** — Users bring their own Collectors and dashboards; no custom infrastructure required
 - **Enterprise value** — Cost visibility, debugging, and audit trails are top enterprise requirements
-- **Standards-aligned** — GenAI semantic conventions ensure compatibility with all OTel backends
+- **Standards-aligned** — OpenCode produces OTLP-compliant data; AI SDK attributes (`ai.*`) provide functional equivalence to GenAI semantic conventions (`gen_ai.*`) for token counts, model identification, and latency. Full `gen_ai.*` support awaits upstream AI SDK adoption.
 - **Incremental** — Each phase delivers standalone value; no big-bang rollout
 - **No OpenCode fork required** — All integration points are env vars and config injection
 - **Backward compatible** — Existing `kubeopencode_*` Prometheus metrics are preserved; OTel metrics are additive. Users can adopt OTel incrementally without breaking existing Prometheus/Grafana dashboards.

@@ -1416,6 +1416,8 @@ func resolveSystemConfig(ctx context.Context, reader client.Reader) systemConfig
 
 	cfg.proxy = config.Spec.Proxy
 
+	cfg.observability = config.Spec.Observability
+
 	return cfg
 }
 

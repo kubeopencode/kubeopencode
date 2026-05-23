@@ -53,6 +53,13 @@ type KubeOpenCodeConfigSpec struct {
 	// If not specified, no proxy environment variables are injected.
 	// +optional
 	Proxy *ProxyConfig `json:"proxy,omitempty"`
+
+	// Observability configures OpenTelemetry telemetry for OpenCode agent Pods.
+	// When enabled, the controller injects OTLP environment variables into Pod specs
+	// so that OpenCode's built-in OTel support is activated automatically.
+	// If not specified, no telemetry is produced.
+	// +optional
+	Observability *ObservabilitySpec `json:"observability,omitempty"`
 }
 
 // CleanupConfig defines cleanup policies for completed/failed Tasks.
@@ -98,6 +105,100 @@ type SystemImageConfig struct {
 	// +optional
 	// +kubebuilder:validation:Enum=Always;Never;IfNotPresent
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+}
+
+// ObservabilitySpec configures OpenTelemetry telemetry for KubeOpenCode.
+// KubeOpenCode produces OTLP data and sends it to the user-configured endpoint.
+// Collector deployment, processing, storage, and visualization are the user's responsibility.
+type ObservabilitySpec struct {
+	// OpenTelemetry configures OpenTelemetry telemetry integration.
+	// When enabled, the controller injects OTLP environment variables into agent Pods
+	// so that OpenCode's built-in OTel support is activated automatically.
+	// +optional
+	OpenTelemetry *OpenTelemetryConfig `json:"openTelemetry,omitempty"`
+}
+
+// OpenTelemetryConfig configures OpenTelemetry telemetry for OpenCode agent Pods.
+// OpenCode has built-in OTel support activated by setting OTEL_EXPORTER_OTLP_ENDPOINT.
+// KubeOpenCode injects this env var and related configuration into Pod specs.
+//
+// OpenCode's OTel support has three complementary layers:
+// - Layer 1 (Infrastructure): TracerProvider + ContextManager + Exporter (activated by endpoint)
+// - Layer 2 (LLM traces): AI SDK experimental_telemetry with GenAI semantic conventions (activated by enableLLMTraces)
+// - Layer 3 (App spans): Session/turn/lifecycle spans (automatically active with Layer 1)
+// +kubebuilder:validation:XValidation:rule="!self.enabled || size(self.endpoint) > 0",message="endpoint is required when enabled is true"
+type OpenTelemetryConfig struct {
+	// Enabled determines whether OpenTelemetry telemetry is produced.
+	// When true, the controller injects OTEL_EXPORTER_OTLP_ENDPOINT and related
+	// environment variables into agent Pod specs.
+	// +required
+	Enabled bool `json:"enabled"`
+
+	// Endpoint is the OTLP/HTTP endpoint for the user's OpenTelemetry Collector.
+	// This is the user's existing observability infrastructure —
+	// KubeOpenCode does NOT deploy or manage Collectors.
+	// Required when enabled is true.
+	// Examples:
+	//   - Gateway mode:  http://otel-collector.observability:4318
+	//   - Sidecar mode:  http://localhost:4318
+	//   - External SaaS: https://api.honeycomb.io
+	//
+	// Note: OpenCode uses OTLP/HTTP (port 4318), not gRPC (port 4317).
+	// The configured endpoint MUST point to an OTLP/HTTP receiver.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^https?://.+$`
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// Headers specifies optional headers for collector authentication (e.g., SaaS API keys).
+	// Values can be inline or resolved from a Secret via valueFrom.secretKeyRef
+	// to avoid leaking API keys in the KubeOpenCodeConfig.
+	// +optional
+	Headers map[string]OTelHeaderValueSource `json:"headers,omitempty"`
+
+	// EnableLLMTraces injects experimental.openTelemetry into OpenCode config
+	// to enable LLM call traces with GenAI semantic conventions.
+	// When true, every LLM call produces spans with model, token counts, and latency
+	// that nest within the application-level turn spans (Layer 3).
+	// Requires endpoint to be set (Layer 1 must be active for Layer 2 to work).
+	// +optional
+	EnableLLMTraces bool `json:"enableLLMTraces,omitempty"`
+
+	// RecordContent determines whether to record full prompt/response content on LLM spans.
+	// Default false; set true only in trusted environments.
+	// When true, the controller injects OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true
+	// per OTel GenAI spec. This may expose sensitive data (API keys, PII, proprietary code).
+	// +optional
+	RecordContent bool `json:"recordContent,omitempty"`
+
+	// ResourceAttributes specifies additional resource attributes to add to all spans.
+	// The controller also automatically injects standard attributes:
+	// kubeopencode.task.name, kubeopencode.task.namespace, kubeopencode.agent.name,
+	// k8s.namespace.name, k8s.pod.name.
+	// +optional
+	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
+}
+
+// OTelHeaderValueSource represents a header value that can be specified inline
+// or resolved from a Kubernetes Secret.
+// +kubebuilder:validation:XValidation:rule="(has(self.value) && self.value != '') || (has(self.valueFrom) && has(self.valueFrom.secretKeyRef))",message="either a non-empty value or valueFrom.secretKeyRef must be specified"
+type OTelHeaderValueSource struct {
+	// Value specifies the header value inline.
+	// Use for non-sensitive values. For sensitive values (API keys), use valueFrom.secretKeyRef.
+	// +optional
+	Value string `json:"value,omitempty"`
+
+	// ValueFrom specifies the source for the header value.
+	// Use this for sensitive values like SaaS API keys to avoid leaking them in the KubeOpenCodeConfig.
+	// +optional
+	ValueFrom *OTelHeaderValueSourceFrom `json:"valueFrom,omitempty"`
+}
+
+// OTelHeaderValueSourceFrom represents the source for a header value.
+type OTelHeaderValueSourceFrom struct {
+	// SecretKeyRef references a key in a Secret containing the header value.
+	// The Secret must be in the same namespace as the KubeOpenCodeConfig controller
+	// (kubeopencode-system by default).
+	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

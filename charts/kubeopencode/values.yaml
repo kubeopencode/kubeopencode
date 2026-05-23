@@ -240,3 +240,32 @@ kubeopencodeConfig:
     image: ""
     # Image pull policy
     imagePullPolicy: IfNotPresent
+  # OpenTelemetry observability configuration
+  # When enabled, the controller injects OTLP environment variables into agent Pods
+  # so that OpenCode's built-in OTel support is activated automatically.
+  # KubeOpenCode produces OTLP data; the user's Collector collects, processes, and stores it.
+  observability:
+    openTelemetry:
+      # Enable OpenTelemetry telemetry for agent Pods
+      enabled: false
+      # OTLP/HTTP endpoint for the user's OpenTelemetry Collector.
+      # Required when enabled is true.
+      # Examples:
+      #   - Gateway mode:  http://otel-collector.observability:4318
+      #   - Sidecar mode:  http://localhost:4318
+      #   - External SaaS: https://api.honeycomb.io
+      # Note: OpenCode uses OTLP/HTTP (port 4318), not gRPC (port 4317).
+      endpoint: ""
+      # Optional headers for collector authentication (e.g., SaaS API keys).
+      # Values can be inline or resolved from a Secret via valueFrom.secretKeyRef.
+      headers: {}
+      # Inject experimental.openTelemetry into OpenCode config to enable LLM call traces
+      # with GenAI semantic conventions (model, tokens, latency).
+      enableLLMTraces: false
+      # Whether to record full prompt/response content on LLM spans.
+      # Default false; set true only in trusted environments.
+      recordContent: false
+      # Additional resource attributes for all spans.
+      # The controller also automatically injects: kubeopencode.task.name,
+      # kubeopencode.task.namespace, kubeopencode.agent.name, k8s.namespace.name, k8s.pod.name.
+      resourceAttributes: {}

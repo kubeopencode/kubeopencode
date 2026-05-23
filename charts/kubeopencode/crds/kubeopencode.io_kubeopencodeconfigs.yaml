@@ -91,6 +91,126 @@ spec:
                 maxLength: 253
                 pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
                 type: string
+              observability:
+                description: |-
+                  Observability configures OpenTelemetry telemetry for OpenCode agent Pods.
+                  When enabled, the controller injects OTLP environment variables into Pod specs
+                  so that OpenCode's built-in OTel support is activated automatically.
+                  If not specified, no telemetry is produced.
+                properties:
+                  openTelemetry:
+                    description: |-
+                      OpenTelemetry configures OpenTelemetry telemetry integration.
+                      When enabled, the controller injects OTLP environment variables into agent Pods
+                      so that OpenCode's built-in OTel support is activated automatically.
+                    properties:
+                      enableLLMTraces:
+                        description: |-
+                          EnableLLMTraces injects experimental.openTelemetry into OpenCode config
+                          to enable LLM call traces with GenAI semantic conventions.
+                          When true, every LLM call produces spans with model, token counts, and latency
+                          that nest within the application-level turn spans (Layer 3).
+                          Requires endpoint to be set (Layer 1 must be active for Layer 2 to work).
+                        type: boolean
+                      enabled:
+                        description: |-
+                          Enabled determines whether OpenTelemetry telemetry is produced.
+                          When true, the controller injects OTEL_EXPORTER_OTLP_ENDPOINT and related
+                          environment variables into agent Pod specs.
+                        type: boolean
+                      endpoint:
+                        description: |-
+                          Endpoint is the OTLP/HTTP endpoint for the user's OpenTelemetry Collector.
+                          This is the user's existing observability infrastructure —
+                          KubeOpenCode does NOT deploy or manage Collectors.
+                          Required when enabled is true.
+                          Examples:
+                            - Gateway mode:  http://otel-collector.observability:4318
+                            - Sidecar mode:  http://localhost:4318
+                            - External SaaS: https://api.honeycomb.io
+
+                          Note: OpenCode uses OTLP/HTTP (port 4318), not gRPC (port 4317).
+                          The configured endpoint MUST point to an OTLP/HTTP receiver.
+                        pattern: ^https?://.+$
+                        type: string
+                      headers:
+                        additionalProperties:
+                          description: |-
+                            OTelHeaderValueSource represents a header value that can be specified inline
+                            or resolved from a Kubernetes Secret.
+                          properties:
+                            value:
+                              description: |-
+                                Value specifies the header value inline.
+                                Use for non-sensitive values. For sensitive values (API keys), use valueFrom.secretKeyRef.
+                              type: string
+                            valueFrom:
+                              description: |-
+                                ValueFrom specifies the source for the header value.
+                                Use this for sensitive values like SaaS API keys to avoid leaking them in the KubeOpenCodeConfig.
+                              properties:
+                                secretKeyRef:
+                                  description: |-
+                                    SecretKeyRef references a key in a Secret containing the header value.
+                                    The Secret must be in the same namespace as the KubeOpenCodeConfig controller
+                                    (kubeopencode-system by default).
+                                  properties:
+                                    key:
+                                      description: The key of the secret to select
+                                        from.  Must be a valid secret key.
+                                      type: string
+                                    name:
+                                      default: ""
+                                      description: |-
+                                        Name of the referent.
+                                        This field is effectively required, but due to backwards compatibility is
+                                        allowed to be empty. Instances of this type with an empty value here are
+                                        almost certainly wrong.
+                                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                      type: string
+                                    optional:
+                                      description: Specify whether the Secret or its
+                                        key must be defined
+                                      type: boolean
+                                  required:
+                                  - key
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                              type: object
+                          type: object
+                          x-kubernetes-validations:
+                          - message: either a non-empty value or valueFrom.secretKeyRef
+                              must be specified
+                            rule: (has(self.value) && self.value != '') || (has(self.valueFrom)
+                              && has(self.valueFrom.secretKeyRef))
+                        description: |-
+                          Headers specifies optional headers for collector authentication (e.g., SaaS API keys).
+                          Values can be inline or resolved from a Secret via valueFrom.secretKeyRef
+                          to avoid leaking API keys in the KubeOpenCodeConfig.
+                        type: object
+                      recordContent:
+                        description: |-
+                          RecordContent determines whether to record full prompt/response content on LLM spans.
+                          Default false; set true only in trusted environments.
+                          When true, the controller injects OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true
+                          per OTel GenAI spec. This may expose sensitive data (API keys, PII, proprietary code).
+                        type: boolean
+                      resourceAttributes:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          ResourceAttributes specifies additional resource attributes to add to all spans.
+                          The controller also automatically injects standard attributes:
+                          kubeopencode.task.name, kubeopencode.task.namespace, kubeopencode.agent.name,
+                          k8s.namespace.name, k8s.pod.name.
+                        type: object
+                    required:
+                    - enabled
+                    type: object
+                    x-kubernetes-validations:
+                    - message: endpoint is required when enabled is true
+                      rule: '!self.enabled || size(self.endpoint) > 0'
+                type: object
               proxy:
                 description: |-
                   Proxy configures cluster-wide HTTP/HTTPS proxy settings for all generated Pods.

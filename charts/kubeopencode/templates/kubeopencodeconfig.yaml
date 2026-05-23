@@ -18,4 +18,43 @@ spec:
     imagePullPolicy: {{ .Values.kubeopencodeConfig.systemImage.imagePullPolicy }}
     {{- end }}
   {{- end }}
+  {{- if .Values.kubeopencodeConfig.observability }}
+  observability:
+    {{- if .Values.kubeopencodeConfig.observability.openTelemetry }}
+    openTelemetry:
+      enabled: {{ .Values.kubeopencodeConfig.observability.openTelemetry.enabled }}
+      {{- if .Values.kubeopencodeConfig.observability.openTelemetry.endpoint }}
+      endpoint: {{ .Values.kubeopencodeConfig.observability.openTelemetry.endpoint | quote }}
+      {{- end }}
+      {{- if .Values.kubeopencodeConfig.observability.openTelemetry.headers }}
+      headers:
+        {{- range $name, $source := .Values.kubeopencodeConfig.observability.openTelemetry.headers }}
+        {{ $name }}:
+          {{- if $source.value }}
+          value: {{ $source.value | quote }}
+          {{- end }}
+          {{- if $source.valueFrom }}
+          valueFrom:
+            {{- if $source.valueFrom.secretKeyRef }}
+            secretKeyRef:
+              name: {{ $source.valueFrom.secretKeyRef.name | quote }}
+              key: {{ $source.valueFrom.secretKeyRef.key | quote }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.kubeopencodeConfig.observability.openTelemetry.enableLLMTraces }}
+      enableLLMTraces: true
+      {{- end }}
+      {{- if .Values.kubeopencodeConfig.observability.openTelemetry.recordContent }}
+      recordContent: true
+      {{- end }}
+      {{- if .Values.kubeopencodeConfig.observability.openTelemetry.resourceAttributes }}
+      resourceAttributes:
+        {{- range $key, $value := .Values.kubeopencodeConfig.observability.openTelemetry.resourceAttributes }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
 {{- end }}

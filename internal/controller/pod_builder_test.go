@@ -5,6 +5,7 @@
 package controller
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -3992,5 +3993,581 @@ func TestResolveAgentConfig_NilPodSpec_NoExtraEnv(t *testing.T) {
 	}
 	if cfg.systemContainers != nil {
 		t.Errorf("expected systemContainers to be nil when PodSpec is nil")
+	}
+}
+
+func TestBuildOTelEnvVars_Disabled(t *testing.T) {
+	tests := []struct {
+		name          string
+		observability *kubeopenv1alpha1.ObservabilitySpec
+	}{
+		{
+			name:          "nil observability",
+			observability: nil,
+		},
+		{
+			name: "nil openTelemetry",
+			observability: &kubeopenv1alpha1.ObservabilitySpec{
+				OpenTelemetry: nil,
+			},
+		},
+		{
+			name: "not enabled",
+			observability: &kubeopenv1alpha1.ObservabilitySpec{
+				OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+					Enabled: false,
+				},
+			},
+		},
+		{
+			name: "enabled but empty endpoint",
+			observability: &kubeopenv1alpha1.ObservabilitySpec{
+				OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+					Enabled:  true,
+					Endpoint: "",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			envVars := buildOTelEnvVars(tt.observability, otelResourceIDs{TaskName: "my-task", TaskNamespace: "default", AgentName: "my-agent", PodName: "my-task-pod"})
+			if len(envVars) != 0 {
+				t.Errorf("expected no env vars, got %d", len(envVars))
+			}
+		})
+	}
+}
+
+func TestBuildOTelEnvVars_Enabled(t *testing.T) {
+	observability := &kubeopenv1alpha1.ObservabilitySpec{
+		OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+			Enabled:  true,
+			Endpoint: "http://otel-collector.observability:4318",
+			ResourceAttributes: map[string]string{
+				"kubeopencode.cluster.name": "production",
+			},
+		},
+	}
+
+	envVars := buildOTelEnvVars(observability, otelResourceIDs{TaskName: "my-task", TaskNamespace: "myns", AgentName: "my-agent", PodName: "my-task-pod"})
+
+	// Should have OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_RESOURCE_ATTRIBUTES
+	if len(envVars) != 2 {
+		t.Fatalf("expected 2 env vars, got %d: %v", len(envVars), envVars)
+	}
+
+	// Verify endpoint
+	if envVars[0].Name != OtelExporterEndpointEnvVar {
+		t.Errorf("expected first env var to be %s, got %s", OtelExporterEndpointEnvVar, envVars[0].Name)
+	}
+	if envVars[0].Value != "http://otel-collector.observability:4318" {
+		t.Errorf("expected endpoint value, got %s", envVars[0].Value)
+	}
+
+	// Verify resource attributes contains standard + custom attributes
+	if envVars[1].Name != OtelResourceAttributesEnvVar {
+		t.Errorf("expected second env var to be %s, got %s", OtelResourceAttributesEnvVar, envVars[1].Name)
+	}
+	attrs := envVars[1].Value
+	for _, expected := range []string{
+		"kubeopencode.task.name=my-task",
+		"kubeopencode.task.namespace=myns",
+		"kubeopencode.agent.name=my-agent",
+		"k8s.namespace.name=myns",
+		"k8s.pod.name=my-task-pod",
+		"kubeopencode.cluster.name=production",
+	} {
+		if !strings.Contains(attrs, expected) {
+			t.Errorf("expected resource attributes to contain %q, got %q", expected, attrs)
+		}
+	}
+}
+
+func TestBuildOTelEnvVars_WithRecordContent(t *testing.T) {
+	observability := &kubeopenv1alpha1.ObservabilitySpec{
+		OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+			Enabled:       true,
+			Endpoint:      "http://otel-collector.observability:4318",
+			RecordContent: true,
+		},
+	}
+
+	envVars := buildOTelEnvVars(observability, otelResourceIDs{TaskName: "task", TaskNamespace: "ns", AgentName: "agent", PodName: "pod"})
+
+	foundCaptureMsg := false
+	for _, ev := range envVars {
+		if ev.Name == OtelInstrumentationGenAICaptureMessageContentEnvVar {
+			foundCaptureMsg = true
+			if ev.Value != "true" {
+				t.Errorf("expected OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true, got %s", ev.Value)
+			}
+		}
+	}
+	if !foundCaptureMsg {
+		t.Error("expected OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT env var when recordContent is true")
+	}
+}
+
+func TestBuildOTelEnvVars_WithInlineHeaders(t *testing.T) {
+	observability := &kubeopenv1alpha1.ObservabilitySpec{
+		OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+			Enabled:  true,
+			Endpoint: "http://otel-collector.observability:4318",
+			Headers: map[string]kubeopenv1alpha1.OTelHeaderValueSource{
+				"x-custom-header": {Value: "custom-value"},
+			},
+		},
+	}
+
+	envVars := buildOTelEnvVars(observability, otelResourceIDs{TaskName: "task", TaskNamespace: "ns", AgentName: "agent", PodName: "pod"})
+
+	foundHeaders := false
+	for _, ev := range envVars {
+		if ev.Name == OtelExporterHeadersEnvVar {
+			foundHeaders = true
+			if ev.Value != "x-custom-header=custom-value" {
+				t.Errorf("expected OTEL_EXPORTER_OTLP_HEADERS=x-custom-header=custom-value, got %s", ev.Value)
+			}
+		}
+	}
+	if !foundHeaders {
+		t.Error("expected OTEL_EXPORTER_OTLP_HEADERS env var when headers are configured")
+	}
+}
+
+func TestBuildOTelEnvVars_WithSecretKeyRefHeaders(t *testing.T) {
+	observability := &kubeopenv1alpha1.ObservabilitySpec{
+		OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+			Enabled:  true,
+			Endpoint: "http://otel-collector.observability:4318",
+			Headers: map[string]kubeopenv1alpha1.OTelHeaderValueSource{
+				"x-honeycomb-team": {
+					ValueFrom: &kubeopenv1alpha1.OTelHeaderValueSourceFrom{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "honeycomb-creds"},
+							Key:                  "api-key",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	envVars := buildOTelEnvVars(observability, otelResourceIDs{TaskName: "task", TaskNamespace: "ns", AgentName: "agent", PodName: "pod"})
+
+	// Should have helper env var with ValueFrom.SecretKeyRef
+	foundHelper := false
+	foundHeaders := false
+	for _, ev := range envVars {
+		if ev.Name == "OTEL_HEADER_X_HONEYCOMB_TEAM" {
+			foundHelper = true
+			if ev.ValueFrom == nil || ev.ValueFrom.SecretKeyRef == nil {
+				t.Error("expected helper env var to have SecretKeyRef")
+			}
+			if ev.ValueFrom.SecretKeyRef.Name != "honeycomb-creds" {
+				t.Errorf("expected secret name honeycomb-creds, got %s", ev.ValueFrom.SecretKeyRef.Name)
+			}
+		}
+		if ev.Name == OtelExporterHeadersEnvVar {
+			foundHeaders = true
+			if !strings.Contains(ev.Value, "x-honeycomb-team=$(OTEL_HEADER_X_HONEYCOMB_TEAM)") {
+				t.Errorf("expected headers to reference helper var, got %s", ev.Value)
+			}
+		}
+	}
+	if !foundHelper {
+		t.Error("expected helper env var OTEL_HEADER_X_HONEYCOMB_TEAM")
+	}
+	if !foundHeaders {
+		t.Error("expected OTEL_EXPORTER_OTLP_HEADERS env var")
+	}
+}
+
+func TestBuildOTelConfigContent(t *testing.T) {
+	tests := []struct {
+		name            string
+		enableLLMTraces bool
+		expected        string
+	}{
+		{
+			name:            "disabled",
+			enableLLMTraces: false,
+			expected:        "",
+		},
+		{
+			name:            "enabled",
+			enableLLMTraces: true,
+			expected:        `{"experimental":{"openTelemetry":true}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildOTelConfigContent(tt.enableLLMTraces)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestMergeOpenCodeConfigContent(t *testing.T) {
+	tests := []struct {
+		name      string
+		existing  string
+		additional string
+		expected  string
+	}{
+		{
+			name:      "merge instructions with experimental",
+			existing:  `{"instructions":[".kubeopencode/context.md"]}`,
+			additional: `{"experimental":{"openTelemetry":true}}`,
+			expected:  `{"experimental":{"openTelemetry":true},"instructions":[".kubeopencode/context.md"]}`,
+		},
+		{
+			name:      "merge with empty existing",
+			existing:  `{}`,
+			additional: `{"experimental":{"openTelemetry":true}}`,
+			expected:  `{"experimental":{"openTelemetry":true}}`,
+		},
+		{
+			name:      "invalid existing json returns additional",
+			existing:  `not-json`,
+			additional: `{"experimental":{"openTelemetry":true}}`,
+			expected:  `{"experimental":{"openTelemetry":true}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mergeOpenCodeConfigContent(tt.existing, tt.additional)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestBuildPod_OTelDisabled(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       "test-uid-1234",
+		},
+		Spec: kubeopenv1alpha1.TaskSpec{
+			Description: ptr.To("test"),
+			AgentRef:    &kubeopenv1alpha1.AgentReference{Name: "test-agent"},
+		},
+	}
+
+	cfg := agentConfig{
+		agentImage:         "test-agent:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+	container := pod.Spec.Containers[0]
+	for _, env := range container.Env {
+		if env.Name == OtelExporterEndpointEnvVar {
+			t.Error("OTEL_EXPORTER_OTLP_ENDPOINT should not be set when observability is not configured")
+		}
+	}
+}
+
+func TestBuildPod_OTelEnabled(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "myns",
+			UID:       "test-uid-1234",
+		},
+		Spec: kubeopenv1alpha1.TaskSpec{
+			Description: ptr.To("test"),
+			AgentRef:    &kubeopenv1alpha1.AgentReference{Name: "test-agent"},
+		},
+	}
+
+	cfg := agentConfig{
+		agentImage:         "test-agent:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+	}
+
+	sysCfg := systemConfig{
+		systemImage:           DefaultKubeOpenCodeImage,
+		systemImagePullPolicy: corev1.PullIfNotPresent,
+		observability: &kubeopenv1alpha1.ObservabilitySpec{
+			OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+				Enabled:  true,
+				Endpoint: "http://otel-collector.observability:4318",
+				ResourceAttributes: map[string]string{
+					"kubeopencode.cluster.name": "production",
+				},
+			},
+		},
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, sysCfg, "")
+
+	container := pod.Spec.Containers[0]
+
+	// Verify OTEL_EXPORTER_OTLP_ENDPOINT
+	foundEndpoint := false
+	for _, env := range container.Env {
+		if env.Name == OtelExporterEndpointEnvVar {
+			foundEndpoint = true
+			if env.Value != "http://otel-collector.observability:4318" {
+				t.Errorf("expected endpoint http://otel-collector.observability:4318, got %s", env.Value)
+			}
+		}
+	}
+	if !foundEndpoint {
+		t.Error("expected OTEL_EXPORTER_OTLP_ENDPOINT to be set")
+	}
+
+	// Verify OTEL_RESOURCE_ATTRIBUTES contains task/namespace/agent info
+	foundAttrs := false
+	for _, env := range container.Env {
+		if env.Name == OtelResourceAttributesEnvVar {
+			foundAttrs = true
+			for _, expected := range []string{
+				"kubeopencode.task.name=test-task",
+				"kubeopencode.task.namespace=myns",
+				"kubeopencode.cluster.name=production",
+			} {
+				if !strings.Contains(env.Value, expected) {
+					t.Errorf("expected OTEL_RESOURCE_ATTRIBUTES to contain %q, got %q", expected, env.Value)
+				}
+			}
+		}
+	}
+	if !foundAttrs {
+		t.Error("expected OTEL_RESOURCE_ATTRIBUTES to be set")
+	}
+
+	// Verify init containers also get OTel env vars
+	for _, ic := range pod.Spec.InitContainers {
+		foundOtelInInit := false
+		for _, env := range ic.Env {
+			if env.Name == OtelExporterEndpointEnvVar {
+				foundOtelInInit = true
+			}
+		}
+		if !foundOtelInInit {
+			t.Errorf("init container %q should have OTEL_EXPORTER_OTLP_ENDPOINT", ic.Name)
+		}
+	}
+}
+
+func TestBuildPod_OTelEnableLLMTraces(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       "test-uid-1234",
+		},
+		Spec: kubeopenv1alpha1.TaskSpec{
+			Description: ptr.To("test"),
+			AgentRef:    &kubeopenv1alpha1.AgentReference{Name: "test-agent"},
+		},
+	}
+
+	cfg := agentConfig{
+		agentImage:         "test-agent:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+	}
+
+	sysCfg := systemConfig{
+		systemImage:           DefaultKubeOpenCodeImage,
+		systemImagePullPolicy: corev1.PullIfNotPresent,
+		observability: &kubeopenv1alpha1.ObservabilitySpec{
+			OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+				Enabled:        true,
+				Endpoint:       "http://otel-collector.observability:4318",
+				EnableLLMTraces: true,
+			},
+		},
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, sysCfg, "")
+
+	container := pod.Spec.Containers[0]
+
+	// Verify OPENCODE_CONFIG_CONTENT contains experimental.openTelemetry
+	foundConfigContent := false
+	for _, env := range container.Env {
+		if env.Name == OpenCodeConfigContentEnvVar {
+			foundConfigContent = true
+			if !strings.Contains(env.Value, "openTelemetry") {
+				t.Errorf("expected OPENCODE_CONFIG_CONTENT to contain openTelemetry, got %s", env.Value)
+			}
+		}
+	}
+	if !foundConfigContent {
+		t.Error("expected OPENCODE_CONFIG_CONTENT to be set when enableLLMTraces is true")
+	}
+}
+
+func TestBuildPod_OTelEnableLLMTracesWithContextFile(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       "test-uid-1234",
+		},
+		Spec: kubeopenv1alpha1.TaskSpec{
+			Description: ptr.To("test"),
+			AgentRef:    &kubeopenv1alpha1.AgentReference{Name: "test-agent"},
+		},
+	}
+
+	cfg := agentConfig{
+		agentImage:         "test-agent:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+	}
+
+	contextConfigMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-context-cm"},
+		Data: map[string]string{
+			sanitizeConfigMapKey("/workspace/.kubeopencode/context.md"): "<context>test</context>",
+		},
+	}
+	fileMounts := []fileMount{
+		{filePath: "/workspace/task.md"},
+		{filePath: "/workspace/.kubeopencode/context.md"},
+	}
+
+	sysCfg := systemConfig{
+		systemImage:           DefaultKubeOpenCodeImage,
+		systemImagePullPolicy: corev1.PullIfNotPresent,
+		observability: &kubeopenv1alpha1.ObservabilitySpec{
+			OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+				Enabled:        true,
+				Endpoint:       "http://otel-collector.observability:4318",
+				EnableLLMTraces: true,
+			},
+		},
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, contextConfigMap, fileMounts, nil, nil, sysCfg, "")
+
+	container := pod.Spec.Containers[0]
+
+	// Verify OPENCODE_CONFIG_CONTENT has both instructions and experimental.openTelemetry merged
+	foundConfigContent := false
+	for _, env := range container.Env {
+		if env.Name == OpenCodeConfigContentEnvVar {
+			foundConfigContent = true
+			if !strings.Contains(env.Value, "instructions") {
+				t.Errorf("expected merged OPENCODE_CONFIG_CONTENT to contain instructions, got %s", env.Value)
+			}
+			if !strings.Contains(env.Value, "openTelemetry") {
+				t.Errorf("expected merged OPENCODE_CONFIG_CONTENT to contain openTelemetry, got %s", env.Value)
+			}
+		}
+	}
+	if !foundConfigContent {
+		t.Error("expected OPENCODE_CONFIG_CONTENT to be set")
+	}
+}
+
+func TestSanitizeOTelHeaderEnvVarName(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "simple hyphenated header",
+			input:    "x-honeycomb-team",
+			expected: "OTEL_HEADER_X_HONEYCOMB_TEAM",
+		},
+		{
+			name:     "header with dots",
+			input:    "x.api.key",
+			expected: "OTEL_HEADER_X_API_KEY",
+		},
+		{
+			name:     "standard authorization header",
+			input:    "authorization",
+			expected: "OTEL_HEADER_AUTHORIZATION",
+		},
+		{
+			name:     "mixed special characters",
+			input:    "x-custom.header-name",
+			expected: "OTEL_HEADER_X_CUSTOM_HEADER_NAME",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizeOTelHeaderEnvVarName(tt.input)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
+			// Verify result is a valid Kubernetes env var name
+			for _, r := range result {
+				if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+					t.Errorf("result %q contains invalid char %q for env var name", result, string(r))
+				}
+			}
+		})
+	}
+}
+
+func TestBuildOTelEnvVars_DeterministicOutput(t *testing.T) {
+	// Multiple headers and resource attributes must produce deterministic output
+	// regardless of Go map iteration order.
+	observability := &kubeopenv1alpha1.ObservabilitySpec{
+		OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
+			Enabled:  true,
+			Endpoint: "http://otel-collector.observability:4318",
+			Headers: map[string]kubeopenv1alpha1.OTelHeaderValueSource{
+				"z-header":  {Value: "z-value"},
+				"a-header":  {Value: "a-value"},
+				"m-header":  {Value: "m-value"},
+			},
+			ResourceAttributes: map[string]string{
+				"z.attr": "z-val",
+				"a.attr": "a-val",
+			},
+		},
+	}
+
+	// Call multiple times and verify identical output
+	var results []string
+	for i := 0; i < 10; i++ {
+		envVars := buildOTelEnvVars(observability, otelResourceIDs{TaskName: "task", TaskNamespace: "ns", AgentName: "agent", PodName: "pod"})
+		var parts []string
+		for _, ev := range envVars {
+			parts = append(parts, fmt.Sprintf("%s=%s", ev.Name, ev.Value))
+		}
+		results = append(results, strings.Join(parts, ";"))
+	}
+	for i := 1; i < len(results); i++ {
+		if results[i] != results[0] {
+			t.Errorf("non-deterministic output:\n  run 0: %s\n  run %d: %s", results[0], i, results[i])
+		}
+	}
+
+	// Verify headers are sorted
+	var headersValue string
+	for _, ev := range buildOTelEnvVars(observability, otelResourceIDs{TaskName: "task", TaskNamespace: "ns", AgentName: "agent", PodName: "pod"}) {
+		if ev.Name == OtelExporterHeadersEnvVar {
+			headersValue = ev.Value
+		}
+	}
+	if !strings.HasPrefix(headersValue, "a-header=") {
+		t.Errorf("headers should be sorted, expected a-header first, got: %s", headersValue)
 	}
 }
