@@ -152,12 +152,7 @@ func syncOnce(targetDir, fetchRef string) {
 		return
 	}
 
-	// Determine the remote ref to compare against
 	remoteRef := "FETCH_HEAD"
-	if fetchRef == "" {
-		// Tracking HEAD — use origin/HEAD or FETCH_HEAD
-		remoteRef = "FETCH_HEAD"
-	}
 
 	// Get remote HEAD
 	remoteHash, err := gitRevParse(targetDir, remoteRef)
