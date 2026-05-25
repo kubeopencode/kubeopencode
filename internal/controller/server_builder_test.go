@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -487,6 +488,199 @@ func TestBuildServerDeployment_WithGitContext(t *testing.T) {
 	}
 	if !foundGitConfigGlobal {
 		t.Errorf("GIT_CONFIG_GLOBAL env var not found")
+	}
+}
+
+// findServerContextInitContainer returns the context-init init container from a
+// Deployment Pod template, or nil if not found.
+func findServerContextInitContainer(d *appsv1.Deployment) *corev1.Container {
+	if d == nil {
+		return nil
+	}
+	for i, c := range d.Spec.Template.Spec.InitContainers {
+		if c.Name == "context-init" {
+			return &d.Spec.Template.Spec.InitContainers[i]
+		}
+	}
+	return nil
+}
+
+// serverHasToolsVolumeMount returns true if the container mounts the /tools volume.
+func serverHasToolsVolumeMount(c *corev1.Container) bool {
+	for _, vm := range c.VolumeMounts {
+		if vm.Name == ToolsVolumeName && vm.MountPath == ToolsMountPath {
+			return true
+		}
+	}
+	return false
+}
+
+// TestBuildServerDeployment_SkillsOnly_MountsToolsVolume verifies that when an
+// Agent declares only skills (no inline config and no plugins), the
+// context-init init container in the server Deployment still receives the
+// /tools volume mount so it can write the injected opencode.json.
+// Regression guard for PR #193 / PR #242.
+func TestBuildServerDeployment_SkillsOnly_MountsToolsVolume(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		skills: []kubeopenv1alpha1.SkillSource{
+			{
+				Name: "demo-skill",
+				Git: &kubeopenv1alpha1.GitSkillSource{
+					Repository: "https://example.com/skills.git",
+				},
+			},
+		},
+	}
+
+	configKey := sanitizeConfigMapKey(OpenCodeConfigPath)
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent-server-context",
+			Namespace: "default",
+		},
+		Data: map[string]string{configKey: `{}`},
+	}
+	fileMounts := []fileMount{{filePath: OpenCodeConfigPath}}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), configMap, fileMounts, nil, nil, nil)
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	contextInit := findServerContextInitContainer(deployment)
+	if contextInit == nil {
+		t.Fatalf("context-init container not found")
+	}
+	if !serverHasToolsVolumeMount(contextInit) {
+		t.Errorf("context-init container should mount /tools volume when skills are configured")
+	}
+
+	var foundEnv bool
+	for _, env := range deployment.Spec.Template.Spec.Containers[0].Env {
+		if env.Name == OpenCodeConfigEnvVar {
+			foundEnv = true
+			break
+		}
+	}
+	if !foundEnv {
+		t.Errorf("OPENCODE_CONFIG env var should be set when skills are configured")
+	}
+}
+
+// TestBuildServerDeployment_ServerPluginsOnly_MountsToolsVolume verifies that
+// when an Agent declares only server-target plugins (no inline config and no
+// skills), the context-init init container in the server Deployment still
+// receives the /tools volume mount.
+// Regression guard for PR #193 / PR #242.
+func TestBuildServerDeployment_ServerPluginsOnly_MountsToolsVolume(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		plugins: []kubeopenv1alpha1.PluginSpec{
+			{Name: "cc-safety-net", Target: kubeopenv1alpha1.PluginTargetServer},
+		},
+	}
+
+	configKey := sanitizeConfigMapKey(OpenCodeConfigPath)
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent-server-context",
+			Namespace: "default",
+		},
+		Data: map[string]string{configKey: `{}`},
+	}
+	fileMounts := []fileMount{{filePath: OpenCodeConfigPath}}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), configMap, fileMounts, nil, nil, nil)
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	contextInit := findServerContextInitContainer(deployment)
+	if contextInit == nil {
+		t.Fatalf("context-init container not found")
+	}
+	if !serverHasToolsVolumeMount(contextInit) {
+		t.Errorf("context-init container should mount /tools volume when server plugins are configured")
+	}
+
+	var foundEnv bool
+	for _, env := range deployment.Spec.Template.Spec.Containers[0].Env {
+		if env.Name == OpenCodeConfigEnvVar {
+			foundEnv = true
+			break
+		}
+	}
+	if !foundEnv {
+		t.Errorf("OPENCODE_CONFIG env var should be set when server plugins are configured")
+	}
+}
+
+// TestBuildServerDeployment_TUIPluginsOnly_NoToolsMount verifies that when an
+// Agent declares only TUI-target plugins (no inline config and no skills),
+// the /tools volume is NOT mounted into context-init, because TUI plugins
+// do not require opencode.json to be materialized at /tools/opencode.json.
+func TestBuildServerDeployment_TUIPluginsOnly_NoToolsMount(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+
+	cfg := agentConfig{
+		executorImage: "test-executor:v1.0.0",
+		agentImage:    "test-agent:v1.0.0",
+		workspaceDir:  "/workspace",
+		plugins: []kubeopenv1alpha1.PluginSpec{
+			{Name: "tui-theme", Target: kubeopenv1alpha1.PluginTargetTUI},
+		},
+	}
+
+	contextFilePath := cfg.workspaceDir + "/" + ContextFileRelPath
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-agent-server-context",
+			Namespace: "default",
+		},
+		Data: map[string]string{
+			sanitizeConfigMapKey(contextFilePath): "<context>placeholder</context>",
+		},
+	}
+	fileMounts := []fileMount{{filePath: contextFilePath}}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), configMap, fileMounts, nil, nil, nil)
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	contextInit := findServerContextInitContainer(deployment)
+	if contextInit == nil {
+		t.Fatalf("context-init container not found")
+	}
+	if serverHasToolsVolumeMount(contextInit) {
+		t.Errorf("context-init container should NOT mount /tools volume when only TUI plugins are configured")
 	}
 }
 
@@ -2593,8 +2787,8 @@ func TestBuildServerDeployment_OTelEnableLLMTraces(t *testing.T) {
 		systemImagePullPolicy: corev1.PullIfNotPresent,
 		observability: &kubeopenv1alpha1.ObservabilitySpec{
 			OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
-				Enabled:        true,
-				Endpoint:       "http://otel-collector.observability:4318",
+				Enabled:         true,
+				Endpoint:        "http://otel-collector.observability:4318",
 				EnableLLMTraces: true,
 			},
 		},

@@ -1631,6 +1631,193 @@ func TestBuildPod_WithoutOpenCodeConfig(t *testing.T) {
 	}
 }
 
+// findContextInitContainer returns the context-init init container from a Pod, or nil if not found.
+func findContextInitContainer(pod *corev1.Pod) *corev1.Container {
+	for i, c := range pod.Spec.InitContainers {
+		if c.Name == "context-init" {
+			return &pod.Spec.InitContainers[i]
+		}
+	}
+	return nil
+}
+
+// hasToolsVolumeMount returns true if the container mounts the /tools volume.
+func hasToolsVolumeMount(c *corev1.Container) bool {
+	for _, vm := range c.VolumeMounts {
+		if vm.Name == ToolsVolumeName && vm.MountPath == ToolsMountPath {
+			return true
+		}
+	}
+	return false
+}
+
+// buildSkillsPluginsTestArtifacts constructs a ConfigMap and fileMounts that
+// mirror what skill_processor produces when injecting skills/plugins into
+// opencode.json. Returns inputs suitable for buildPod.
+func buildSkillsPluginsTestArtifacts(taskName string) (*corev1.ConfigMap, []fileMount) {
+	configKey := sanitizeConfigMapKey(OpenCodeConfigPath)
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      taskName + "-context",
+			Namespace: "default",
+		},
+		Data: map[string]string{
+			configKey: `{}`,
+		},
+	}
+	fm := []fileMount{{filePath: OpenCodeConfigPath}}
+	return cm, fm
+}
+
+// TestBuildPod_SkillsOnly_MountsToolsVolume verifies that when an Agent
+// declares only skills (no inline config and no plugins), the context-init
+// container still receives the /tools volume mount so it can write the
+// injected opencode.json. Regression guard for PR #242.
+func TestBuildPod_SkillsOnly_MountsToolsVolume(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		skills: []kubeopenv1alpha1.SkillSource{
+			{
+				Name: "demo-skill",
+				Git: &kubeopenv1alpha1.GitSkillSource{
+					Repository: "https://example.com/skills.git",
+				},
+			},
+		},
+	}
+
+	cm, fileMounts := buildSkillsPluginsTestArtifacts(task.Name)
+	pod := buildPod(task, "test-task-pod", cfg, cm, fileMounts, nil, nil, defaultSystemConfig(), "")
+
+	contextInit := findContextInitContainer(pod)
+	if contextInit == nil {
+		t.Fatalf("context-init container not found")
+	}
+	if !hasToolsVolumeMount(contextInit) {
+		t.Errorf("context-init container should mount /tools volume when skills are configured")
+	}
+
+	var foundOpenCodeConfigEnv bool
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == OpenCodeConfigEnvVar {
+			foundOpenCodeConfigEnv = true
+			break
+		}
+	}
+	if !foundOpenCodeConfigEnv {
+		t.Errorf("OPENCODE_CONFIG env var should be set when skills are configured")
+	}
+}
+
+// TestBuildPod_ServerPluginsOnly_MountsToolsVolume verifies that when an Agent
+// declares only server-target plugins (no inline config and no skills), the
+// context-init container still receives the /tools volume mount.
+// Regression guard for PR #242.
+func TestBuildPod_ServerPluginsOnly_MountsToolsVolume(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		plugins: []kubeopenv1alpha1.PluginSpec{
+			{Name: "cc-safety-net", Target: kubeopenv1alpha1.PluginTargetServer},
+		},
+	}
+
+	cm, fileMounts := buildSkillsPluginsTestArtifacts(task.Name)
+	pod := buildPod(task, "test-task-pod", cfg, cm, fileMounts, nil, nil, defaultSystemConfig(), "")
+
+	contextInit := findContextInitContainer(pod)
+	if contextInit == nil {
+		t.Fatalf("context-init container not found")
+	}
+	if !hasToolsVolumeMount(contextInit) {
+		t.Errorf("context-init container should mount /tools volume when server plugins are configured")
+	}
+
+	var foundOpenCodeConfigEnv bool
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == OpenCodeConfigEnvVar {
+			foundOpenCodeConfigEnv = true
+			break
+		}
+	}
+	if !foundOpenCodeConfigEnv {
+		t.Errorf("OPENCODE_CONFIG env var should be set when server plugins are configured")
+	}
+}
+
+// TestBuildPod_TUIPluginsOnly_NoToolsMount verifies that when an Agent
+// declares only TUI-target plugins (no inline config and no skills), the
+// /tools volume is NOT mounted into context-init, because TUI plugins do
+// not require opencode.json to be materialized at /tools/opencode.json.
+func TestBuildPod_TUIPluginsOnly_NoToolsMount(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		plugins: []kubeopenv1alpha1.PluginSpec{
+			{Name: "tui-theme", Target: kubeopenv1alpha1.PluginTargetTUI},
+		},
+	}
+
+	contextFilePath := cfg.workspaceDir + "/" + ContextFileRelPath
+	fileMounts := []fileMount{{filePath: contextFilePath}}
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      task.Name + "-context",
+			Namespace: "default",
+		},
+		Data: map[string]string{
+			sanitizeConfigMapKey(contextFilePath): "<context>placeholder</context>",
+		},
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, cm, fileMounts, nil, nil, defaultSystemConfig(), "")
+
+	contextInit := findContextInitContainer(pod)
+	if contextInit == nil {
+		t.Fatalf("context-init container not found")
+	}
+	if hasToolsVolumeMount(contextInit) {
+		t.Errorf("context-init container should NOT mount /tools volume when only TUI plugins are configured")
+	}
+}
+
 func TestBuildPod_WithContextFile(t *testing.T) {
 	task := &kubeopenv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
@@ -4215,28 +4402,28 @@ func TestBuildOTelConfigContent(t *testing.T) {
 
 func TestMergeOpenCodeConfigContent(t *testing.T) {
 	tests := []struct {
-		name      string
-		existing  string
+		name       string
+		existing   string
 		additional string
-		expected  string
+		expected   string
 	}{
 		{
-			name:      "merge instructions with experimental",
-			existing:  `{"instructions":[".kubeopencode/context.md"]}`,
+			name:       "merge instructions with experimental",
+			existing:   `{"instructions":[".kubeopencode/context.md"]}`,
 			additional: `{"experimental":{"openTelemetry":true}}`,
-			expected:  `{"experimental":{"openTelemetry":true},"instructions":[".kubeopencode/context.md"]}`,
+			expected:   `{"experimental":{"openTelemetry":true},"instructions":[".kubeopencode/context.md"]}`,
 		},
 		{
-			name:      "merge with empty existing",
-			existing:  `{}`,
+			name:       "merge with empty existing",
+			existing:   `{}`,
 			additional: `{"experimental":{"openTelemetry":true}}`,
-			expected:  `{"experimental":{"openTelemetry":true}}`,
+			expected:   `{"experimental":{"openTelemetry":true}}`,
 		},
 		{
-			name:      "invalid existing json returns additional",
-			existing:  `not-json`,
+			name:       "invalid existing json returns additional",
+			existing:   `not-json`,
 			additional: `{"experimental":{"openTelemetry":true}}`,
-			expected:  `{"experimental":{"openTelemetry":true}}`,
+			expected:   `{"experimental":{"openTelemetry":true}}`,
 		},
 	}
 
@@ -4391,8 +4578,8 @@ func TestBuildPod_OTelEnableLLMTraces(t *testing.T) {
 		systemImagePullPolicy: corev1.PullIfNotPresent,
 		observability: &kubeopenv1alpha1.ObservabilitySpec{
 			OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
-				Enabled:        true,
-				Endpoint:       "http://otel-collector.observability:4318",
+				Enabled:         true,
+				Endpoint:        "http://otel-collector.observability:4318",
 				EnableLLMTraces: true,
 			},
 		},
@@ -4453,8 +4640,8 @@ func TestBuildPod_OTelEnableLLMTracesWithContextFile(t *testing.T) {
 		systemImagePullPolicy: corev1.PullIfNotPresent,
 		observability: &kubeopenv1alpha1.ObservabilitySpec{
 			OpenTelemetry: &kubeopenv1alpha1.OpenTelemetryConfig{
-				Enabled:        true,
-				Endpoint:       "http://otel-collector.observability:4318",
+				Enabled:         true,
+				Endpoint:        "http://otel-collector.observability:4318",
 				EnableLLMTraces: true,
 			},
 		},
@@ -4533,9 +4720,9 @@ func TestBuildOTelEnvVars_DeterministicOutput(t *testing.T) {
 			Enabled:  true,
 			Endpoint: "http://otel-collector.observability:4318",
 			Headers: map[string]kubeopenv1alpha1.OTelHeaderValueSource{
-				"z-header":  {Value: "z-value"},
-				"a-header":  {Value: "a-value"},
-				"m-header":  {Value: "m-value"},
+				"z-header": {Value: "z-value"},
+				"a-header": {Value: "a-value"},
+				"m-header": {Value: "m-value"},
 			},
 			ResourceAttributes: map[string]string{
 				"z.attr": "z-val",
