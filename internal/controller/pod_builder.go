@@ -1403,7 +1403,7 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		// If OpenCode config is provided, mount /tools volume in context-init
 		// so it can write the config file. The /tools volume is already created
 		// for sharing the OpenCode binary between containers.
-		if !configIsEmpty(cfg.config) {
+		if !configIsEmpty(cfg.config) || len(cfg.skills) > 0 || hasServerPlugins(cfg.plugins) {
 			contextInit.VolumeMounts = append(contextInit.VolumeMounts, corev1.VolumeMount{
 				Name:      ToolsVolumeName,
 				MountPath: ToolsMountPath,
