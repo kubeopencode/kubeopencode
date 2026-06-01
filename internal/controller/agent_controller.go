@@ -111,7 +111,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// Resolve agent configuration (merge with template if referenced).
-	agentCfg, err := r.resolveAgentConfig(ctx, &agent)
+	agentCfg, err := ResolveAgentConfigFromTemplate(ctx, r.Client, &agent)
 	if err != nil {
 		logger.Error(err, "Failed to resolve agent config")
 		return ctrl.Result{}, err
@@ -745,11 +745,6 @@ func (r *AgentReconciler) getSystemConfig(ctx context.Context) systemConfig {
 
 // LabelAgentTemplate is the label key used to track which AgentTemplate an Agent references.
 const LabelAgentTemplate = "kubeopencode.io/agent-template"
-
-// resolveAgentConfig resolves the Agent configuration, merging with template if referenced.
-func (r *AgentReconciler) resolveAgentConfig(ctx context.Context, agent *kubeopenv1alpha1.Agent) (agentConfig, error) {
-	return ResolveAgentConfigFromTemplate(ctx, r.Client, agent)
-}
 
 // reconcileTemplateLabel ensures the agent-template label is consistent with the templateRef.
 // Uses Patch instead of Update to avoid unnecessary reconciliation loops.

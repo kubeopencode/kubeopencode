@@ -353,6 +353,14 @@ const (
 	// DefaultShell is the default SHELL for SCC compatibility
 	DefaultShell = "/bin/bash"
 
+	// DefaultGitSyncIntervalSeconds is the default interval (in seconds) for the
+	// git-sync sidecar to poll for repository updates. Set to 5 minutes.
+	DefaultGitSyncIntervalSeconds = 300
+
+	// DefaultClusterDomain is the default Kubernetes cluster domain used for
+	// constructing service URLs when no custom domain is configured.
+	DefaultClusterDomain = "cluster.local"
+
 	// CABundleVolumeName is the volume name for custom CA certificate bundle
 	CABundleVolumeName = "ca-bundle"
 
@@ -523,7 +531,7 @@ func buildGitSyncSidecar(gm gitMount, volumeName string, index int, sysCfg syste
 	ref := defaultString(gm.ref, DefaultGitRef)
 	intervalSeconds := int(gm.syncInterval.Seconds())
 	if intervalSeconds <= 0 {
-		intervalSeconds = 300 // default 5 minutes
+		intervalSeconds = DefaultGitSyncIntervalSeconds
 	}
 
 	// HOME and SHELL are set for SCC compatibility — same reason as buildGitInitContainer.

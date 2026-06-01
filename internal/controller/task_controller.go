@@ -1388,7 +1388,7 @@ func resolveSystemConfig(ctx context.Context, reader client.Reader) systemConfig
 	cfg := systemConfig{
 		systemImage:           DefaultKubeOpenCodeImage,
 		systemImagePullPolicy: corev1.PullIfNotPresent,
-		clusterDomain:         "cluster.local", // Default value
+		clusterDomain:         DefaultClusterDomain,
 	}
 
 	config := &kubeopenv1alpha1.KubeOpenCodeConfig{}
