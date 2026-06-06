@@ -34,6 +34,26 @@ updates:
     schedule:
       interval: "weekly"
 
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      ui-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/website"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      website-dependencies:
+        patterns:
+          - "*"
+
   - package-ecosystem: "helm"
     directory: "/charts/kubeopencode"
     schedule:

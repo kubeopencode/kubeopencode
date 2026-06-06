@@ -180,7 +180,7 @@ type OpenTelemetryConfig struct {
 
 // OTelHeaderValueSource represents a header value that can be specified inline
 // or resolved from a Kubernetes Secret.
-// +kubebuilder:validation:XValidation:rule="(has(self.value) && self.value != '') || (has(self.valueFrom) && has(self.valueFrom.secretKeyRef))",message="either a non-empty value or valueFrom.secretKeyRef must be specified"
+// +kubebuilder:validation:XValidation:rule="(has(self.value) && self.value != ”) || (has(self.valueFrom) && has(self.valueFrom.secretKeyRef))",message="either a non-empty value or valueFrom.secretKeyRef must be specified"
 type OTelHeaderValueSource struct {
 	// Value specifies the header value inline.
 	// Use for non-sensitive values. For sensitive values (API keys), use valueFrom.secretKeyRef.

@@ -67,13 +67,20 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: "ui/pnpm-lock.yaml"
 
       - name: Install UI dependencies
-        run: cd ui && npm install
+        run: cd ui && pnpm install --frozen-lockfile
 
       - name: Run UI tests
         run: make ui-test
@@ -119,14 +126,21 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: "ui/pnpm-lock.yaml"
 
       - name: Build UI
         run: |
-          cd ui && npm install && npm run build
+          cd ui && pnpm install --frozen-lockfile && pnpm run build
 
       - name: Install Kind
         run: |
@@ -154,14 +168,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: "ui/pnpm-lock.yaml"
 
       - name: Build UI
         run: |
-          cd ui && npm install && npm run build
+          cd ui && pnpm install --frozen-lockfile && pnpm run build
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4

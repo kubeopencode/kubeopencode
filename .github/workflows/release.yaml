@@ -48,7 +48,7 @@ jobs:
           echo "Chart.yaml appVersion matches tag: $CHART_APP_VERSION"
 
       - name: Sync ui/package.json version from tag
-        run: cd ui && npm pkg set version=${{ needs.prepare.outputs.version }}
+        run: cd ui && pnpm pkg set version=${{ needs.prepare.outputs.version }}
 
       - name: Verify ui/package.json version matches tag
         run: |
@@ -73,13 +73,20 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: "ui/pnpm-lock.yaml"
 
       - name: Install UI dependencies
-        run: cd ui && npm install
+        run: cd ui && pnpm install --frozen-lockfile
 
       - name: Run UI tests
         run: make ui-test
@@ -125,14 +132,21 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: "ui/pnpm-lock.yaml"
 
       - name: Build UI
         run: |
-          cd ui && npm install && npm run build
+          cd ui && pnpm install --frozen-lockfile && pnpm run build
 
       - name: Install Kind
         run: |
@@ -159,14 +173,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: "ui/pnpm-lock.yaml"
 
       - name: Build UI
         run: |
-          cd ui && npm install && npm run build
+          cd ui && pnpm install --frozen-lockfile && pnpm run build
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
