@@ -57,13 +57,6 @@
     "workerDirectory": [
       "public"
     ]
-  },
-  "pnpm": {
-    "overrides": {
-      "lodash": ">=4.18.0",
-      "follow-redirects": ">=1.16.0",
-      "vitest": ">=4.1.0",
-      "qs": ">=6.15.2"
-    }
   }
 }
+
