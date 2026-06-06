@@ -102,6 +102,9 @@ RUN for i in $(seq 1 $RETRY_COUNT); do \
       && break || { echo "Retry $i/$RETRY_COUNT failed, waiting ${RETRY_DELAY}s..."; sleep $RETRY_DELAY; }; \
     done
 
+# === pnpm ===
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 # === Python 3 + pipx ===
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
