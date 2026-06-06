@@ -15,3 +15,4 @@ overrides:
   "ws": ">=8.20.1"
   "webpack-dev-server": ">=5.2.4"
   "mermaid": ">=11.15.0"
+  "qs": ">=6.15.2"
