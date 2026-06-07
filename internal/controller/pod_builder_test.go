@@ -4704,7 +4704,7 @@ func TestSanitizeOTelHeaderEnvVarName(t *testing.T) {
 			}
 			// Verify result is a valid Kubernetes env var name
 			for _, r := range result {
-				if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+				if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' {
 					t.Errorf("result %q contains invalid char %q for env var name", result, string(r))
 				}
 			}
