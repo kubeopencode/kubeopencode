@@ -37,6 +37,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: "ui/pnpm-lock.yaml"
+
       - name: Verify Chart.yaml appVersion matches tag
         run: |
           CHART_APP_VERSION=$(grep '^appVersion:' charts/kubeopencode/Chart.yaml | sed 's/appVersion: *"\?\([^"]*\)"\?/\1/')
