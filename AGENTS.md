@@ -382,10 +382,10 @@ Three-tier strategy: unit (`make test`), integration (`make integration-test`, u
 
 ## Project Status
 
-- **Version**: v0.1.6
+- **Version**: v0.1.7
 - **API Stability**: v1alpha1 (subject to change)
 - **License**: Apache License 2.0
 
 ---
 
-**Last Updated**: 2026-05-08
+**Last Updated**: 2026-06-07
