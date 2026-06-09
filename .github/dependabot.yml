@@ -39,6 +39,10 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
+    # Only scan production dependencies; devDependencies (vitest, webpack-dev-server, etc.)
+    # are false positives since they never enter the production bundle
+    allow:
+      - dependency-type: "production"
     groups:
       ui-dependencies:
         patterns:
@@ -49,6 +53,10 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
+    # Only scan production dependencies; website is a standalone docs site
+    # and its devDependencies do not affect the KubeOpenCode runtime
+    allow:
+      - dependency-type: "production"
     groups:
       website-dependencies:
         patterns:
