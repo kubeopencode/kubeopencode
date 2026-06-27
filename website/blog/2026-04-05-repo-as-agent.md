@@ -7,7 +7,7 @@ tags: [architecture, agents, patterns]
 
 Whatever you want to build, build an agent first — then let the agent build it. Here's how to do it with nothing more than a Git repo.
 
-<!-- truncate -->
+{/* truncate */}
 
 ## The Problem
 
