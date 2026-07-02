@@ -122,26 +122,54 @@ spec:
               config:
                 description: |-
                   Config provides OpenCode configuration as an inline object.
-                  Mutually exclusive with configMapRef.
+                  Mutually exclusive with configRef.
                 x-kubernetes-preserve-unknown-fields: true
-              configMapRef:
+              configRef:
                 description: |-
-                  ConfigMapRef references a ConfigMap containing the OpenCode configuration JSON.
-                  The controller reads the ConfigMap and uses its content the same way as inline config.
-                  If key is omitted, defaults to "opencode.json".
+                  ConfigRef references an external source for the OpenCode configuration JSON.
+                  The controller reads the referenced resource and uses its content the same way as inline config.
                   Mutually exclusive with config.
                 properties:
-                  key:
+                  configMapRef:
                     description: |-
-                      Key in the ConfigMap containing the OpenCode config JSON.
-                      Defaults to "opencode.json".
-                    type: string
-                  name:
-                    description: Name of the ConfigMap in the same namespace.
-                    type: string
-                required:
-                - name
+                      ConfigMapRef references a ConfigMap containing the OpenCode configuration JSON.
+                      If key is omitted, defaults to "opencode.json".
+                    properties:
+                      key:
+                        description: |-
+                          Key in the ConfigMap containing the OpenCode config JSON.
+                          Defaults to "opencode.json".
+                        type: string
+                      name:
+                        description: Name of the ConfigMap in the same namespace.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  secretRef:
+                    description: |-
+                      SecretRef references a Secret containing the OpenCode configuration JSON.
+                      If key is omitted, defaults to "opencode.json".
+                      Useful when the config contains sensitive values (e.g., API keys)
+                      that should not appear in a ConfigMap.
+                    properties:
+                      key:
+                        description: |-
+                          Key in the Secret containing the OpenCode config JSON.
+                          Defaults to "opencode.json".
+                        type: string
+                      name:
+                        description: Name of the Secret in the same namespace.
+                        type: string
+                    required:
+                    - name
+                    type: object
                 type: object
+                x-kubernetes-validations:
+                - message: either configMapRef or secretRef must be specified
+                  rule: has(self.configMapRef) || has(self.secretRef)
+                - message: only one of configMapRef or secretRef can be specified
+                  rule: '!(has(self.configMapRef) && has(self.secretRef))'
               contexts:
                 description: Contexts provides default contexts for all tasks using
                   Agents derived from this template.

@@ -181,7 +181,7 @@ spec:
                           x-kubernetes-validations:
                           - message: either a non-empty value or valueFrom.secretKeyRef
                               must be specified
-                            rule: (has(self.value) && self.value != '') || (has(self.valueFrom)
+                            rule: (has(self.value) && size(self.value) > 0) || (has(self.valueFrom)
                               && has(self.valueFrom.secretKeyRef))
                         description: |-
                           Headers specifies optional headers for collector authentication (e.g., SaaS API keys).

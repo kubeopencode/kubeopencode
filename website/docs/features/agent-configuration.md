@@ -144,8 +144,8 @@ spec:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `plugins` | []PluginSpec | - | OpenCode plugins to install and load. See [Plugins](plugins.md) |
-| `config` | *runtime.RawExtension | - | Inline OpenCode configuration (YAML/JSON object). Mutually exclusive with `configMapRef` |
-| `configMapRef` | *OpenCodeConfigRef | - | Reference a ConfigMap containing the OpenCode config JSON. Mutually exclusive with `config` |
+| `config` | *runtime.RawExtension | - | Inline OpenCode configuration (YAML/JSON object). Mutually exclusive with `configRef` |
+| `configRef` | *OpenCodeConfigSource | - | Reference a ConfigMap or Secret containing the OpenCode config JSON. Mutually exclusive with `config` |
 
 ### Security and Authentication
 
@@ -208,9 +208,11 @@ spec:
 
 The configuration is serialized to a config file inside the container and the `OPENCODE_CONFIG` environment variable is set automatically. See [OpenCode configuration schema](https://opencode.ai/config.json) for available options.
 
-### ConfigMap-based Configuration
+### External Configuration (configRef)
 
-Alternatively, you can reference a ConfigMap containing the OpenCode config JSON using `configMapRef`. This is useful when you want to manage the config separately or share it across multiple Agents:
+Alternatively, you can reference a ConfigMap or Secret containing the OpenCode config JSON using `configRef`. This is useful when you want to manage the config separately, share it across multiple Agents, or store sensitive values in Secrets:
+
+**From a ConfigMap:**
 
 ```yaml
 apiVersion: kubeopencode.io/v1alpha1
@@ -223,9 +225,10 @@ spec:
   executorImage: ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest
   workspaceDir: /workspace
   serviceAccountName: kubeopencode-agent
-  configMapRef:
-    name: my-opencode-config
-    # key defaults to "opencode.json" if omitted
+  configRef:
+    configMapRef:
+      name: my-opencode-config
+      # key defaults to "opencode.json" if omitted
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -240,14 +243,40 @@ data:
     }
 ```
 
-`configMapRef` fields:
+**From a Secret** (useful when the config contains sensitive values like API keys):
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: opencode-agent
+spec:
+  profile: "OpenCode agent with Secret-based config"
+  agentImage: ghcr.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  configRef:
+    secretRef:
+      name: my-opencode-config-secret
+      # key defaults to "opencode.json" if omitted
+```
+
+`configRef` fields:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `name` | string | (required) | Name of the ConfigMap in the same namespace |
-| `key` | string | `opencode.json` | Key in the ConfigMap containing the OpenCode config JSON |
+| `configMapRef` | *OpenCodeConfigMapReference | - | Reference a ConfigMap containing the OpenCode config JSON. Mutually exclusive with `secretRef` |
+| `secretRef` | *OpenCodeConfigSecretReference | - | Reference a Secret containing the OpenCode config JSON. Mutually exclusive with `configMapRef` |
 
-> **Note**: `config` and `configMapRef` are mutually exclusive. The controller enforces this at reconcile time (since the `config` field uses `x-kubernetes-preserve-unknown-fields`, CRD-level CEL validation cannot reference it). If both are set, the Agent will fail to reconcile and no Deployment will be created.
+Nested reference fields (`configMapRef` / `secretRef`):
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | (required) | Name of the ConfigMap/Secret in the same namespace |
+| `key` | string | `opencode.json` | Key in the ConfigMap/Secret containing the OpenCode config JSON |
+
+> **Note**: `config` and `configRef` are mutually exclusive. The controller enforces this at reconcile time (since the `config` field uses `x-kubernetes-preserve-unknown-fields`, CRD-level CEL validation cannot reference it). If both are set, the Agent will fail to reconcile and no Deployment will be created.
 
 ## Agent-Only Fields
 

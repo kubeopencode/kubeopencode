@@ -39,15 +39,9 @@ func ResolveAgentConfigFromTemplate(ctx context.Context, reader client.Reader, a
 		}
 	}
 
-	// Validate mutual exclusivity of config and configMapRef.
-	// Since config is Schemaless, this cannot be enforced via CEL XValidation.
-	if err := validateConfigMutualExclusion(&cfg); err != nil {
-		return agentConfig{}, err
-	}
-
-	// Resolve configMapRef into inline config if set (configMapRef → config).
-	// This happens after merge so that template-provided configMapRef is also resolved.
-	if err := resolveAgentConfigMapRef(ctx, reader, agent.Namespace, &cfg); err != nil {
+	// Resolve configRef into inline config if set (configRef → config).
+	// This happens after merge so that template-provided configRef is also resolved.
+	if err := resolveAgentConfigRef(ctx, reader, agent.Namespace, &cfg); err != nil {
 		return agentConfig{}, err
 	}
 
@@ -84,7 +78,7 @@ func MergeAgentWithTemplate(agent *kubeopenv1alpha1.Agent, tmpl *kubeopenv1alpha
 		skills:           firstNonNilSlice(agent.Spec.Skills, tmpl.Spec.Skills),
 		plugins:          firstNonNilSlice(agent.Spec.Plugins, tmpl.Spec.Plugins),
 		config:           firstNonNilPtr(agent.Spec.Config, tmpl.Spec.Config),
-		configMapRef:     firstNonNilPtr(agent.Spec.ConfigMapRef, tmpl.Spec.ConfigMapRef),
+		configRef:        firstNonNilPtr(agent.Spec.ConfigRef, tmpl.Spec.ConfigRef),
 		credentials:      firstNonNilSlice(agent.Spec.Credentials, tmpl.Spec.Credentials),
 		podSpec:          mergedPodSpec,
 		caBundle:         firstNonNilPtr(agent.Spec.CABundle, tmpl.Spec.CABundle),

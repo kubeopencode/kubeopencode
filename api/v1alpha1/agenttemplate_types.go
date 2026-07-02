@@ -86,18 +86,17 @@ type AgentTemplateSpec struct {
 	Plugins []PluginSpec `json:"plugins,omitempty"`
 
 	// Config provides OpenCode configuration as an inline object.
-	// Mutually exclusive with configMapRef.
+	// Mutually exclusive with configRef.
 	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	Config *runtime.RawExtension `json:"config,omitempty"`
 
-	// ConfigMapRef references a ConfigMap containing the OpenCode configuration JSON.
-	// The controller reads the ConfigMap and uses its content the same way as inline config.
-	// If key is omitted, defaults to "opencode.json".
+	// ConfigRef references an external source for the OpenCode configuration JSON.
+	// The controller reads the referenced resource and uses its content the same way as inline config.
 	// Mutually exclusive with config.
 	// +optional
-	ConfigMapRef *OpenCodeConfigRef `json:"configMapRef,omitempty"`
+	ConfigRef *OpenCodeConfigSource `json:"configRef,omitempty"`
 
 	// Credentials defines secrets that should be available to the agent.
 	// +optional
