@@ -1,0 +1,79 @@
+// Copyright Contributors to the KubeOpenCode project
+
+package controller
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
+)
+
+// DefaultOpenCodeConfigMapKey is the default ConfigMap key for OpenCode config JSON.
+const DefaultOpenCodeConfigMapKey = "opencode.json"
+
+// resolveConfigMapRef reads a ConfigMap referenced by OpenCodeConfigRef and
+// returns the config content as a RawExtension. If ref is nil, returns nil
+// without error (caller should handle nil as "no config").
+// The ConfigMap must exist in the given namespace and contain the specified key
+// (or the default key if Key is empty). The value must be valid JSON.
+func resolveConfigMapRef(ctx context.Context, reader client.Reader, namespace string, ref *kubeopenv1alpha1.OpenCodeConfigRef) (*runtime.RawExtension, error) {
+	if ref == nil {
+		return nil, nil
+	}
+
+	cm := &corev1.ConfigMap{}
+	cmKey := types.NamespacedName{
+		Name:      ref.Name,
+		Namespace: namespace,
+	}
+	if err := reader.Get(ctx, cmKey, cm); err != nil {
+		return nil, fmt.Errorf("configmap %q not found in namespace %q: %w", ref.Name, namespace, err)
+	}
+
+	key := ref.Key
+	if key == "" {
+		key = DefaultOpenCodeConfigMapKey
+	}
+
+	raw, ok := cm.Data[key]
+	if !ok {
+		return nil, fmt.Errorf("configmap %q does not contain key %q", ref.Name, key)
+	}
+
+	// Validate that the content is valid JSON
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil, fmt.Errorf("configmap %q key %q contains invalid JSON: %w", ref.Name, key, err)
+	}
+
+	return &runtime.RawExtension{Raw: []byte(raw)}, nil
+}
+
+// resolveAgentConfigMapRef resolves the configMapRef on an agentConfig into
+// the config field. If configMapRef is set and config is empty, the ConfigMap
+// is read and config is populated. If both are set, config takes precedence
+// (should not happen due to XValidation, but defensive). If configMapRef is
+// nil, no action is taken.
+func resolveAgentConfigMapRef(ctx context.Context, reader client.Reader, namespace string, cfg *agentConfig) error {
+	if cfg.configMapRef == nil {
+		return nil
+	}
+	// If inline config is already set, it takes precedence (defensive guard;
+	// XValidation on the CRD prevents this combination at admission time).
+	if !configIsEmpty(cfg.config) {
+		return nil
+	}
+	resolved, err := resolveConfigMapRef(ctx, reader, namespace, cfg.configMapRef)
+	if err != nil {
+		return fmt.Errorf("failed to resolve configMapRef: %w", err)
+	}
+	cfg.config = resolved
+	return nil
+}

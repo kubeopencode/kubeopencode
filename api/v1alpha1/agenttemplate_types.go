@@ -40,6 +40,8 @@ type AgentTemplate struct {
 // Merge strategy when an Agent references this template:
 //   - Scalar/pointer fields: Agent wins if non-zero/non-nil, else template value is used
 //   - List fields (contexts, credentials, imagePullSecrets): Agent replaces template if non-nil
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.config) && has(self.configMapRef))",message="config and configMapRef are mutually exclusive"
 type AgentTemplateSpec struct {
 	// AgentImage specifies the OpenCode init container image.
 	// This image contains the OpenCode binary that gets copied to /tools volume.
@@ -86,10 +88,18 @@ type AgentTemplateSpec struct {
 	Plugins []PluginSpec `json:"plugins,omitempty"`
 
 	// Config provides OpenCode configuration as an inline object.
+	// Mutually exclusive with configMapRef.
 	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	Config *runtime.RawExtension `json:"config,omitempty"`
+
+	// ConfigMapRef references a ConfigMap containing the OpenCode configuration JSON.
+	// The controller reads the ConfigMap and uses its content the same way as inline config.
+	// If key is omitted, defaults to "opencode.json".
+	// Mutually exclusive with config.
+	// +optional
+	ConfigMapRef *OpenCodeConfigRef `json:"configMapRef,omitempty"`
 
 	// Credentials defines secrets that should be available to the agent.
 	// +optional

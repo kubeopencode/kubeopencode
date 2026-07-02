@@ -861,6 +861,11 @@ func (r *TaskReconciler) resolveTemplateConfig(ctx context.Context, task *kubeop
 		return agentConfig{}, "", fmt.Errorf("agent template %q has empty serviceAccountName", templateName)
 	}
 
+	// Resolve configMapRef into inline config if set (configMapRef → config).
+	if err := resolveAgentConfigMapRef(ctx, r.Client, task.Namespace, &cfg); err != nil {
+		return agentConfig{}, "", err
+	}
+
 	return cfg, templateName, nil
 }
 

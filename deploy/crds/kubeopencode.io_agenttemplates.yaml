@@ -120,8 +120,28 @@ spec:
                   type: string
                 type: array
               config:
-                description: Config provides OpenCode configuration as an inline object.
+                description: |-
+                  Config provides OpenCode configuration as an inline object.
+                  Mutually exclusive with configMapRef.
                 x-kubernetes-preserve-unknown-fields: true
+              configMapRef:
+                description: |-
+                  ConfigMapRef references a ConfigMap containing the OpenCode configuration JSON.
+                  The controller reads the ConfigMap and uses its content the same way as inline config.
+                  If key is omitted, defaults to "opencode.json".
+                  Mutually exclusive with config.
+                properties:
+                  key:
+                    description: |-
+                      Key in the ConfigMap containing the OpenCode config JSON.
+                      Defaults to "opencode.json".
+                    type: string
+                  name:
+                    description: Name of the ConfigMap in the same namespace.
+                    type: string
+                required:
+                - name
+                type: object
               contexts:
                 description: Contexts provides default contexts for all tasks using
                   Agents derived from this template.
@@ -5998,6 +6018,9 @@ spec:
             - serviceAccountName
             - workspaceDir
             type: object
+            x-kubernetes-validations:
+            - message: config and configMapRef are mutually exclusive
+              rule: '!(has(self.config) && has(self.configMapRef))'
           status:
             description: Status represents the current status of the AgentTemplate
             properties:

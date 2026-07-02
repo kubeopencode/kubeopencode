@@ -190,6 +190,7 @@ type AgentTemplateReference struct {
 }
 
 // AgentSpec defines agent configuration
+// +kubebuilder:validation:XValidation:rule="!(has(self.config) && has(self.configMapRef))",message="config and configMapRef are mutually exclusive"
 type AgentSpec struct {
 	// TemplateRef references an AgentTemplate in the same namespace.
 	// When set, the Agent inherits configuration from the template.
@@ -306,6 +307,8 @@ type AgentSpec struct {
 	// The config should be a valid JSON object compatible with OpenCode's config schema.
 	// See: https://opencode.ai/config.json for the schema.
 	//
+	// Mutually exclusive with configMapRef — use one or the other.
+	//
 	// Example:
 	//   config:
 	//     model: opencode/big-pickle
@@ -315,6 +318,26 @@ type AgentSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	Config *runtime.RawExtension `json:"config,omitempty"`
+
+	// ConfigMapRef references a ConfigMap containing the OpenCode configuration.
+	// The controller reads the ConfigMap at reconcile time and uses its content
+	// the same way as inline config (written to /tools/opencode.json, with
+	// skills/plugins injected before writing).
+	//
+	// The ConfigMap must contain a key with the OpenCode config JSON.
+	// If key is omitted, defaults to "opencode.json".
+	// The value must be a valid JSON object compatible with OpenCode's config schema.
+	// See: https://opencode.ai/config.json for the schema.
+	//
+	// Mutually exclusive with config — use one or the other.
+	//
+	// Example:
+	//   configMapRef:
+	//     name: my-opencode-config
+	//     key: config.json
+	//
+	// +optional
+	ConfigMapRef *OpenCodeConfigRef `json:"configMapRef,omitempty"`
 
 	// Credentials defines secrets that should be available to the agent.
 	// Similar to GitHub Actions secrets, these can be mounted as files or
@@ -1049,6 +1072,20 @@ type CABundleReference struct {
 
 	// Key containing the PEM-encoded CA bundle.
 	// Defaults to "ca-bundle.crt" for ConfigMapRef, "ca.crt" for SecretRef.
+	// +optional
+	Key string `json:"key,omitempty"`
+}
+
+// OpenCodeConfigRef references a ConfigMap containing the OpenCode configuration JSON.
+// The controller reads the ConfigMap at reconcile time and uses the content as
+// the OpenCode config (same as inline spec.config, but sourced from a ConfigMap).
+type OpenCodeConfigRef struct {
+	// Name of the ConfigMap in the same namespace.
+	// +required
+	Name string `json:"name"`
+
+	// Key in the ConfigMap containing the OpenCode config JSON.
+	// Defaults to "opencode.json".
 	// +optional
 	Key string `json:"key,omitempty"`
 }
