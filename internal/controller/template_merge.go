@@ -39,6 +39,12 @@ func ResolveAgentConfigFromTemplate(ctx context.Context, reader client.Reader, a
 		}
 	}
 
+	// Validate mutual exclusivity of config and configMapRef.
+	// Since config is Schemaless, this cannot be enforced via CEL XValidation.
+	if err := validateConfigMutualExclusion(&cfg); err != nil {
+		return agentConfig{}, err
+	}
+
 	// Resolve configMapRef into inline config if set (configMapRef → config).
 	// This happens after merge so that template-provided configMapRef is also resolved.
 	if err := resolveAgentConfigMapRef(ctx, reader, agent.Namespace, &cfg); err != nil {

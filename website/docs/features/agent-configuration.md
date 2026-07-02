@@ -144,7 +144,8 @@ spec:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `plugins` | []PluginSpec | - | OpenCode plugins to install and load. See [Plugins](plugins.md) |
-| `config` | *runtime.RawExtension | - | Inline OpenCode configuration (YAML/JSON object). See below |
+| `config` | *runtime.RawExtension | - | Inline OpenCode configuration (YAML/JSON object). Mutually exclusive with `configMapRef` |
+| `configMapRef` | *OpenCodeConfigRef | - | Reference a ConfigMap containing the OpenCode config JSON. Mutually exclusive with `config` |
 
 ### Security and Authentication
 
@@ -206,6 +207,47 @@ spec:
 ```
 
 The configuration is serialized to a config file inside the container and the `OPENCODE_CONFIG` environment variable is set automatically. See [OpenCode configuration schema](https://opencode.ai/config.json) for available options.
+
+### ConfigMap-based Configuration
+
+Alternatively, you can reference a ConfigMap containing the OpenCode config JSON using `configMapRef`. This is useful when you want to manage the config separately or share it across multiple Agents:
+
+```yaml
+apiVersion: kubeopencode.io/v1alpha1
+kind: Agent
+metadata:
+  name: opencode-agent
+spec:
+  profile: "OpenCode agent with ConfigMap-based config"
+  agentImage: ghcr.io/kubeopencode/kubeopencode-agent-opencode:latest
+  executorImage: ghcr.io/kubeopencode/kubeopencode-agent-devbox:latest
+  workspaceDir: /workspace
+  serviceAccountName: kubeopencode-agent
+  configMapRef:
+    name: my-opencode-config
+    # key defaults to "opencode.json" if omitted
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-opencode-config
+data:
+  opencode.json: |
+    {
+      "$schema": "https://opencode.ai/config.json",
+      "model": "anthropic/claude-sonnet-4-5",
+      "small_model": "anthropic/claude-haiku-4-5"
+    }
+```
+
+`configMapRef` fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | (required) | Name of the ConfigMap in the same namespace |
+| `key` | string | `opencode.json` | Key in the ConfigMap containing the OpenCode config JSON |
+
+> **Note**: `config` and `configMapRef` are mutually exclusive. The controller enforces this at reconcile time (since the `config` field uses `x-kubernetes-preserve-unknown-fields`, CRD-level CEL validation cannot reference it). If both are set, the Agent will fail to reconcile and no Deployment will be created.
 
 ## Agent-Only Fields
 

@@ -56,19 +56,30 @@ func resolveConfigMapRef(ctx context.Context, reader client.Reader, namespace st
 	return &runtime.RawExtension{Raw: []byte(raw)}, nil
 }
 
+// validateConfigMutualExclusion checks that config and configMapRef are not
+// both set on the same agentConfig. Since the config field is Schemaless
+// (x-kubernetes-preserve-unknown-fields), CEL XValidation cannot reference it,
+// so this check is done at reconcile time instead.
+func validateConfigMutualExclusion(cfg *agentConfig) error {
+	if cfg.configMapRef != nil && !configIsEmpty(cfg.config) {
+		return fmt.Errorf("config and configMapRef are mutually exclusive: both are set")
+	}
+	return nil
+}
+
 // resolveAgentConfigMapRef resolves the configMapRef on an agentConfig into
 // the config field. If configMapRef is set and config is empty, the ConfigMap
-// is read and config is populated. If both are set, config takes precedence
-// (should not happen due to XValidation, but defensive). If configMapRef is
-// nil, no action is taken.
+// is read and config is populated. If both are set, an error is returned
+// (enforced at reconcile time since CEL XValidation cannot reference schemaless fields).
+// If configMapRef is nil, no action is taken.
 func resolveAgentConfigMapRef(ctx context.Context, reader client.Reader, namespace string, cfg *agentConfig) error {
 	if cfg.configMapRef == nil {
 		return nil
 	}
-	// If inline config is already set, it takes precedence (defensive guard;
-	// XValidation on the CRD prevents this combination at admission time).
+	// Mutual exclusivity check (enforced here since config is Schemaless
+	// and cannot be referenced by CEL XValidation rules).
 	if !configIsEmpty(cfg.config) {
-		return nil
+		return fmt.Errorf("config and configMapRef are mutually exclusive: both are set")
 	}
 	resolved, err := resolveConfigMapRef(ctx, reader, namespace, cfg.configMapRef)
 	if err != nil {

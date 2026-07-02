@@ -6018,9 +6018,6 @@ spec:
             - serviceAccountName
             - workspaceDir
             type: object
-            x-kubernetes-validations:
-            - message: config and configMapRef are mutually exclusive
-              rule: '!(has(self.config) && has(self.configMapRef))'
           status:
             description: Status represents the current status of the AgentTemplate
             properties:

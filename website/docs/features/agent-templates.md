@@ -122,6 +122,7 @@ The Task controller creates a standalone Pod using the template's configuration.
 | `skills` | []SkillSource | External SKILL.md from Git repos |
 | `plugins` | []PluginSpec | OpenCode plugins to install and load |
 | `config` | *runtime.RawExtension | Inline OpenCode configuration |
+| `configMapRef` | *OpenCodeConfigRef | OpenCode config from a ConfigMap (mutually exclusive with `config`) |
 | `caBundle` | *CABundleConfig | Custom CA certificates for TLS |
 | `proxy` | *ProxyConfig | HTTP/HTTPS proxy settings |
 | `imagePullSecrets` | []LocalObjectReference | Private registry authentication |
@@ -148,7 +149,7 @@ When an Agent references a template with `templateRef`, fields are merged as fol
 
 | Field Type | Merge Behavior | Example |
 |-----------|---------------|---------|
-| **Scalar/pointer fields** | Agent wins if set, otherwise template value | `agentImage`, `workspaceDir`, `command`, `config`, `podSpec`, `caBundle`, `proxy` |
+| **Scalar/pointer fields** | Agent wins if set, otherwise template value | `agentImage`, `workspaceDir`, `command`, `config`, `configMapRef`, `podSpec`, `caBundle`, `proxy` |
 | **List fields** | Agent's list **replaces** the template's (not appended) | `contexts`, `credentials`, `skills`, `plugins`, `imagePullSecrets`, `extraPorts` |
 | **Agent-only fields** | Always from Agent, ignored in template | `profile`, `port`, `persistence`, `suspend`, `standby`, `share` |
 

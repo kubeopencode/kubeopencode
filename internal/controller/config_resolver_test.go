@@ -70,7 +70,7 @@ func TestMergeAgentWithTemplate_ConfigMapRef(t *testing.T) {
 			},
 		},
 		{
-			name: "agent config (inline) wins over template configMapRef",
+			name: "agent config (inline) with template configMapRef — both set after merge",
 			agent: &kubeopenv1alpha1.Agent{
 				Spec: kubeopenv1alpha1.AgentSpec{
 					WorkspaceDir:       "/workspace",
@@ -86,13 +86,16 @@ func TestMergeAgentWithTemplate_ConfigMapRef(t *testing.T) {
 				},
 			},
 			check: func(t *testing.T, cfg agentConfig) {
-				// Agent inline config wins over template configMapRef
+				// Agent inline config is preserved
 				if cfg.config == nil || string(cfg.config.Raw) != `{"model":"claude"}` {
-					t.Errorf("expected agent inline config to win, got %v", cfg.config)
+					t.Errorf("expected agent inline config, got %v", cfg.config)
 				}
-				// configMapRef from template is NOT inherited because agent has its own config source
-				// (firstNonNilPtr: agent.Spec.ConfigMapRef is nil, template.Spec.ConfigMapRef is set → template wins)
-				// This is acceptable because resolveAgentConfigMapRef skips resolution when config is already set
+				// configMapRef from template is inherited (firstNonNilPtr: agent nil → template wins)
+				// This combination is invalid and will be caught by validateConfigMutualExclusion
+				// when going through ResolveAgentConfigFromTemplate.
+				if cfg.configMapRef == nil || cfg.configMapRef.Name != "tmpl-config" {
+					t.Errorf("expected template configMapRef inherited, got %v", cfg.configMapRef)
+				}
 			},
 		},
 	}
@@ -228,16 +231,17 @@ func TestResolveAgentConfigMapRef(t *testing.T) {
 		}
 	})
 
-	t.Run("skips resolution when inline config already set", func(t *testing.T) {
+	t.Run("error when both config and configMapRef are set", func(t *testing.T) {
 		cfg := agentConfig{
 			config:       rawExtPtr(`{"model":"claude"}`),
 			configMapRef: &kubeopenv1alpha1.OpenCodeConfigRef{Name: "my-config"},
 		}
-		if err := resolveAgentConfigMapRef(context.Background(), reader, "default", &cfg); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		err := resolveAgentConfigMapRef(context.Background(), reader, "default", &cfg)
+		if err == nil {
+			t.Fatal("expected error for mutually exclusive fields, got nil")
 		}
-		if string(cfg.config.Raw) != `{"model":"claude"}` {
-			t.Errorf("expected inline config to be preserved, got %s", string(cfg.config.Raw))
+		if !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Errorf("expected mutually exclusive error, got: %v", err)
 		}
 	})
 
@@ -262,6 +266,47 @@ func TestResolveAgentConfigMapRef(t *testing.T) {
 		// Verify error message contains useful context
 		if !strings.Contains(err.Error(), "missing") {
 			t.Errorf("expected error to mention configmap name, got: %v", err)
+		}
+	})
+}
+
+func TestValidateConfigMutualExclusion(t *testing.T) {
+	t.Run("both config and configMapRef set returns error", func(t *testing.T) {
+		cfg := agentConfig{
+			config:       rawExtPtr(`{"model":"claude"}`),
+			configMapRef: &kubeopenv1alpha1.OpenCodeConfigRef{Name: "my-config"},
+		}
+		err := validateConfigMutualExclusion(&cfg)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Errorf("expected mutually exclusive error, got: %v", err)
+		}
+	})
+
+	t.Run("only config set is valid", func(t *testing.T) {
+		cfg := agentConfig{
+			config: rawExtPtr(`{"model":"claude"}`),
+		}
+		if err := validateConfigMutualExclusion(&cfg); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("only configMapRef set is valid", func(t *testing.T) {
+		cfg := agentConfig{
+			configMapRef: &kubeopenv1alpha1.OpenCodeConfigRef{Name: "my-config"},
+		}
+		if err := validateConfigMutualExclusion(&cfg); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("neither set is valid", func(t *testing.T) {
+		cfg := agentConfig{}
+		if err := validateConfigMutualExclusion(&cfg); err != nil {
+			t.Errorf("unexpected error: %v", err)
 		}
 	})
 }
@@ -305,6 +350,69 @@ func TestResolveAgentConfigFromTemplate_ConfigMapRef(t *testing.T) {
 	if cfg.config == nil || string(cfg.config.Raw) != `{"model":"big-pickle"}` {
 		t.Errorf("expected config resolved from template configMapRef, got %v", cfg.config)
 	}
+}
+
+func TestResolveAgentConfigFromTemplate_ConfigAndConfigMapRefExclusive(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = kubeopenv1alpha1.AddToScheme(scheme)
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "opencode-config", Namespace: "default"},
+		Data:       map[string]string{"opencode.json": `{"model":"big-pickle"}`},
+	}
+
+	tmpl := &kubeopenv1alpha1.AgentTemplate{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-template", Namespace: "default"},
+		Spec: kubeopenv1alpha1.AgentTemplateSpec{
+			WorkspaceDir:       "/workspace",
+			ServiceAccountName: "sa",
+			ConfigMapRef:       &kubeopenv1alpha1.OpenCodeConfigRef{Name: "opencode-config"},
+		},
+	}
+
+	reader := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cm, tmpl).
+		Build()
+
+	t.Run("agent with inline config and template with configMapRef returns error", func(t *testing.T) {
+		agent := &kubeopenv1alpha1.Agent{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "default"},
+			Spec: kubeopenv1alpha1.AgentSpec{
+				TemplateRef:        &kubeopenv1alpha1.AgentTemplateReference{Name: "my-template"},
+				WorkspaceDir:       "/workspace",
+				ServiceAccountName: "sa",
+				Config:             rawExtPtr(`{"model":"claude"}`),
+			},
+		}
+		_, err := ResolveAgentConfigFromTemplate(context.Background(), reader, agent)
+		if err == nil {
+			t.Fatal("expected error for mutually exclusive config and configMapRef, got nil")
+		}
+		if !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Errorf("expected mutually exclusive error, got: %v", err)
+		}
+	})
+
+	t.Run("agent without template: both config and configMapRef returns error", func(t *testing.T) {
+		agent := &kubeopenv1alpha1.Agent{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "default"},
+			Spec: kubeopenv1alpha1.AgentSpec{
+				WorkspaceDir:       "/workspace",
+				ServiceAccountName: "sa",
+				Config:             rawExtPtr(`{"model":"claude"}`),
+				ConfigMapRef:       &kubeopenv1alpha1.OpenCodeConfigRef{Name: "opencode-config"},
+			},
+		}
+		_, err := ResolveAgentConfigFromTemplate(context.Background(), reader, agent)
+		if err == nil {
+			t.Fatal("expected error for mutually exclusive config and configMapRef, got nil")
+		}
+		if !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Errorf("expected mutually exclusive error, got: %v", err)
+		}
+	})
 }
 
 func TestResolveAgentConfig_ConfigMapRef(t *testing.T) {

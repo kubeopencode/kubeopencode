@@ -190,7 +190,6 @@ type AgentTemplateReference struct {
 }
 
 // AgentSpec defines agent configuration
-// +kubebuilder:validation:XValidation:rule="!(has(self.config) && has(self.configMapRef))",message="config and configMapRef are mutually exclusive"
 type AgentSpec struct {
 	// TemplateRef references an AgentTemplate in the same namespace.
 	// When set, the Agent inherits configuration from the template.

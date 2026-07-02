@@ -861,6 +861,12 @@ func (r *TaskReconciler) resolveTemplateConfig(ctx context.Context, task *kubeop
 		return agentConfig{}, "", fmt.Errorf("agent template %q has empty serviceAccountName", templateName)
 	}
 
+	// Validate mutual exclusivity of config and configMapRef.
+	// Since config is Schemaless, this cannot be enforced via CEL XValidation.
+	if err := validateConfigMutualExclusion(&cfg); err != nil {
+		return agentConfig{}, "", err
+	}
+
 	// Resolve configMapRef into inline config if set (configMapRef → config).
 	if err := resolveAgentConfigMapRef(ctx, r.Client, task.Namespace, &cfg); err != nil {
 		return agentConfig{}, "", err

@@ -190,6 +190,7 @@ Agent (running AI agent instance — always creates Deployment + Service)
     ├── skills: []SkillSource        (external SKILL.md from Git repos)
     ├── plugins: []PluginSpec        (OpenCode plugins to load)
     ├── config: *runtime.RawExtension (inline OpenCode config, YAML object)
+    ├── configMapRef: *OpenCodeConfigRef (OpenCode config from ConfigMap; mutually exclusive with config)
     ├── credentials: []Credential
     ├── caBundle: *CABundleConfig    (custom CA certificates for TLS)
     ├── proxy: *ProxyConfig          (HTTP/HTTPS proxy settings)
@@ -299,7 +300,8 @@ type AgentSpec struct {
     Contexts           []ContextItem
     Skills             []SkillSource
     Plugins            []PluginSpec              // OpenCode plugins to load
-    Config             *runtime.RawExtension
+    Config             *runtime.RawExtension     // Inline OpenCode config (mutually exclusive with ConfigMapRef)
+    ConfigMapRef       *OpenCodeConfigRef        // OpenCode config from ConfigMap (mutually exclusive with Config)
     Credentials        []Credential
     PodSpec            *AgentPodSpec
     ServiceAccountName string
@@ -430,6 +432,11 @@ type CABundleConfig struct {
 type CABundleReference struct {
     Name string // ConfigMap/Secret name
     Key  string // Key within the ConfigMap/Secret
+}
+
+type OpenCodeConfigRef struct {
+    Name string // ConfigMap name (in the same namespace)
+    Key  string // Key within the ConfigMap (default: "opencode.json")
 }
 
 type ProxyConfig struct {
