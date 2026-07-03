@@ -29,8 +29,9 @@ type agentConfig struct {
 	workspaceDir       string
 	contexts           []kubeopenv1alpha1.ContextItem
 	skills             []kubeopenv1alpha1.SkillSource
-	plugins            []kubeopenv1alpha1.PluginSpec // OpenCode plugins to load
-	config             *runtime.RawExtension         // OpenCode config (inline JSON object)
+	plugins            []kubeopenv1alpha1.PluginSpec          // OpenCode plugins to load
+	config             *runtime.RawExtension                  // OpenCode config (inline JSON object, resolved from configRef if set)
+	configRef          *kubeopenv1alpha1.OpenCodeConfigSource // OpenCode config from external source (resolved into config by reconciler)
 	credentials        []kubeopenv1alpha1.Credential
 	podSpec            *kubeopenv1alpha1.AgentPodSpec
 	serviceAccountName string
@@ -60,6 +61,7 @@ func ResolveAgentConfig(agent *kubeopenv1alpha1.Agent) agentConfig {
 		skills:             agent.Spec.Skills,
 		plugins:            agent.Spec.Plugins,
 		config:             agent.Spec.Config,
+		configRef:          agent.Spec.ConfigRef,
 		credentials:        agent.Spec.Credentials,
 		podSpec:            agent.Spec.PodSpec,
 		serviceAccountName: agent.Spec.ServiceAccountName,
@@ -97,6 +99,7 @@ func ResolveTemplateToConfig(tmpl *kubeopenv1alpha1.AgentTemplate) agentConfig {
 		skills:             tmpl.Spec.Skills,
 		plugins:            tmpl.Spec.Plugins,
 		config:             tmpl.Spec.Config,
+		configRef:          tmpl.Spec.ConfigRef,
 		credentials:        tmpl.Spec.Credentials,
 		podSpec:            tmpl.Spec.PodSpec,
 		serviceAccountName: tmpl.Spec.ServiceAccountName,

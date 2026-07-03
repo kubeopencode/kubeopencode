@@ -306,6 +306,8 @@ type AgentSpec struct {
 	// The config should be a valid JSON object compatible with OpenCode's config schema.
 	// See: https://opencode.ai/config.json for the schema.
 	//
+	// Mutually exclusive with configRef — use one or the other.
+	//
 	// Example:
 	//   config:
 	//     model: opencode/big-pickle
@@ -315,6 +317,27 @@ type AgentSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	Config *runtime.RawExtension `json:"config,omitempty"`
+
+	// ConfigMapRef references a ConfigMap containing the OpenCode configuration.
+	// The controller reads the ConfigMap at reconcile time and uses its content
+	// the same way as inline config (written to /tools/opencode.json, with
+	// skills/plugins injected before writing).
+	//
+	// The ConfigMap must contain a key with the OpenCode config JSON.
+	// If key is omitted, defaults to "opencode.json".
+	// The value must be a valid JSON object compatible with OpenCode's config schema.
+	// See: https://opencode.ai/config.json for the schema.
+	//
+	// Mutually exclusive with config — use one or the other.
+	//
+	// Example:
+	//   configRef:
+	//     configMapRef:
+	//       name: my-opencode-config
+	//       key: config.json
+	//
+	// +optional
+	ConfigRef *OpenCodeConfigSource `json:"configRef,omitempty"`
 
 	// Credentials defines secrets that should be available to the agent.
 	// Similar to GitHub Actions secrets, these can be mounted as files or
@@ -1049,6 +1072,51 @@ type CABundleReference struct {
 
 	// Key containing the PEM-encoded CA bundle.
 	// Defaults to "ca-bundle.crt" for ConfigMapRef, "ca.crt" for SecretRef.
+	// +optional
+	Key string `json:"key,omitempty"`
+}
+
+// OpenCodeConfigSource references an external source for the OpenCode configuration JSON.
+// The controller reads the referenced resource at reconcile time and uses the content
+// as the OpenCode config (same as inline spec.config, but sourced externally).
+// Exactly one of configMapRef or secretRef must be specified.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.configMapRef) || has(self.secretRef)",message="either configMapRef or secretRef must be specified"
+// +kubebuilder:validation:XValidation:rule="!(has(self.configMapRef) && has(self.secretRef))",message="only one of configMapRef or secretRef can be specified"
+type OpenCodeConfigSource struct {
+	// ConfigMapRef references a ConfigMap containing the OpenCode configuration JSON.
+	// If key is omitted, defaults to "opencode.json".
+	// +optional
+	ConfigMapRef *OpenCodeConfigMapReference `json:"configMapRef,omitempty"`
+
+	// SecretRef references a Secret containing the OpenCode configuration JSON.
+	// If key is omitted, defaults to "opencode.json".
+	// Useful when the config contains sensitive values (e.g., API keys)
+	// that should not appear in a ConfigMap.
+	// +optional
+	SecretRef *OpenCodeConfigSecretReference `json:"secretRef,omitempty"`
+}
+
+// OpenCodeConfigMapReference references a ConfigMap containing the OpenCode configuration JSON.
+type OpenCodeConfigMapReference struct {
+	// Name of the ConfigMap in the same namespace.
+	// +required
+	Name string `json:"name"`
+
+	// Key in the ConfigMap containing the OpenCode config JSON.
+	// Defaults to "opencode.json".
+	// +optional
+	Key string `json:"key,omitempty"`
+}
+
+// OpenCodeConfigSecretReference references a Secret containing the OpenCode configuration JSON.
+type OpenCodeConfigSecretReference struct {
+	// Name of the Secret in the same namespace.
+	// +required
+	Name string `json:"name"`
+
+	// Key in the Secret containing the OpenCode config JSON.
+	// Defaults to "opencode.json".
 	// +optional
 	Key string `json:"key,omitempty"`
 }

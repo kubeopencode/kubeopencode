@@ -16,28 +16,36 @@ import (
 // and returns the merged agentConfig. This is the shared entry point used by
 // both AgentReconciler and TaskReconciler.
 func ResolveAgentConfigFromTemplate(ctx context.Context, reader client.Reader, agent *kubeopenv1alpha1.Agent) (agentConfig, error) {
+	var cfg agentConfig
 	if agent.Spec.TemplateRef == nil {
-		return ResolveAgentConfig(agent), nil
+		cfg = ResolveAgentConfig(agent)
+	} else {
+		tmpl := &kubeopenv1alpha1.AgentTemplate{}
+		tmplKey := types.NamespacedName{
+			Name:      agent.Spec.TemplateRef.Name,
+			Namespace: agent.Namespace,
+		}
+		if err := reader.Get(ctx, tmplKey, tmpl); err != nil {
+			return agentConfig{}, fmt.Errorf("agent template %q not found in namespace %q: %w",
+				agent.Spec.TemplateRef.Name, agent.Namespace, err)
+		}
+
+		cfg = MergeAgentWithTemplate(agent, tmpl)
+		if cfg.workspaceDir == "" {
+			return agentConfig{}, fmt.Errorf("agent %q has empty workspaceDir after template merge", agent.Name)
+		}
+		if cfg.serviceAccountName == "" {
+			return agentConfig{}, fmt.Errorf("agent %q has empty serviceAccountName after template merge", agent.Name)
+		}
 	}
 
-	tmpl := &kubeopenv1alpha1.AgentTemplate{}
-	tmplKey := types.NamespacedName{
-		Name:      agent.Spec.TemplateRef.Name,
-		Namespace: agent.Namespace,
-	}
-	if err := reader.Get(ctx, tmplKey, tmpl); err != nil {
-		return agentConfig{}, fmt.Errorf("agent template %q not found in namespace %q: %w",
-			agent.Spec.TemplateRef.Name, agent.Namespace, err)
+	// Resolve configRef into inline config if set (configRef → config).
+	// This happens after merge so that template-provided configRef is also resolved.
+	if err := resolveAgentConfigRef(ctx, reader, agent.Namespace, &cfg); err != nil {
+		return agentConfig{}, err
 	}
 
-	merged := MergeAgentWithTemplate(agent, tmpl)
-	if merged.workspaceDir == "" {
-		return agentConfig{}, fmt.Errorf("agent %q has empty workspaceDir after template merge", agent.Name)
-	}
-	if merged.serviceAccountName == "" {
-		return agentConfig{}, fmt.Errorf("agent %q has empty serviceAccountName after template merge", agent.Name)
-	}
-	return merged, nil
+	return cfg, nil
 }
 
 // MergeAgentWithTemplate merges an Agent's spec with its referenced AgentTemplate.
@@ -70,6 +78,7 @@ func MergeAgentWithTemplate(agent *kubeopenv1alpha1.Agent, tmpl *kubeopenv1alpha
 		skills:           firstNonNilSlice(agent.Spec.Skills, tmpl.Spec.Skills),
 		plugins:          firstNonNilSlice(agent.Spec.Plugins, tmpl.Spec.Plugins),
 		config:           firstNonNilPtr(agent.Spec.Config, tmpl.Spec.Config),
+		configRef:        firstNonNilPtr(agent.Spec.ConfigRef, tmpl.Spec.ConfigRef),
 		credentials:      firstNonNilSlice(agent.Spec.Credentials, tmpl.Spec.Credentials),
 		podSpec:          mergedPodSpec,
 		caBundle:         firstNonNilPtr(agent.Spec.CABundle, tmpl.Spec.CABundle),
