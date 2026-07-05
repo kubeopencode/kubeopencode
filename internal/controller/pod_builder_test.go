@@ -715,6 +715,77 @@ func TestBuildPod_WithPodScheduling(t *testing.T) {
 	}
 }
 
+// TestBuildPod_WithPodSpecAnnotations verifies that podSpec.annotations are
+// applied to the Task Pod's ObjectMeta. See issue #280.
+func TestBuildPod_WithPodSpecAnnotations(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+		podSpec: &kubeopenv1alpha1.AgentPodSpec{
+			Annotations: map[string]string{
+				"checksum/config": "abc123def456",
+				"owner":           "team-ai",
+			},
+		},
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+	if pod.Annotations == nil {
+		t.Fatal("expected pod annotations, got nil")
+	}
+	if pod.Annotations["checksum/config"] != "abc123def456" {
+		t.Errorf("Pod.Annotations[checksum/config] = %q, want %q", pod.Annotations["checksum/config"], "abc123def456")
+	}
+	if pod.Annotations["owner"] != "team-ai" {
+		t.Errorf("Pod.Annotations[owner] = %q, want %q", pod.Annotations["owner"], "team-ai")
+	}
+
+	// Labels must remain unaffected by annotations
+	if pod.Labels["app"] != "kubeopencode" {
+		t.Errorf("Pod.Labels[app] = %q, want %q", pod.Labels["app"], "kubeopencode")
+	}
+}
+
+// TestBuildPod_WithoutPodSpecAnnotations verifies that pods have no annotations
+// when podSpec.annotations is not set.
+func TestBuildPod_WithoutPodSpecAnnotations(t *testing.T) {
+	task := &kubeopenv1alpha1.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-task",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+	}
+	task.APIVersion = "kubeopencode.io/v1alpha1"
+	task.Kind = "Task"
+
+	cfg := agentConfig{
+		agentImage:         "test-opencode:v1.0.0",
+		executorImage:      "test-executor:v1.0.0",
+		workspaceDir:       "/workspace",
+		serviceAccountName: "test-sa",
+	}
+
+	pod := buildPod(task, "test-task-pod", cfg, nil, nil, nil, nil, defaultSystemConfig(), "")
+
+	for k := range pod.Annotations {
+		t.Errorf("expected no pod annotations, found %q=%q", k, pod.Annotations[k])
+	}
+}
+
 func TestBuildPod_WithContextConfigMap(t *testing.T) {
 	task := &kubeopenv1alpha1.Task{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1001,6 +1072,30 @@ func TestBuildPod_WithGitMounts(t *testing.T) {
 	}
 	if !foundMount {
 		t.Errorf("Volume mount for /workspace/.claude not found")
+	}
+
+	// Verify safe.directory is injected via GIT_CONFIG_COUNT (not GIT_CONFIG_GLOBAL,
+	// which would mask the user's ~/.gitconfig). See issue #284.
+	execEnv := make(map[string]string)
+	for _, env := range container.Env {
+		execEnv[env.Name] = env.Value
+	}
+	if execEnv["GIT_CONFIG_GLOBAL"] != "" {
+		t.Errorf("GIT_CONFIG_GLOBAL should not be set on executor; got %q (it masks the user's global gitconfig)", execEnv["GIT_CONFIG_GLOBAL"])
+	}
+	if execEnv["GIT_CONFIG_COUNT"] != "1" {
+		t.Errorf("GIT_CONFIG_COUNT = %q, want %q", execEnv["GIT_CONFIG_COUNT"], "1")
+	}
+	if execEnv["GIT_CONFIG_KEY_0"] != "safe.directory" {
+		t.Errorf("GIT_CONFIG_KEY_0 = %q, want %q", execEnv["GIT_CONFIG_KEY_0"], "safe.directory")
+	}
+	if execEnv["GIT_CONFIG_VALUE_0"] != "*" {
+		t.Errorf("GIT_CONFIG_VALUE_0 = %q, want %q", execEnv["GIT_CONFIG_VALUE_0"], "*")
+	}
+	for _, vm := range container.VolumeMounts {
+		if vm.MountPath == DefaultGitRoot+"/.gitconfig" {
+			t.Errorf("executor should not mount managed .gitconfig; safe.directory is injected via env vars")
+		}
 	}
 }
 

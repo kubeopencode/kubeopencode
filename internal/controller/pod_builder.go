@@ -479,6 +479,25 @@ func buildGitInitContainer(gm gitMount, volumeName string, index int, sysCfg sys
 	}
 }
 
+// gitSafeDirectoryEnvVars returns env vars that inject safe.directory=* into git's
+// config via GIT_CONFIG_COUNT without overriding the global config file path.
+//
+// This is used by the executor (worker) container when Git contexts are mounted:
+// init containers may clone repositories as a different UID than the executor
+// (common in OpenShift SCC / random-UID environments), so git would otherwise
+// refuse to operate on the repository with a "detected dubious ownership" error.
+//
+// Unlike setting GIT_CONFIG_GLOBAL, this approach adds safe.directory on top of
+// git's normal config resolution, so the user's ~/.gitconfig (user.name, aliases,
+// pull.rebase, etc.) is still respected. See issue #284.
+func gitSafeDirectoryEnvVars() []corev1.EnvVar {
+	return []corev1.EnvVar{
+		{Name: "GIT_CONFIG_COUNT", Value: "1"},
+		{Name: "GIT_CONFIG_KEY_0", Value: "safe.directory"},
+		{Name: "GIT_CONFIG_VALUE_0", Value: "*"},
+	}
+}
+
 // buildGitCredentialEnvVars returns env vars that reference a Secret for Git authentication.
 // The Secret can contain HTTPS credentials (username + password/PAT),
 // SSH credentials (ssh-privatekey + optional ssh-known-hosts), or both.
@@ -1557,22 +1576,18 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 		})
 	}
 
-	// If we have Git mounts, add GIT_CONFIG_GLOBAL to point to shared gitconfig
-	// This is needed because init containers run as different users and git will
-	// refuse to work without safe.directory configured
+	// If we have Git mounts, inject safe.directory so git can operate on
+	// repositories cloned by init containers, which may run as different UIDs
+	// in SCC/random-UID environments.
+	//
+	// We use GIT_CONFIG_COUNT/GIT_CONFIG_KEY_*/GIT_CONFIG_VALUE* to add the
+	// safe.directory entry on top of git's normal config resolution. We
+	// intentionally do NOT set GIT_CONFIG_GLOBAL here: that would override the
+	// global config file path and silently hide the user's ~/.gitconfig (e.g.
+	// user.name, aliases, pull.rebase). Env-based injection preserves the
+	// user's global config while still granting safe.directory. See issue #284.
 	if len(gitMounts) > 0 {
-		// The first git-init container writes .gitconfig to /git/.gitconfig
-		// which is shared via git-context-0 volume
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "GIT_CONFIG_GLOBAL",
-			Value: DefaultGitRoot + "/.gitconfig",
-		})
-		// Mount the git volume root to access the .gitconfig
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "git-context-0",
-			MountPath: DefaultGitRoot + "/.gitconfig",
-			SubPath:   ".gitconfig",
-		})
+		envVars = append(envVars, gitSafeDirectoryEnvVars()...)
 	}
 
 	// Add custom CA bundle to all containers if configured.
@@ -1629,6 +1644,18 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 	if cfg.podSpec != nil {
 		for k, v := range cfg.podSpec.Labels {
 			podLabels[k] = v
+		}
+	}
+
+	// Build pod annotations from Agent.PodSpec.
+	// Task Pods have no controller-managed annotations, so user annotations are
+	// applied as-is. Including them in the pod template means changing them
+	// produces a new pod, which is useful for e.g. checksumming mounted ConfigMaps.
+	var podAnnotations map[string]string
+	if cfg.podSpec != nil && len(cfg.podSpec.Annotations) > 0 {
+		podAnnotations = make(map[string]string, len(cfg.podSpec.Annotations))
+		for k, v := range cfg.podSpec.Annotations {
+			podAnnotations[k] = v
 		}
 	}
 
@@ -1766,9 +1793,10 @@ func buildPod(task *kubeopenv1alpha1.Task, podName string, cfg agentConfig, cont
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: task.Namespace,
-			Labels:    podLabels,
+			Name:        podName,
+			Namespace:   task.Namespace,
+			Labels:      podLabels,
+			Annotations: podAnnotations,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(task, kubeopenv1alpha1.SchemeGroupVersion.WithKind("Task")),
 			},

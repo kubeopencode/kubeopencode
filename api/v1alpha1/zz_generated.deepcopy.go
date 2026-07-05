@@ -81,6 +81,13 @@ func (in *AgentPodSpec) DeepCopyInto(out *AgentPodSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.Annotations != nil {
+		in, out := &in.Annotations, &out.Annotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	if in.Scheduling != nil {
 		in, out := &in.Scheduling, &out.Scheduling
 		*out = new(PodScheduling)

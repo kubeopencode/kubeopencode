@@ -186,6 +186,24 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		maps.Copy(labels, agentCfg.podSpec.Labels)
 	}
 
+	// Build pod annotations for the Deployment pod template.
+	//
+	// When the user does not set podSpec.annotations, preserve the controller-
+	// managed gitHashAnnotations as-is (which may be nil when there is no git
+	// sync and no context ConfigMap). This avoids flipping nil -> empty map {},
+	// which could needlessly churn the pod template on upgrade.
+	//
+	// When the user does set podSpec.annotations, merge them on top of the
+	// controller-managed annotations (user wins on key conflict). User
+	// annotations such as a ConfigMap checksum are part of the pod template, so
+	// changing them triggers a new ReplicaSet and rollout. See issue #280.
+	annotations := gitHashAnnotations
+	if agentCfg.podSpec != nil && len(agentCfg.podSpec.Annotations) > 0 {
+		annotations = make(map[string]string, len(gitHashAnnotations)+len(agentCfg.podSpec.Annotations))
+		maps.Copy(annotations, gitHashAnnotations)
+		maps.Copy(annotations, agentCfg.podSpec.Annotations)
+	}
+
 	// Build environment variables
 	// HOME and SHELL are set for SCC (Security Context Constraints) compatibility.
 	// In SCC environments, containers run with random UIDs that have no /etc/passwd entry,
@@ -458,17 +476,12 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		})
 	}
 
-	// Add GIT_CONFIG_GLOBAL if we have Git mounts
+	// Inject safe.directory via GIT_CONFIG_COUNT if we have Git mounts.
+	// This lets git operate on repositories cloned by init containers that may
+	// run as different UIDs (SCC/random-UID environments). We avoid
+	// GIT_CONFIG_GLOBAL here so the user's ~/.gitconfig is not masked. See #284.
 	if len(ctxGitMounts) > 0 {
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "GIT_CONFIG_GLOBAL",
-			Value: DefaultGitRoot + "/.gitconfig",
-		})
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "git-context-0",
-			MountPath: DefaultGitRoot + "/.gitconfig",
-			SubPath:   ".gitconfig",
-		})
+		envVars = append(envVars, gitSafeDirectoryEnvVars()...)
 	}
 
 	// Check if context file is being mounted and inject OPENCODE_CONFIG_CONTENT
@@ -746,7 +759,7 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
-					Annotations: gitHashAnnotations,
+					Annotations: annotations,
 				},
 				Spec: podSpec,
 			},
