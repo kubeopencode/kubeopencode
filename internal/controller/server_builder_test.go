@@ -474,20 +474,31 @@ func TestBuildServerDeployment_WithGitContext(t *testing.T) {
 		t.Errorf("git-init-0 init container not found")
 	}
 
-	// Verify GIT_CONFIG_GLOBAL env var is set
+	// Verify safe.directory is injected via GIT_CONFIG_COUNT (not GIT_CONFIG_GLOBAL,
+	// which would mask the user's ~/.gitconfig). See issue #284.
 	container := deployment.Spec.Template.Spec.Containers[0]
-	var foundGitConfigGlobal bool
+	envMap := make(map[string]string)
 	for _, env := range container.Env {
-		if env.Name == "GIT_CONFIG_GLOBAL" {
-			foundGitConfigGlobal = true
-			expectedValue := DefaultGitRoot + "/.gitconfig"
-			if env.Value != expectedValue {
-				t.Errorf("GIT_CONFIG_GLOBAL = %q, want %q", env.Value, expectedValue)
-			}
-		}
+		envMap[env.Name] = env.Value
 	}
-	if !foundGitConfigGlobal {
-		t.Errorf("GIT_CONFIG_GLOBAL env var not found")
+	if envMap["GIT_CONFIG_GLOBAL"] != "" {
+		t.Errorf("GIT_CONFIG_GLOBAL should not be set; got %q (it masks the user's global gitconfig)", envMap["GIT_CONFIG_GLOBAL"])
+	}
+	if envMap["GIT_CONFIG_COUNT"] != "1" {
+		t.Errorf("GIT_CONFIG_COUNT = %q, want %q", envMap["GIT_CONFIG_COUNT"], "1")
+	}
+	if envMap["GIT_CONFIG_KEY_0"] != "safe.directory" {
+		t.Errorf("GIT_CONFIG_KEY_0 = %q, want %q", envMap["GIT_CONFIG_KEY_0"], "safe.directory")
+	}
+	if envMap["GIT_CONFIG_VALUE_0"] != "*" {
+		t.Errorf("GIT_CONFIG_VALUE_0 = %q, want %q", envMap["GIT_CONFIG_VALUE_0"], "*")
+	}
+
+	// Verify the executor no longer mounts the managed .gitconfig subPath.
+	for _, vm := range container.VolumeMounts {
+		if vm.MountPath == DefaultGitRoot+"/.gitconfig" {
+			t.Errorf("executor should not mount managed .gitconfig; safe.directory is injected via env vars")
+		}
 	}
 }
 
@@ -1672,6 +1683,98 @@ func TestBuildServerDeployment_WithGitSyncRollout(t *testing.T) {
 	}
 	if hash != "abc123def456" {
 		t.Errorf("expected hash 'abc123def456', got %q", hash)
+	}
+}
+
+// TestBuildServerDeployment_WithPodSpecAnnotations verifies that user-provided
+// podSpec.annotations are applied to the Deployment pod template and merged
+// with controller-managed (git-hash) annotations. See issue #280.
+func TestBuildServerDeployment_WithPodSpecAnnotations(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "annot-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor",
+		agentImage:    "test-agent",
+		workspaceDir:  "/workspace",
+		podSpec: &kubeopenv1alpha1.AgentPodSpec{
+			Annotations: map[string]string{
+				"checksum/config": "deadbeef",
+			},
+		},
+	}
+
+	gitMounts := []gitMount{
+		{
+			contextName:  "agent-config",
+			repository:   "https://github.com/org/config.git",
+			ref:          "main",
+			mountPath:    "/workspace/config",
+			depth:        1,
+			syncEnabled:  true,
+			syncPolicy:   kubeopenv1alpha1.GitSyncPolicyRollout,
+			syncInterval: 10 * time.Minute,
+		},
+	}
+	gitHashAnnotations := map[string]string{
+		"kubeopencode.io/git-hash-agent-config": "abc123def456",
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, gitMounts, gitHashAnnotations)
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	ann := deployment.Spec.Template.Annotations
+	if ann == nil {
+		t.Fatal("expected pod template annotations, got nil")
+	}
+	// Controller-managed annotation preserved
+	if ann["kubeopencode.io/git-hash-agent-config"] != "abc123def456" {
+		t.Errorf("git hash annotation = %q, want %q", ann["kubeopencode.io/git-hash-agent-config"], "abc123def456")
+	}
+	// User annotation present
+	if ann["checksum/config"] != "deadbeef" {
+		t.Errorf("user annotation checksum/config = %q, want %q", ann["checksum/config"], "deadbeef")
+	}
+}
+
+// TestBuildServerDeployment_PodSpecAnnotationsNoGitHash verifies user
+// annotations are applied even when there are no controller-managed annotations.
+func TestBuildServerDeployment_PodSpecAnnotationsNoGitHash(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "annot-agent-2",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor",
+		agentImage:    "test-agent",
+		workspaceDir:  "/workspace",
+		podSpec: &kubeopenv1alpha1.AgentPodSpec{
+			Annotations: map[string]string{
+				"owner": "team-ai",
+			},
+		},
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	ann := deployment.Spec.Template.Annotations
+	if ann == nil {
+		t.Fatal("expected pod template annotations, got nil")
+	}
+	if ann["owner"] != "team-ai" {
+		t.Errorf("user annotation owner = %q, want %q", ann["owner"], "team-ai")
 	}
 }
 

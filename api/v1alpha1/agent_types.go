@@ -776,6 +776,26 @@ type AgentPodSpec struct {
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
 
+	// Annotations defines additional annotations to add to the agent pod template.
+	// These annotations are applied to the Pod template (and, for Agents, the
+	// Deployment's pod template) alongside controller-managed annotations.
+	//
+	// Unlike labels, annotations are not used for selection, but they ARE included
+	// in the Deployment's pod template spec, so changing them triggers a new
+	// ReplicaSet and rolling update. This makes them suitable for:
+	//   - Hashing ConfigMap/Secret contents to force rollouts when mounted
+	//     configuration changes (e.g., checksum/config: <sha256>)
+	//   - Integrating with tooling that reads pod annotations (e.g., vault-agent
+	//     injection, Istio, Datadog)
+	//   - Arbitrary non-identifying metadata
+	//
+	// Example — roll pods when a mounted ConfigMap changes:
+	//   annotations:
+	//     checksum/config: <sha256-of-configmap-data>
+	//
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
 	// Scheduling defines pod scheduling configuration for agent pods.
 	// This includes node selection, tolerations, and affinity rules.
 	// +optional
