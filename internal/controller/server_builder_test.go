@@ -1778,6 +1778,35 @@ func TestBuildServerDeployment_PodSpecAnnotationsNoGitHash(t *testing.T) {
 	}
 }
 
+// TestBuildServerDeployment_NoAnnotationsStaysNil verifies that when neither
+// controller-managed annotations nor user podSpec.annotations are provided, the
+// pod template Annotations stay nil (matching pre-#280 behavior) instead of
+// becoming an empty map, so the change does not needlessly churn the pod
+// template on upgrade.
+func TestBuildServerDeployment_NoAnnotationsStaysNil(t *testing.T) {
+	agent := &kubeopenv1alpha1.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "no-annot-agent",
+			Namespace: "default",
+		},
+		Spec: kubeopenv1alpha1.AgentSpec{Port: 4096},
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor",
+		agentImage:    "test-agent",
+		workspaceDir:  "/workspace",
+	}
+
+	deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, nil, nil)
+	if deployment == nil {
+		t.Fatal("BuildServerDeployment returned nil")
+	}
+
+	if deployment.Spec.Template.Annotations != nil {
+		t.Errorf("expected pod template Annotations to stay nil when no annotations are configured, got %v", deployment.Spec.Template.Annotations)
+	}
+}
+
 func TestHashConfigMapData(t *testing.T) {
 	tests := []struct {
 		name      string

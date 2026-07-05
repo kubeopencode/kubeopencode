@@ -186,13 +186,21 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		maps.Copy(labels, agentCfg.podSpec.Labels)
 	}
 
-	// Build pod annotations: start with controller-managed annotations (e.g. git
-	// hash for rollout-trigger on sync) and merge user-provided annotations from
-	// podSpec on top. User annotations (such as a ConfigMap checksum) are included
-	// in the pod template, so changing them triggers a new ReplicaSet and rollout.
-	annotations := make(map[string]string, len(gitHashAnnotations))
-	maps.Copy(annotations, gitHashAnnotations)
+	// Build pod annotations for the Deployment pod template.
+	//
+	// When the user does not set podSpec.annotations, preserve the controller-
+	// managed gitHashAnnotations as-is (which may be nil when there is no git
+	// sync and no context ConfigMap). This avoids flipping nil -> empty map {},
+	// which could needlessly churn the pod template on upgrade.
+	//
+	// When the user does set podSpec.annotations, merge them on top of the
+	// controller-managed annotations (user wins on key conflict). User
+	// annotations such as a ConfigMap checksum are part of the pod template, so
+	// changing them triggers a new ReplicaSet and rollout. See issue #280.
+	annotations := gitHashAnnotations
 	if agentCfg.podSpec != nil && len(agentCfg.podSpec.Annotations) > 0 {
+		annotations = make(map[string]string, len(gitHashAnnotations)+len(agentCfg.podSpec.Annotations))
+		maps.Copy(annotations, gitHashAnnotations)
 		maps.Copy(annotations, agentCfg.podSpec.Annotations)
 	}
 
