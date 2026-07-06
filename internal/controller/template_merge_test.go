@@ -1107,12 +1107,289 @@ func TestMergePodSpec_ScalarPointersInheritTemplateWhenAgentNil(t *testing.T) {
 	}
 }
 
+// --- More merge edge-case tests (nil branches, all systemContainer types) ---
+
+func TestMergePodSpec_SchedulingAgentNilInheritsTemplate(t *testing.T) {
+	tmpl := &kubeopenv1alpha1.AgentPodSpec{
+		Scheduling: &kubeopenv1alpha1.PodScheduling{NodeSelector: map[string]string{"t": "v"}},
+	}
+	agent := &kubeopenv1alpha1.AgentPodSpec{Labels: map[string]string{"a": "b"}}
+	got := mergePodSpec(agent, tmpl)
+	if got.Scheduling == nil || got.Scheduling.NodeSelector["t"] != "v" {
+		t.Errorf("expected template Scheduling inherited when Agent's is nil, got %v", got.Scheduling)
+	}
+}
+
+func TestMergePodSpec_SchedulingTemplateNilUsesAgent(t *testing.T) {
+	agent := &kubeopenv1alpha1.AgentPodSpec{
+		Scheduling: &kubeopenv1alpha1.PodScheduling{NodeSelector: map[string]string{"a": "v"}},
+	}
+	tmpl := &kubeopenv1alpha1.AgentPodSpec{Labels: map[string]string{"t": "b"}}
+	got := mergePodSpec(agent, tmpl)
+	if got.Scheduling == nil || got.Scheduling.NodeSelector["a"] != "v" {
+		t.Errorf("expected agent Scheduling used when template's is nil, got %v", got.Scheduling)
+	}
+}
+
+func TestMergePodSpec_TolerationsOneSideEmpty(t *testing.T) {
+	// Agent Tolerations empty -> inherit template's
+	agent := &kubeopenv1alpha1.AgentPodSpec{
+		Scheduling: &kubeopenv1alpha1.PodScheduling{Tolerations: nil},
+	}
+	tmpl := &kubeopenv1alpha1.AgentPodSpec{
+		Scheduling: &kubeopenv1alpha1.PodScheduling{
+			Tolerations: []corev1.Toleration{{Key: "k1", Effect: corev1.TaintEffectNoSchedule}},
+		},
+	}
+	got := mergePodSpec(agent, tmpl)
+	if len(got.Scheduling.Tolerations) != 1 || got.Scheduling.Tolerations[0].Key != "k1" {
+		t.Errorf("expected template tolerations inherited, got %v", got.Scheduling.Tolerations)
+	}
+
+	// Template Tolerations empty -> use agent's
+	agent2 := &kubeopenv1alpha1.AgentPodSpec{
+		Scheduling: &kubeopenv1alpha1.PodScheduling{
+			Tolerations: []corev1.Toleration{{Key: "k2", Effect: corev1.TaintEffectNoSchedule}},
+		},
+	}
+	tmpl2 := &kubeopenv1alpha1.AgentPodSpec{
+		Scheduling: &kubeopenv1alpha1.PodScheduling{Tolerations: nil},
+	}
+	got2 := mergePodSpec(agent2, tmpl2)
+	if len(got2.Scheduling.Tolerations) != 1 || got2.Scheduling.Tolerations[0].Key != "k2" {
+		t.Errorf("expected agent tolerations used, got %v", got2.Scheduling.Tolerations)
+	}
+}
+
+func TestMergePodSpec_SystemContainersAllTypesAndVolumeMountsMerged(t *testing.T) {
+	mkSC := func(prefix string) *kubeopenv1alpha1.SystemContainerOverrides {
+		return &kubeopenv1alpha1.SystemContainerOverrides{
+			OpenCodeInit: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraEnv:          []corev1.EnvVar{{Name: prefix + "-oci-env"}},
+				ExtraVolumeMounts: []corev1.VolumeMount{{Name: prefix + "-oci-vm", MountPath: "/" + prefix + "-oci"}},
+			},
+			ContextInit: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraEnv:          []corev1.EnvVar{{Name: prefix + "-ci-env"}},
+				ExtraVolumeMounts: []corev1.VolumeMount{{Name: prefix + "-ci-vm", MountPath: "/" + prefix + "-ci"}},
+			},
+			GitInit: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraEnv:          []corev1.EnvVar{{Name: prefix + "-gi-env"}},
+				ExtraVolumeMounts: []corev1.VolumeMount{{Name: prefix + "-gi-vm", MountPath: "/" + prefix + "-gi"}},
+			},
+			GitSync: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraEnv:          []corev1.EnvVar{{Name: prefix + "-gs-env"}},
+				ExtraVolumeMounts: []corev1.VolumeMount{{Name: prefix + "-gs-vm", MountPath: "/" + prefix + "-gs"}},
+			},
+			PluginInit: &kubeopenv1alpha1.InitContainerOverrides{
+				ExtraEnv:          []corev1.EnvVar{{Name: prefix + "-pi-env"}},
+				ExtraVolumeMounts: []corev1.VolumeMount{{Name: prefix + "-pi-vm", MountPath: "/" + prefix + "-pi"}},
+			},
+		}
+	}
+	agent := &kubeopenv1alpha1.AgentPodSpec{SystemContainers: mkSC("agent")}
+	tmpl := &kubeopenv1alpha1.AgentPodSpec{SystemContainers: mkSC("tmpl")}
+	got := mergePodSpec(agent, tmpl)
+
+	if got.SystemContainers == nil {
+		t.Fatal("expected merged systemContainers")
+	}
+	checks := []struct {
+		name string
+		abbr string
+		sc   *kubeopenv1alpha1.InitContainerOverrides
+	}{
+		{"OpenCodeInit", "oci", got.SystemContainers.OpenCodeInit},
+		{"ContextInit", "ci", got.SystemContainers.ContextInit},
+		{"GitInit", "gi", got.SystemContainers.GitInit},
+		{"GitSync", "gs", got.SystemContainers.GitSync},
+		{"PluginInit", "pi", got.SystemContainers.PluginInit},
+	}
+	for _, c := range checks {
+		if c.sc == nil {
+			t.Errorf("%s: expected non-nil override", c.name)
+			continue
+		}
+		envNames := envVarNames(c.sc.ExtraEnv)
+		if !sliceContains(envNames, "agent-"+c.abbr+"-env") {
+			t.Errorf("%s: agent env missing in %v", c.name, envNames)
+		}
+		if !sliceContains(envNames, "tmpl-"+c.abbr+"-env") {
+			t.Errorf("%s: template env missing (deep-merged) in %v", c.name, envNames)
+		}
+		vmNames := volumeMountNames(c.sc.ExtraVolumeMounts)
+		if !sliceContains(vmNames, "agent-"+c.abbr+"-vm") {
+			t.Errorf("%s: agent volume mount missing in %v", c.name, vmNames)
+		}
+		if !sliceContains(vmNames, "tmpl-"+c.abbr+"-vm") {
+			t.Errorf("%s: template volume mount missing (deep-merged) in %v", c.name, vmNames)
+		}
+	}
+}
+
+func TestMergePodSpec_SystemContainersOneSideNil(t *testing.T) {
+	tmplSC := &kubeopenv1alpha1.SystemContainerOverrides{
+		GitInit: &kubeopenv1alpha1.InitContainerOverrides{ExtraEnv: []corev1.EnvVar{{Name: "FROM_TMPL"}}},
+	}
+	// Agent SystemContainers nil -> inherit template's
+	agent := &kubeopenv1alpha1.AgentPodSpec{Labels: map[string]string{"a": "b"}}
+	tmpl := &kubeopenv1alpha1.AgentPodSpec{SystemContainers: tmplSC}
+	got := mergePodSpec(agent, tmpl)
+	if got.SystemContainers != tmplSC {
+		t.Errorf("expected template SystemContainers inherited when Agent's is nil, got %v", got.SystemContainers)
+	}
+
+	// Agent SystemContainers set, template nil -> use agent's
+	agentSC := &kubeopenv1alpha1.SystemContainerOverrides{
+		GitInit: &kubeopenv1alpha1.InitContainerOverrides{ExtraEnv: []corev1.EnvVar{{Name: "FROM_AGENT"}}},
+	}
+	agent2 := &kubeopenv1alpha1.AgentPodSpec{SystemContainers: agentSC}
+	tmpl2 := &kubeopenv1alpha1.AgentPodSpec{Labels: map[string]string{"t": "b"}}
+	got2 := mergePodSpec(agent2, tmpl2)
+	if got2.SystemContainers != agentSC {
+		t.Errorf("expected agent SystemContainers used when template's is nil, got %v", got2.SystemContainers)
+	}
+}
+
+func TestMergePodSpec_InitContainerOverrideOneSideNil(t *testing.T) {
+	// Agent defines GitInit only; template defines ContextInit only.
+	// Merged result should have both, each from the side that set it.
+	agent := &kubeopenv1alpha1.AgentPodSpec{
+		SystemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+			GitInit: &kubeopenv1alpha1.InitContainerOverrides{ExtraEnv: []corev1.EnvVar{{Name: "GIT_FROM_AGENT"}}},
+		},
+	}
+	tmpl := &kubeopenv1alpha1.AgentPodSpec{
+		SystemContainers: &kubeopenv1alpha1.SystemContainerOverrides{
+			ContextInit: &kubeopenv1alpha1.InitContainerOverrides{ExtraEnv: []corev1.EnvVar{{Name: "CTX_FROM_TMPL"}}},
+		},
+	}
+	got := mergePodSpec(agent, tmpl)
+
+	if got.SystemContainers == nil {
+		t.Fatal("expected merged systemContainers")
+	}
+	if got.SystemContainers.GitInit == nil || len(envVarNames(got.SystemContainers.GitInit.ExtraEnv)) == 0 {
+		t.Errorf("expected GitInit from agent preserved, got %v", got.SystemContainers.GitInit)
+	}
+	if got.SystemContainers.ContextInit == nil || len(envVarNames(got.SystemContainers.ContextInit.ExtraEnv)) == 0 {
+		t.Errorf("expected ContextInit from template inherited, got %v", got.SystemContainers.ContextInit)
+	}
+	if got.SystemContainers.GitSync != nil || got.SystemContainers.PluginInit != nil || got.SystemContainers.OpenCodeInit != nil {
+		t.Errorf("unset container types should stay nil, got %v", got.SystemContainers)
+	}
+}
+
+func TestMergePodSpec_ScalarPointersInheritAllFromTemplate(t *testing.T) {
+	tmplRuntime := "kata"
+	tmplRes := corev1.ResourceRequirements{Limits: corev1.ResourceList{}}
+	tmplSC := &corev1.SecurityContext{Privileged: boolPtr(false)}
+	tmplPodSC := &corev1.PodSecurityContext{RunAsUser: int64Ptr(1000)}
+	tmplLifecycle := &corev1.Lifecycle{}
+	tmpl := &kubeopenv1alpha1.AgentPodSpec{
+		RuntimeClassName:   &tmplRuntime,
+		Resources:          &tmplRes,
+		SecurityContext:    tmplSC,
+		PodSecurityContext: tmplPodSC,
+		Lifecycle:          tmplLifecycle,
+	}
+	// Agent has podSpec but all scalar pointers nil
+	agent := &kubeopenv1alpha1.AgentPodSpec{Labels: map[string]string{"a": "b"}}
+	got := mergePodSpec(agent, tmpl)
+
+	if got.RuntimeClassName == nil || *got.RuntimeClassName != "kata" {
+		t.Errorf("RuntimeClassName should inherit template, got %v", got.RuntimeClassName)
+	}
+	if got.Resources != &tmplRes {
+		t.Errorf("Resources should inherit template, got %v", got.Resources)
+	}
+	if got.SecurityContext != tmplSC {
+		t.Errorf("SecurityContext should inherit template, got %v", got.SecurityContext)
+	}
+	if got.PodSecurityContext != tmplPodSC {
+		t.Errorf("PodSecurityContext should inherit template, got %v", got.PodSecurityContext)
+	}
+	if got.Lifecycle != tmplLifecycle {
+		t.Errorf("Lifecycle should inherit template, got %v", got.Lifecycle)
+	}
+}
+
+func TestMergePodSpec_ExtraVolumesAgentOnlyWhenTemplateHasNone(t *testing.T) {
+	// Template podSpec is non-nil (has Labels) but no ExtraVolumes; Agent has
+	// ExtraVolumes. Covers mergeNamedSlice's len(b)==0 -> return a passthrough.
+	agent := &kubeopenv1alpha1.AgentPodSpec{
+		Labels:       map[string]string{"a": "b"},
+		ExtraVolumes: []corev1.Volume{{Name: "agent-vol", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}},
+	}
+	tmpl := &kubeopenv1alpha1.AgentPodSpec{Labels: map[string]string{"t": "b"}}
+	got := mergePodSpec(agent, tmpl)
+	names := volumeNames(got.ExtraVolumes)
+	if len(names) != 1 || names[0] != "agent-vol" {
+		t.Errorf("expected only agent-vol, got %v", names)
+	}
+}
+
+func TestMergeNamedSlice_EmptyNameAppended(t *testing.T) {
+	// Items with an empty Name are always appended (no dedup possible). This
+	// exercises the defensive empty-name branch.
+	a := []corev1.EnvVar{{Name: "", Value: "a-empty"}, {Name: "X", Value: "a-x"}}
+	b := []corev1.EnvVar{{Name: "", Value: "b-empty"}, {Name: "Y", Value: "b-y"}}
+	got := mergeEnvVars(a, b)
+	if len(got) != 4 {
+		t.Fatalf("expected 4 env vars (no dedup for empty names), got %d: %v", len(got), got)
+	}
+	emptyCount := 0
+	for _, e := range got {
+		if e.Name == "" {
+			emptyCount++
+		}
+	}
+	if emptyCount != 2 {
+		t.Errorf("expected both empty-name entries preserved, got %d", emptyCount)
+	}
+}
+
+func TestMergeNamedSlice_WithinTemplateDuplicateKeepsFirst(t *testing.T) {
+	// Two template volumes share a name; the first must survive (agentWins=false
+	// collision branch). Agent has no collision.
+	tmpl := &kubeopenv1alpha1.AgentPodSpec{
+		ExtraVolumes: []corev1.Volume{
+			{Name: "dup", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumDefault}}},
+			{Name: "dup", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory}}},
+		},
+	}
+	agent := &kubeopenv1alpha1.AgentPodSpec{
+		ExtraVolumes: []corev1.Volume{{Name: "agent-vol"}},
+	}
+	got := mergePodSpec(agent, tmpl)
+
+	count := 0
+	for _, v := range got.ExtraVolumes {
+		if v.Name == "dup" {
+			count++
+			if v.EmptyDir == nil || v.EmptyDir.Medium != corev1.StorageMediumDefault {
+				t.Errorf("first template 'dup' (Default medium) should be kept, got %v", v.EmptyDir)
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 'dup' after dedup, got %d", count)
+	}
+}
+
 // --- helpers ---
 
 func volumeNames(vols []corev1.Volume) []string {
 	out := make([]string, 0, len(vols))
 	for _, v := range vols {
 		out = append(out, v.Name)
+	}
+	return out
+}
+
+func envVarNames(envs []corev1.EnvVar) []string {
+	out := make([]string, 0, len(envs))
+	for _, e := range envs {
+		out = append(out, e.Name)
 	}
 	return out
 }
