@@ -89,7 +89,6 @@ kubeoc agent attach my-agent -n kubeopencode-system  # Attach to an agent
 
 ### Community
 
-- **Slack**: [Join KubeOpenCode Slack](https://join.slack.com/t/kubeopencode/shared_invite/zt-3o9qibz2b-PjJP4m2cHMcNT3cVg2TDhA)
 - **Discussions**: [GitHub Discussions](https://github.com/kubeopencode/kubeopencode/discussions)
 - **Issues**: [GitHub Issues](https://github.com/kubeopencode/kubeopencode/issues)
 

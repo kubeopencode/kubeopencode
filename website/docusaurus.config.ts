@@ -112,10 +112,6 @@ const config: Config = {
           title: 'Community',
           items: [
             {
-              label: 'Slack',
-              href: 'https://join.slack.com/t/kubeopencode/shared_invite/zt-3o9qibz2b-PjJP4m2cHMcNT3cVg2TDhA',
-            },
-            {
               label: 'GitHub Discussions',
               href: 'https://github.com/kubeopencode/kubeopencode/discussions',
             },
