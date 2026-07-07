@@ -139,7 +139,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} KubeOpenCode Contributors. Apache License 2.0.`,
+      copyright: `Copyright © ${new Date().getFullYear()} KubeOpenCode Contributors. MIT License.`,
     },
     prism: {
       theme: prismThemes.github,

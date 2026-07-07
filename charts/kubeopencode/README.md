@@ -337,4 +337,4 @@ See the main project [README](../../README.md) for contribution guidelines.
 
 ## License
 
-Copyright Contributors to the KubeOpenCode project. Licensed under the Apache License 2.0.
+Copyright Contributors to the KubeOpenCode project. Licensed under the MIT License.

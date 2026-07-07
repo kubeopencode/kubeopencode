@@ -388,4 +388,4 @@ When reporting issues:
 
 ## License
 
-By contributing to KubeOpenCode, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing to KubeOpenCode, you agree that your contributions will be licensed under the MIT License.
