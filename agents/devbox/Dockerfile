@@ -10,7 +10,7 @@
 #
 # AI agent images (opencode, etc.) build on top of this base.
 #
-FROM debian:bookworm-20260713-slim
+FROM debian:bookworm-20260803-slim
 
 # === Retry Helper ===
 # Network downloads may fail transiently; retry up to 3 times with 5s delay
