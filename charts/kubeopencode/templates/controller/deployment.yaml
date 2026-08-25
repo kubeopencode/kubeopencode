@@ -39,6 +39,9 @@ spec:
         - --leader-elect
         - --metrics-bind-address=:8080
         - --health-probe-bind-address=:8081
+        {{- with .Values.controller.watchNamespaces }}
+        - --watch-namespaces={{ join "," . }}
+        {{- end }}
         securityContext:
           {{- toYaml .Values.controller.securityContext | nindent 10 }}
         livenessProbe:

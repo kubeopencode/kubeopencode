@@ -15,6 +15,37 @@ KubeOpenCode follows the principle of least privilege:
 - **Controller**: ClusterRole with minimal permissions for Tasks, Agents, Pods, ConfigMaps, Secrets, and Events
 - **Agent ServiceAccount**: Namespace-scoped Role with read/update access to Tasks and read-only access to related resources
 
+### Restricting the controller to specific namespaces
+
+By default the controller watches every namespace. controller-runtime builds each
+informer at cluster scope in that mode, so the controller needs cluster-scoped
+`list` and `watch` on every type it caches — including Secrets. Per-namespace
+RoleBindings cannot satisfy a cluster-scoped watch, so trimming the ClusterRole
+alone makes the manager fail to start with `failed to wait for caches to sync`.
+
+Pass `--watch-namespaces` to scope the cache instead. The informers then issue
+namespaced calls, which a RoleBinding can satisfy:
+
+```bash
+kubeopencode controller --watch-namespaces=kubeopencode-system,team-a
+```
+
+Or through the chart:
+
+```yaml
+controller:
+  watchNamespaces:
+    - kubeopencode-system
+    - team-a
+```
+
+Tasks, Agents and CronTasks outside the listed namespaces are not reconciled, so
+list every namespace where those resources live.
+
+The chart still installs a ClusterRole. Scoping the cache is what makes narrower
+RBAC *possible*; replacing the ClusterRole with per-namespace Roles is a separate
+step you can take once `--watch-namespaces` is set.
+
 ### Web UI User Permissions
 
 The Helm chart includes a `kubeopencode-web-user` ClusterRole with all permissions needed to use the web dashboard. Bind it per namespace to grant team access:

@@ -14,6 +14,19 @@ controller:
   # Number of controller replicas (only 1 active with leader election)
   replicas: 1
 
+  # Namespaces the controller watches. Empty (the default) watches all
+  # namespaces, which requires the cluster-scoped RBAC this chart installs.
+  #
+  # Setting this restricts the manager cache to the listed namespaces, so the
+  # controller issues namespaced list/watch calls and no longer needs
+  # cluster-scoped read on cached types such as Secrets. Note that this chart
+  # still installs a ClusterRole; trimming that to namespaced Roles is a
+  # separate step you can take once the cache is scoped.
+  #
+  # watchNamespaces:
+  #   - kubeopencode-system
+  watchNamespaces: []
+
   # Resource limits and requests
   resources:
     limits:
