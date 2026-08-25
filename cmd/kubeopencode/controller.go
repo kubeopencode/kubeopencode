@@ -5,6 +5,7 @@ package main
 import (
 	"crypto/tls"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -12,6 +13,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -53,6 +55,7 @@ var (
 	enableLeaderElection bool
 	secureMetrics        bool
 	enableHTTP2          bool
+	watchNamespaces      []string
 )
 
 func init() {
@@ -67,6 +70,33 @@ func init() {
 		"If set the metrics endpoint is served securely")
 	controllerCmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	controllerCmd.Flags().StringSliceVar(&watchNamespaces, "watch-namespaces", nil,
+		"Comma-separated list of namespaces to watch. When empty (the default) the "+
+			"controller watches all namespaces, which requires cluster-scoped list and "+
+			"watch permissions for every type it caches, including Secrets. When set, "+
+			"the cache issues namespaced list/watch calls instead, so the controller "+
+			"can run with namespaced Roles.")
+}
+
+// buildCacheOptions restricts the manager cache to the given namespaces.
+//
+// An empty or blank-only list yields the default all-namespace cache.
+// controller-runtime builds every informer at cluster scope in that mode, so the
+// controller needs cluster-scoped list and watch on each cached type. Naming
+// namespaces here switches those informers to namespaced calls, which a
+// RoleBinding can satisfy.
+func buildCacheOptions(namespaces []string) cache.Options {
+	byNamespace := make(map[string]cache.Config)
+	for _, ns := range namespaces {
+		if ns = strings.TrimSpace(ns); ns != "" {
+			byNamespace[ns] = cache.Config{}
+		}
+	}
+
+	if len(byNamespace) == 0 {
+		return cache.Options{}
+	}
+	return cache.Options{DefaultNamespaces: byNamespace}
 }
 
 func runController(cmd *cobra.Command, args []string) error {
@@ -95,8 +125,13 @@ func runController(cmd *cobra.Command, args []string) error {
 		TLSOpts: tlsOpts,
 	})
 
+	if len(watchNamespaces) > 0 {
+		setupLog.Info("restricting cache to namespaces", "namespaces", watchNamespaces)
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
+		Cache:  buildCacheOptions(watchNamespaces),
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
 			SecureServing: secureMetrics,

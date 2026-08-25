@@ -95,6 +95,7 @@ The following table lists the configurable parameters of the KubeOpenCode chart 
 | `controller.image.tag` | Controller image tag | `""` (uses chart appVersion) |
 | `controller.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `controller.replicas` | Number of controller replicas | `1` |
+| `controller.watchNamespaces` | Namespaces the controller watches. Empty watches all namespaces and requires cluster-scoped RBAC | `[]` |
 | `controller.resources.limits.cpu` | CPU limit | `500m` |
 | `controller.resources.limits.memory` | Memory limit | `512Mi` |
 | `controller.resources.requests.cpu` | CPU request | `100m` |
