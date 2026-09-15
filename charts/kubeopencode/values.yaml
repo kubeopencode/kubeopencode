@@ -240,6 +240,19 @@ kubeopencodeConfig:
     image: ""
     # Image pull policy
     imagePullPolicy: IfNotPresent
+  # Cleanup configures automatic deletion of completed/failed Tasks.
+  # Rendered into KubeOpenCodeConfig.spec.cleanup. Both fields are optional and
+  # independent; when both are unset the cleanup block is omitted entirely, so
+  # existing installs are unaffected.
+  cleanup:
+    # Delete completed/failed Tasks this many seconds after CompletionTime.
+    # Unset = TTL-based cleanup disabled. Note: 0 is a valid value (delete
+    # immediately once finished).
+    ttlSecondsAfterFinished: null
+    # Keep at most this many completed/failed Tasks per namespace, deleting the
+    # oldest first. Cluster-wide: the same limit applies to every namespace.
+    # Unset = retention-based cleanup disabled.
+    maxRetainedTasks: null
   # OpenTelemetry observability configuration
   # When enabled, the controller injects OTLP environment variables into agent Pods
   # so that OpenCode's built-in OTel support is activated automatically.

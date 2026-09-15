@@ -18,6 +18,18 @@ spec:
     imagePullPolicy: {{ .Values.kubeopencodeConfig.systemImage.imagePullPolicy }}
     {{- end }}
   {{- end }}
+  {{- $cleanup := .Values.kubeopencodeConfig.cleanup }}
+  {{- if $cleanup }}
+  {{- if or (ne $cleanup.ttlSecondsAfterFinished nil) (ne $cleanup.maxRetainedTasks nil) }}
+  cleanup:
+    {{- if ne $cleanup.ttlSecondsAfterFinished nil }}
+    ttlSecondsAfterFinished: {{ $cleanup.ttlSecondsAfterFinished | int64 }}
+    {{- end }}
+    {{- if ne $cleanup.maxRetainedTasks nil }}
+    maxRetainedTasks: {{ $cleanup.maxRetainedTasks | int64 }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
   {{- if .Values.kubeopencodeConfig.observability }}
   observability:
     {{- if .Values.kubeopencodeConfig.observability.openTelemetry }}

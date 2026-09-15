@@ -134,10 +134,24 @@ Agent images are configured in Agent CRDs, not in this Helm chart. The two-conta
 | `kubeopencodeConfig.create` | Create default KubeOpenCodeConfig | `true` |
 | `kubeopencodeConfig.systemImage.image` | System image for init containers | `""` (uses controller image) |
 | `kubeopencodeConfig.systemImage.imagePullPolicy` | System image pull policy | `IfNotPresent` |
+| `kubeopencodeConfig.cleanup.ttlSecondsAfterFinished` | Delete finished Tasks this many seconds after completion | unset (disabled) |
+| `kubeopencodeConfig.cleanup.maxRetainedTasks` | Max finished Tasks retained per namespace (oldest deleted first) | unset (disabled) |
 
 ### Cleanup Configuration
 
-Task cleanup is configured via the `KubeOpenCodeConfig` resource (not Helm values):
+Task cleanup renders `KubeOpenCodeConfig.spec.cleanup`, so it can be set either
+through Helm values or by managing the `KubeOpenCodeConfig` resource directly.
+Both fields are optional and independent; when both are unset the `cleanup` block
+is omitted entirely, so existing installs are unaffected.
+
+```yaml
+kubeopencodeConfig:
+  cleanup:
+    ttlSecondsAfterFinished: 604800  # 7 days
+    maxRetainedTasks: 100            # Per namespace
+```
+
+Equivalent raw resource, if you manage `KubeOpenCodeConfig` yourself:
 
 ```yaml
 apiVersion: kubeopencode.io/v1alpha1
