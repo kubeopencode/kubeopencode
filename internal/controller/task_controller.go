@@ -155,6 +155,18 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 
+	// Recompute the kubeopencode_tasks_total gauge for this namespace on the
+	// way out, regardless of which branch below returns. Deferred (rather
+	// than Inc/Dec at each phase-transition site) so it's a full recount via
+	// Set, which is idempotent under controller-runtime's at-least-once
+	// reconcile semantics -- a requeued or duplicate Reconcile of the same
+	// phase transition can't double-count.
+	defer func() {
+		if err := r.recordTasksTotalMetric(ctx, task.Namespace); err != nil {
+			log.Error(err, "unable to record tasks total metric")
+		}
+	}()
+
 	// If new, initialize status and create Pod
 	// Also handle incomplete Running state (Running but no Pod created yet)
 	// This can happen if context processing failed after Phase was set to Running
@@ -1081,6 +1093,37 @@ func resolveMountPath(mountPath, workspaceDir string) string {
 		return mountPath
 	}
 	return workspaceDir + "/" + mountPath
+}
+
+// recordTasksTotalMetric recomputes kubeopencode_tasks_total for namespace by
+// listing every Task in it and counting by phase. All known phases are set
+// explicitly (including zero) so a phase that empties out (e.g. the last
+// Queued task starts running) drops back to zero instead of holding its last
+// nonzero value forever.
+func (r *TaskReconciler) recordTasksTotalMetric(ctx context.Context, namespace string) error {
+	taskList := &kubeopenv1alpha1.TaskList{}
+	if err := r.List(ctx, taskList, client.InNamespace(namespace)); err != nil {
+		return err
+	}
+
+	counts := map[kubeopenv1alpha1.TaskPhase]float64{
+		kubeopenv1alpha1.TaskPhasePending:   0,
+		kubeopenv1alpha1.TaskPhaseQueued:    0,
+		kubeopenv1alpha1.TaskPhaseRunning:   0,
+		kubeopenv1alpha1.TaskPhaseCompleted: 0,
+		kubeopenv1alpha1.TaskPhaseFailed:    0,
+	}
+	for i := range taskList.Items {
+		if _, known := counts[taskList.Items[i].Status.Phase]; known {
+			counts[taskList.Items[i].Status.Phase]++
+		}
+	}
+
+	for phase, count := range counts {
+		TasksTotal.WithLabelValues(namespace, string(phase)).Set(count)
+	}
+
+	return nil
 }
 
 // checkAgentCapacity checks if the agent has capacity for a new task.
