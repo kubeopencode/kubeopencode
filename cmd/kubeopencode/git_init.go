@@ -56,6 +56,7 @@ It supports:
   - Branch/tag/commit reference
   - HTTPS authentication (username/password)
   - SSH authentication (private key)
+  - GitHub App authentication (installation access token)
   - Automatic retry on transient failures (configurable)
 
 Environment variables:
@@ -70,7 +71,16 @@ Environment variables:
   GIT_SSH_KNOWN_HOSTS     Known hosts content for SSH verification
   GIT_RECURSE_SUBMODULES  If "true", recursively clone submodules
   GIT_CLONE_RETRIES        Number of retry attempts for git clone, default: 3
-  GIT_CLONE_RETRY_DELAY    Delay between retry attempts (Go duration), default: 5s`,
+  GIT_CLONE_RETRY_DELAY    Delay between retry attempts (Go duration), default: 5s
+
+GitHub App authentication (takes precedence over the credentials above):
+  GH_APP_ID               GitHub App ID
+  GH_APP_INSTALLATION_ID  GitHub App installation ID
+  GH_APP_PRIVATE_KEY      App private key PEM content or path to a PEM file
+  GITHUB_API_URL          GitHub API base URL, default: https://api.github.com
+
+  The App's installation access token is minted at runtime and used as an HTTPS
+  credential, so SSH private keys and long-lived PATs are not required.`,
 	RunE: runGitInit,
 }
 
@@ -100,16 +110,23 @@ func runGitInit(cmd *cobra.Command, args []string) error {
 	// Target directory
 	targetDir := filepath.Join(root, link)
 
+	// Setup authentication
+	appAuth, err := setupAuth()
+	if err != nil {
+		return fmt.Errorf("failed to setup authentication: %w", err)
+	}
+
+	// GitHub App installation tokens are HTTPS credentials. If the repository
+	// was written as an SSH URL, clone over HTTPS instead so the token is used.
+	if appAuth != nil {
+		repo = httpsRepoURL(repo)
+	}
+
 	fmt.Println("git-init: Cloning repository...")
 	fmt.Printf("  Repository: %s\n", repo)
 	fmt.Printf("  Ref: %s\n", ref)
 	fmt.Printf("  Depth: %d\n", depth)
 	fmt.Printf("  Target: %s\n", targetDir)
-
-	// Setup authentication
-	if err := setupAuth(); err != nil {
-		return fmt.Errorf("failed to setup authentication: %w", err)
-	}
 
 	// Ensure root directory exists
 	// Use 0755 to ensure accessibility in environments where containers run with
@@ -258,8 +275,9 @@ func runGitInit(cmd *cobra.Command, args []string) error {
 func cleanupCredentials() {
 	username := os.Getenv(envUsername)
 	password := os.Getenv(envPassword)
+	appAuth, _ := loadGithubAppAuth()
 
-	if username != "" && password != "" {
+	if (username != "" && password != "") || appAuth != nil {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			home = "/tmp"
@@ -271,7 +289,34 @@ func cleanupCredentials() {
 	}
 }
 
-func setupAuth() error {
+// setupAuth configures Git authentication from the environment.
+//
+// GitHub App credentials take precedence over static credentials. When they are
+// used, an installation access token is minted at runtime and written to the
+// same credential store as HTTPS username/password auth; the returned
+// githubAppAuth is non-nil so callers can refresh the token later (git-sync) or
+// rewrite an SSH repository URL to HTTPS (git-init, git-sync).
+func setupAuth() (*githubAppAuth, error) {
+	// GitHub App authentication takes precedence over static credentials.
+	appAuth, err := loadGithubAppAuth()
+	if err != nil {
+		return nil, err
+	}
+	if appAuth != nil {
+		fmt.Println("git-init: Configuring GitHub App authentication...")
+
+		if err := gitConfig("credential.helper", "store"); err != nil {
+			return nil, err
+		}
+		if err := writeGithubAppCredentials(appAuth); err != nil {
+			return nil, err
+		}
+
+		// GitHub App credentials are HTTPS-only; ignore any SSH key that was
+		// also mounted so git cannot fall back to a broken SSH attempt.
+		return appAuth, nil
+	}
+
 	username := os.Getenv(envUsername)
 	password := os.Getenv(envPassword)
 	sshKey := os.Getenv(envSSHKey)
@@ -281,7 +326,7 @@ func setupAuth() error {
 		fmt.Println("git-init: Configuring HTTPS authentication...")
 
 		if err := gitConfig("credential.helper", "store"); err != nil {
-			return err
+			return nil, err
 		}
 
 		home, err := os.UserHomeDir()
@@ -295,7 +340,7 @@ func setupAuth() error {
 		credContent := fmt.Sprintf("https://%s:%s@%s\n", username, password, host)
 
 		if err := os.WriteFile(credFile, []byte(credContent), 0600); err != nil {
-			return fmt.Errorf("failed to write credentials file: %w", err)
+			return nil, fmt.Errorf("failed to write credentials file: %w", err)
 		}
 	}
 
@@ -310,14 +355,14 @@ func setupAuth() error {
 
 		sshDir := filepath.Join(home, ".ssh")
 		if err := os.MkdirAll(sshDir, 0700); err != nil {
-			return fmt.Errorf("failed to create .ssh directory: %w", err)
+			return nil, fmt.Errorf("failed to create .ssh directory: %w", err)
 		}
 
 		var keyContent []byte
 		if _, err := os.Stat(sshKey); err == nil {
 			keyContent, err = os.ReadFile(sshKey) //nolint:gosec // sshKey path is from trusted env var
 			if err != nil {
-				return fmt.Errorf("failed to read SSH key file: %w", err)
+				return nil, fmt.Errorf("failed to read SSH key file: %w", err)
 			}
 		} else {
 			keyContent = []byte(sshKey)
@@ -325,7 +370,7 @@ func setupAuth() error {
 
 		keyFile := filepath.Join(sshDir, "id_rsa")
 		if err := os.WriteFile(keyFile, keyContent, 0600); err != nil {
-			return fmt.Errorf("failed to write SSH key: %w", err)
+			return nil, fmt.Errorf("failed to write SSH key: %w", err)
 		}
 
 		configContent := "Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n"
@@ -338,23 +383,23 @@ func setupAuth() error {
 		if knownHosts != "" {
 			knownHostsFile := filepath.Join(sshDir, "known_hosts")
 			if err := os.WriteFile(knownHostsFile, []byte(knownHosts), 0600); err != nil {
-				return fmt.Errorf("failed to write known_hosts: %w", err)
+				return nil, fmt.Errorf("failed to write known_hosts: %w", err)
 			}
 			configContent = "Host *\n  StrictHostKeyChecking yes\n  UserKnownHostsFile " + knownHostsFile + "\n"
 		}
 
 		configFile := filepath.Join(sshDir, "config")
 		if err := os.WriteFile(configFile, []byte(configContent), 0600); err != nil {
-			return fmt.Errorf("failed to write SSH config: %w", err)
+			return nil, fmt.Errorf("failed to write SSH config: %w", err)
 		}
 
 		sshCmd := fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes", keyFile)
 		if err := os.Setenv("GIT_SSH_COMMAND", sshCmd); err != nil {
-			return fmt.Errorf("failed to set GIT_SSH_COMMAND: %w", err)
+			return nil, fmt.Errorf("failed to set GIT_SSH_COMMAND: %w", err)
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
 // setupCustomCA configures a custom CA certificate for git HTTPS operations.

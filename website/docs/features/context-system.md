@@ -121,6 +121,20 @@ kubectl create secret generic git-ssh-credentials \
   --from-file=ssh-known-hosts=$HOME/.ssh/known_hosts
 ```
 
+**GitHub App Authentication:**
+```bash
+kubectl create secret generic github-app-credentials \
+  --from-literal=app-id=123456 \
+  --from-literal=app-installation-id=7891011 \
+  --from-file=app-private-key=$HOME/.ssh/github-app.pem
+```
+
+An installation access token is minted at runtime from these credentials, so no
+long-lived PAT or per-repository deploy key is required. When App credentials
+are present they take precedence over `username`/`password` and `ssh-privatekey`.
+SSH repository URLs (`git@github.com:org/repo.git`) are cloned over HTTPS
+automatically so the token can be used.
+
 See [Security - Git Authentication](../security.md#git-authentication-for-private-repositories) for provider-specific username formats.
 
 ### Runtime Context

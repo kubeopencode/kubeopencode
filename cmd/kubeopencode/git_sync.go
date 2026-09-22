@@ -48,7 +48,16 @@ Environment variables:
   GIT_USERNAME        HTTPS username
   GIT_PASSWORD        HTTPS password/token
   GIT_SSH_KEY             SSH private key (content or file path)
-  GIT_SSH_KNOWN_HOSTS     Known hosts content for SSH verification`,
+  GIT_SSH_KNOWN_HOSTS     Known hosts content for SSH verification
+
+GitHub App authentication (takes precedence over the credentials above):
+  GH_APP_ID               GitHub App ID
+  GH_APP_INSTALLATION_ID  GitHub App installation ID
+  GH_APP_PRIVATE_KEY      App private key PEM content or path to a PEM file
+  GITHUB_API_URL          GitHub API base URL, default: https://api.github.com
+
+  Installation access tokens expire after one hour, so a fresh token is minted
+  before each sync cycle.`,
 	RunE: runGitSync,
 }
 
@@ -69,8 +78,15 @@ func runGitSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Setup authentication (persistent — no cleanup for sidecar)
-	if err := setupAuth(); err != nil {
+	appAuth, err := setupAuth()
+	if err != nil {
 		return fmt.Errorf("failed to setup authentication: %w", err)
+	}
+
+	// GitHub App installation tokens are HTTPS credentials, and the repository
+	// may have been written as an SSH URL.
+	if appAuth != nil {
+		repo = httpsRepoURL(repo)
 	}
 
 	// Get configuration
@@ -112,11 +128,24 @@ func runGitSync(cmd *cobra.Command, args []string) error {
 		fetchRef = ""
 	}
 
+	// refreshCredentials rewrites the credential file before each sync so that
+	// GitHub App installation tokens (which expire after one hour) stay valid
+	// for the lifetime of this long-running sidecar.
+	refreshCredentials := func() {
+		if appAuth == nil {
+			return
+		}
+		if err := writeGithubAppCredentials(appAuth); err != nil {
+			fmt.Printf("git-sync: Warning: could not refresh GitHub App credentials: %v\n", err)
+		}
+	}
+
 	// Main sync loop
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	defer ticker.Stop()
 
 	// Run first sync immediately
+	refreshCredentials()
 	syncOnce(targetDir, fetchRef)
 
 	for {
@@ -125,6 +154,7 @@ func runGitSync(cmd *cobra.Command, args []string) error {
 			fmt.Println("git-sync: Shutdown complete")
 			return nil
 		case <-ticker.C:
+			refreshCredentials()
 			syncOnce(targetDir, fetchRef)
 		}
 	}

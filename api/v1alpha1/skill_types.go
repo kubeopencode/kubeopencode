@@ -90,6 +90,9 @@ type GitSkillSource struct {
 	// The Secret should contain one of:
 	//   - "username" + "password": For HTTPS token-based auth (password can be a PAT)
 	//   - "ssh-privatekey": For SSH key-based auth
+	//   - "app-id" + "app-installation-id" + "app-private-key": For GitHub App
+	//     authentication; an installation access token is minted at runtime.
+	// GitHub App credentials take precedence when present.
 	// If not specified, anonymous clone is attempted.
 	// Reuses the same Secret format as context Git.
 	// +optional

@@ -214,6 +214,67 @@ contexts:
 > **Security note:** If `ssh-known-hosts` is not provided, SSH host key verification is disabled.
 > Always provide `ssh-known-hosts` in production environments to prevent MITM attacks.
 
+#### GitHub App Authentication
+
+For GitHub, a GitHub App is the recommended way to grant a repository-scoped,
+short-lived credential without managing PATs or per-repository deploy keys.
+Create a Secret with the App ID, installation ID, and private key:
+
+```bash
+kubectl create secret generic github-app-credentials \
+  --from-literal=app-id=123456 \
+  --from-literal=app-installation-id=7891011 \
+  --from-file=app-private-key=$HOME/.ssh/github-app.pem
+```
+
+Then reference it from a Git context or a skill source:
+
+```yaml
+contexts:
+  - name: private-source
+    type: Git
+    git:
+      repository: https://github.com/org/private-repo.git
+      ref: main
+      secretRef:
+        name: github-app-credentials
+    mountPath: source
+```
+
+```yaml
+skills:
+  - name: official-skills
+    git:
+      repository: git@github.com:org/skills.git
+      ref: main
+      secretRef:
+        name: github-app-credentials
+```
+
+| Secret key | Required | Description |
+|---|---|---|
+| `app-id` | yes | GitHub App ID |
+| `app-installation-id` | yes | Installation ID for the target organization/account |
+| `app-private-key` | yes | App private key in PEM form (PKCS#1 or PKCS#8) |
+
+How it works:
+
+- The App private key signs a short-lived JWT, which is exchanged for an
+  **installation access token** at clone time. The token is never stored in the
+  Secret and is cleaned up after `git-init` completes.
+- Installation tokens expire after one hour, so `git-sync` re-mints before each
+  sync cycle — required for long-running Agent deployments.
+- App credentials take precedence over `username`/`password` and
+  `ssh-privatekey`.
+- SSH repository URLs (`git@github.com:org/repo.git`) are rewritten to HTTPS so
+  the token can be used; the App must have read access to the repository.
+
+The App must be installed on the organization/account and have **Contents: Read**
+permission for the repositories being cloned (Read & write if the agent also pushes).
+
+`GITHUB_API_URL` can be set to target a GitHub Enterprise Server instance; it
+defaults to `https://api.github.com`.
+
 #### Provider Username Reference
 
 | Git Provider | Username | Token Type |

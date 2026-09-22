@@ -1260,15 +1260,18 @@ func TestBuildGitInitContainerWithSecret(t *testing.T) {
 
 	container := buildGitInitContainer(gm, "git-vol-0", 0, defaultSystemConfig())
 
-	// Verify all 4 auth env vars are injected (HTTPS + SSH)
+	// Verify all auth env vars are injected (HTTPS + SSH + GitHub App)
 	wantEnvVars := map[string]struct {
 		secretName string
 		secretKey  string
 	}{
-		"GIT_USERNAME":        {secretName: "my-git-secret", secretKey: "username"},
-		"GIT_PASSWORD":        {secretName: "my-git-secret", secretKey: "password"},
-		"GIT_SSH_KEY":         {secretName: "my-git-secret", secretKey: "ssh-privatekey"},
-		"GIT_SSH_KNOWN_HOSTS": {secretName: "my-git-secret", secretKey: "ssh-known-hosts"},
+		"GIT_USERNAME":           {secretName: "my-git-secret", secretKey: "username"},
+		"GIT_PASSWORD":           {secretName: "my-git-secret", secretKey: "password"},
+		"GIT_SSH_KEY":            {secretName: "my-git-secret", secretKey: "ssh-privatekey"},
+		"GIT_SSH_KNOWN_HOSTS":    {secretName: "my-git-secret", secretKey: "ssh-known-hosts"},
+		"GH_APP_ID":              {secretName: "my-git-secret", secretKey: "app-id"},
+		"GH_APP_INSTALLATION_ID": {secretName: "my-git-secret", secretKey: "app-installation-id"},
+		"GH_APP_PRIVATE_KEY":     {secretName: "my-git-secret", secretKey: "app-private-key"},
 	}
 
 	for wantName, want := range wantEnvVars {
@@ -1309,7 +1312,8 @@ func TestBuildGitInitContainerWithoutSecret(t *testing.T) {
 	// Verify no auth env vars are injected for public repos
 	for _, env := range container.Env {
 		switch env.Name {
-		case "GIT_USERNAME", "GIT_PASSWORD", "GIT_SSH_KEY", "GIT_SSH_KNOWN_HOSTS":
+		case "GIT_USERNAME", "GIT_PASSWORD", "GIT_SSH_KEY", "GIT_SSH_KNOWN_HOSTS",
+			"GH_APP_ID", "GH_APP_INSTALLATION_ID", "GH_APP_PRIVATE_KEY":
 			t.Errorf("unexpected auth env var %s for public repo", env.Name)
 		}
 	}

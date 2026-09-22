@@ -96,7 +96,9 @@ skills:
 
 ## Private Repositories
 
-Use `secretRef` for authentication (same Secret format as Git contexts):
+Use `secretRef` for authentication (same Secret format as Git contexts). The
+Secret may contain a GitHub App credential, an HTTPS username/password (a PAT),
+or an SSH private key — the method is selected by which keys exist:
 
 ```yaml
 skills:
@@ -106,6 +108,36 @@ skills:
     ref: v2.0.0
     secretRef:
       name: github-pat
+```
+
+| Secret keys | Method |
+|---|---|
+| `app-id`, `app-installation-id`, `app-private-key` | GitHub App — an installation access token is minted at runtime. **Preferred**: short-lived, scoped to the App's permissions, and one App covers every repo in the org. |
+| `username`, `password` | HTTPS username/password (token-based auth; `password` may be a PAT). |
+| `ssh-privatekey`, optional `ssh-known-hosts` | SSH private key. |
+
+When GitHub App credentials are present they take precedence. App auth is
+HTTPS-only, so an SSH repository URL (`git@github.com:org/repo.git`) is rewritten
+to HTTPS automatically. This is the recommended way to clone skills from a
+private organization repo — see
+[Security - GitHub App Authentication](../security.md#github-app-authentication).
+
+```bash
+# GitHub App (recommended for organization-wide skill catalogs)
+kubectl create secret generic github-app-credentials \
+  --from-literal=app-id=123456 \
+  --from-literal=app-installation-id=7891011 \
+  --from-file=app-private-key=$HOME/.ssh/github-app.pem
+```
+
+```yaml
+skills:
+- name: internal-skills
+  git:
+    repository: https://github.com/my-org/private-skills.git
+    ref: master
+    secretRef:
+      name: github-app-credentials
 ```
 
 ## How It Works
@@ -144,4 +176,4 @@ spec:
 | `git.names` | []string | (all) | Specific skill directories to include |
 | `git.depth` | int | 1 | Clone depth (1=shallow, 0=full) |
 | `git.recurseSubmodules` | bool | false | Clone submodules recursively |
-| `git.secretRef.name` | string | - | Secret for Git authentication |
+| `git.secretRef.name` | string | - | Secret for Git authentication. Keys: `app-id`/`app-installation-id`/`app-private-key` (GitHub App, preferred), `username`/`password` (HTTPS), or `ssh-privatekey` (SSH) |
