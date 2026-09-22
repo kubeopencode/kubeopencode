@@ -5,8 +5,10 @@ package controller
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	kubeopenv1alpha1 "github.com/kubeopencode/kubeopencode/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -188,6 +190,75 @@ func TestProcessSkills(t *testing.T) {
 		gitMounts, _ := processSkills(skills)
 		if gitMounts[0].ref != "HEAD" {
 			t.Errorf("ref = %q, want %q", gitMounts[0].ref, "HEAD")
+		}
+	})
+}
+
+func TestProcessSkills_Sync(t *testing.T) {
+	skillWithSync := func(sync *kubeopenv1alpha1.GitSync) []kubeopenv1alpha1.SkillSource {
+		return []kubeopenv1alpha1.SkillSource{
+			{
+				Name: "org-skills",
+				Git: &kubeopenv1alpha1.GitSkillSource{
+					Repository: "https://github.com/org/skills.git",
+					Sync:       sync,
+				},
+			},
+		}
+	}
+
+	t.Run("no sync leaves the mount unsynced", func(t *testing.T) {
+		gitMounts, _ := processSkills(skillWithSync(nil))
+		gm := gitMounts[0]
+		if gm.syncEnabled {
+			t.Error("expected syncEnabled to be false without a sync block")
+		}
+		if gm.reloadOnSync {
+			t.Error("expected reloadOnSync to be false without a sync block")
+		}
+	})
+
+	t.Run("disabled sync leaves the mount unsynced", func(t *testing.T) {
+		gitMounts, _ := processSkills(skillWithSync(&kubeopenv1alpha1.GitSync{Enabled: false}))
+		if gitMounts[0].syncEnabled {
+			t.Error("expected syncEnabled to be false when sync is disabled")
+		}
+	})
+
+	t.Run("enabled sync defaults to HotReload with a 15m interval", func(t *testing.T) {
+		gitMounts, _ := processSkills(skillWithSync(&kubeopenv1alpha1.GitSync{Enabled: true}))
+		gm := gitMounts[0]
+		if !gm.syncEnabled {
+			t.Fatal("expected syncEnabled to be true")
+		}
+		if gm.syncPolicy != kubeopenv1alpha1.GitSyncPolicyHotReload {
+			t.Errorf("syncPolicy = %q, want HotReload", gm.syncPolicy)
+		}
+		if gm.syncInterval != DefaultSkillSyncInterval {
+			t.Errorf("syncInterval = %v, want %v", gm.syncInterval, DefaultSkillSyncInterval)
+		}
+		if DefaultSkillSyncInterval != 15*time.Minute {
+			t.Errorf("DefaultSkillSyncInterval = %v, want 15m", DefaultSkillSyncInterval)
+		}
+	})
+
+	t.Run("skills always reload when syncing", func(t *testing.T) {
+		// OpenCode caches discovered skills at instance start, so file updates
+		// alone are invisible to a running server. Reload is implicit for
+		// skills rather than an opt-in.
+		gitMounts, _ := processSkills(skillWithSync(&kubeopenv1alpha1.GitSync{Enabled: true}))
+		if !gitMounts[0].reloadOnSync {
+			t.Error("expected reloadOnSync to be true for a synced skill source")
+		}
+	})
+
+	t.Run("explicit interval is honored", func(t *testing.T) {
+		gitMounts, _ := processSkills(skillWithSync(&kubeopenv1alpha1.GitSync{
+			Enabled:  true,
+			Interval: metav1.Duration{Duration: 30 * time.Minute},
+		}))
+		if got := gitMounts[0].syncInterval; got != 30*time.Minute {
+			t.Errorf("syncInterval = %v, want 30m", got)
 		}
 	})
 }

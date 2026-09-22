@@ -177,6 +177,11 @@ type gitMount struct {
 	syncEnabled  bool                           // Whether auto-sync is enabled
 	syncPolicy   kubeopenv1alpha1.GitSyncPolicy // HotReload or Rollout
 	syncInterval time.Duration                  // Polling interval
+
+	// reloadOnSync asks the OpenCode server to re-scan its configuration after
+	// a HotReload update lands. Required for content the server caches at
+	// instance start (skills). Only meaningful on long-running Agent servers.
+	reloadOnSync bool
 }
 
 // resolvedContext holds a resolved context with its content and metadata
@@ -310,6 +315,12 @@ const (
 	// This allows overriding permission settings to enable non-interactive/automated mode.
 	// The value is a JSON object mapping tool names to permission actions (allow/ask/deny).
 	OpenCodePermissionEnvVar = "OPENCODE_PERMISSION"
+
+	// EnvOpenCodeReloadURL is the environment variable set on git-sync sidecars
+	// that should ask the OpenCode server to re-scan after a config update. The
+	// value is the base URL of the agent's OpenCode server (e.g.
+	// http://127.0.0.1:4096). Unset means no reload is attempted.
+	EnvOpenCodeReloadURL = "OPENCODE_RELOAD_URL"
 
 	// DefaultOpenCodePermission is the default permission configuration for automated execution.
 	// In Kubernetes/CI environments, we need to allow all permissions to avoid interactive prompts
@@ -500,56 +511,47 @@ func gitSafeDirectoryEnvVars() []corev1.EnvVar {
 
 // buildGitCredentialEnvVars returns env vars that reference a Secret for Git authentication.
 // The Secret can contain HTTPS credentials (username + password/PAT),
-// SSH credentials (ssh-privatekey + optional ssh-known-hosts), or both.
-// All keys are optional so the same Secret can be used for either method.
+// SSH credentials (ssh-privatekey + optional ssh-known-hosts),
+// GitHub App credentials (app-id + app-installation-id + app-private-key), or any mix.
+// All keys are optional so the same Secret can be used for any method; git-init/git-sync
+// prefer GitHub App credentials when present.
 func buildGitCredentialEnvVars(secretName string) []corev1.EnvVar {
-	return []corev1.EnvVar{
-		{
-			Name: "GIT_USERNAME",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-					Key:                  "username",
-					Optional:             boolPtr(true),
-				},
-			},
-		},
-		{
-			Name: "GIT_PASSWORD",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-					Key:                  "password",
-					Optional:             boolPtr(true),
-				},
-			},
-		},
-		{
-			Name: "GIT_SSH_KEY",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-					Key:                  "ssh-privatekey",
-					Optional:             boolPtr(true),
-				},
-			},
-		},
-		{
-			Name: "GIT_SSH_KNOWN_HOSTS",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-					Key:                  "ssh-known-hosts",
-					Optional:             boolPtr(true),
-				},
-			},
-		},
+	pairs := []struct {
+		envVar string
+		key    string
+	}{
+		{envVar: "GIT_USERNAME", key: "username"},
+		{envVar: "GIT_PASSWORD", key: "password"},
+		{envVar: "GIT_SSH_KEY", key: "ssh-privatekey"},
+		{envVar: "GIT_SSH_KNOWN_HOSTS", key: "ssh-known-hosts"},
+		{envVar: "GH_APP_ID", key: "app-id"},
+		{envVar: "GH_APP_INSTALLATION_ID", key: "app-installation-id"},
+		{envVar: "GH_APP_PRIVATE_KEY", key: "app-private-key"},
 	}
+
+	envVars := make([]corev1.EnvVar, 0, len(pairs))
+	for _, p := range pairs {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: p.envVar,
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+					Key:                  p.key,
+					Optional:             boolPtr(true),
+				},
+			},
+		})
+	}
+	return envVars
 }
 
 // buildGitSyncSidecar creates a sidecar container that periodically syncs a Git repository.
 // Used when sync.policy is HotReload to keep content up-to-date without Pod restart.
-func buildGitSyncSidecar(gm gitMount, volumeName string, index int, sysCfg systemConfig) corev1.Container {
+//
+// serverReloadURL, when non-empty, is passed to the sidecar so it can ask the
+// OpenCode server to re-scan after an update. It is empty for mounts that do not
+// request a reload, and for ephemeral Task pods (which have no long-lived server).
+func buildGitSyncSidecar(gm gitMount, volumeName string, index int, sysCfg systemConfig, serverReloadURL string) corev1.Container {
 	ref := defaultString(gm.ref, DefaultGitRef)
 	intervalSeconds := int(gm.syncInterval.Seconds())
 	if intervalSeconds <= 0 {
@@ -566,6 +568,13 @@ func buildGitSyncSidecar(gm gitMount, volumeName string, index int, sysCfg syste
 		{Name: "GIT_ROOT", Value: DefaultGitRoot},
 		{Name: "GIT_LINK", Value: DefaultGitLink},
 		{Name: "GIT_SYNC_INTERVAL", Value: strconv.Itoa(intervalSeconds)},
+	}
+
+	if gm.reloadOnSync && serverReloadURL != "" {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  EnvOpenCodeReloadURL,
+			Value: serverReloadURL,
+		})
 	}
 
 	volumeMounts := []corev1.VolumeMount{

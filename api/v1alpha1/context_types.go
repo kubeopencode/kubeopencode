@@ -92,6 +92,9 @@ type GitContext struct {
 	// The Secret should contain one of:
 	//   - "username" + "password": For HTTPS token-based auth (password can be a PAT)
 	//   - "ssh-privatekey": For SSH key-based auth
+	//   - "app-id" + "app-installation-id" + "app-private-key": For GitHub App
+	//     authentication; an installation access token is minted at runtime.
+	// GitHub App credentials take precedence when present.
 	// If not specified, anonymous clone is attempted.
 	// +optional
 	SecretRef *GitSecretReference `json:"secretRef,omitempty"`
@@ -136,6 +139,26 @@ type GitSync struct {
 	// +optional
 	// +kubebuilder:default=HotReload
 	Policy GitSyncPolicy `json:"policy,omitempty"`
+
+	// Reload asks the OpenCode server to re-scan its configuration after a
+	// HotReload update lands, so the change takes effect without a Pod restart.
+	//
+	// This matters for content the server snapshots at instance start — most
+	// notably skills, which are discovered once and cached in memory. Updating
+	// files on disk alone is invisible to a running server.
+	//
+	// The reload is performed by the git-sync sidecar calling the server's
+	// reload endpoint. To avoid interrupting work in progress, the reload is
+	// deferred while any session is busy and retried on the next sync cycle.
+	//
+	// Only effective with Policy: HotReload, and only for long-running Agents
+	// (ignored for ephemeral Task pods).
+	//
+	// This field is an opt-in for Git contexts. Skill sources always reload
+	// when sync is enabled, since re-scanning is the point of syncing skills;
+	// set sync on a skill only if you want that behavior.
+	// +optional
+	Reload bool `json:"reload,omitempty"`
 }
 
 // GitSecretReference references a Secret for Git authentication.

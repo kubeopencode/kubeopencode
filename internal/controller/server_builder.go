@@ -673,9 +673,13 @@ func BuildServerDeployment(agent *kubeopenv1alpha1.Agent, agentCfg agentConfig, 
 		proxyEnvs = buildProxyEnvVars(agentCfg.proxy, sysCfg.clusterDomain)
 	}
 
+	// Base URL the git-sync sidecar uses to ask the OpenCode server process in
+	// this Pod to re-scan its configuration. Loopback, never proxied.
+	serverReloadURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+
 	for i, gm := range ctxGitMounts {
 		if gm.syncEnabled && gm.syncPolicy == kubeopenv1alpha1.GitSyncPolicyHotReload {
-			sidecar := buildGitSyncSidecar(gm, fmt.Sprintf("git-context-%d", i), i, sysCfg)
+			sidecar := buildGitSyncSidecar(gm, fmt.Sprintf("git-context-%d", i), i, sysCfg, serverReloadURL)
 			if hasCA {
 				sidecar.VolumeMounts = append(sidecar.VolumeMounts, sidecarCAMount)
 				sidecar.Env = append(sidecar.Env, sidecarCAEnv)

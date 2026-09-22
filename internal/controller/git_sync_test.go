@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -169,7 +170,7 @@ func TestBuildGitSyncSidecar(t *testing.T) {
 	}
 	sysCfg := systemConfig{systemImage: "ghcr.io/kubeopencode/kubeopencode:latest"}
 
-	sidecar := buildGitSyncSidecar(gm, "git-context-0", 0, sysCfg)
+	sidecar := buildGitSyncSidecar(gm, "git-context-0", 0, sysCfg, "")
 
 	if sidecar.Name != "git-sync-0" {
 		t.Errorf("expected name 'git-sync-0', got %q", sidecar.Name)
@@ -197,6 +198,65 @@ func TestBuildGitSyncSidecar(t *testing.T) {
 	if sidecar.SecurityContext == nil {
 		t.Error("expected SecurityContext on sidecar")
 	}
+}
+
+func TestBuildGitSyncSidecar_Reload(t *testing.T) {
+	reloadMount := gitMount{
+		contextName:  "skill-org-skills",
+		repository:   "https://github.com/org/skills.git",
+		ref:          "main",
+		mountPath:    "/skills/org-skills",
+		syncEnabled:  true,
+		syncPolicy:   kubeopenv1alpha1.GitSyncPolicyHotReload,
+		syncInterval: 15 * time.Minute,
+		reloadOnSync: true,
+	}
+	plainMount := reloadMount
+	plainMount.reloadOnSync = false
+
+	sysCfg := defaultSystemConfig()
+	const serverURL = "http://127.0.0.1:4096"
+
+	hasReloadEnv := func(envs []corev1.EnvVar) bool {
+		for _, e := range envs {
+			if e.Name == EnvOpenCodeReloadURL {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("reload mount gets the server URL", func(t *testing.T) {
+		sidecar := buildGitSyncSidecar(reloadMount, "git-context-0", 0, sysCfg, serverURL)
+		if !hasEnvVar(sidecar.Env, EnvOpenCodeReloadURL, serverURL) {
+			t.Errorf("expected %s=%s on the sidecar", EnvOpenCodeReloadURL, serverURL)
+		}
+	})
+
+	t.Run("non-reload mount gets no server URL", func(t *testing.T) {
+		sidecar := buildGitSyncSidecar(plainMount, "git-context-0", 0, sysCfg, serverURL)
+		if hasReloadEnv(sidecar.Env) {
+			t.Errorf("did not expect %s on a mount without reload", EnvOpenCodeReloadURL)
+		}
+	})
+
+	t.Run("no server URL means no reload env", func(t *testing.T) {
+		// Ephemeral Task pods have no long-lived server to reload.
+		sidecar := buildGitSyncSidecar(reloadMount, "git-context-0", 0, sysCfg, "")
+		if hasReloadEnv(sidecar.Env) {
+			t.Errorf("did not expect %s when no server URL is provided", EnvOpenCodeReloadURL)
+		}
+	})
+
+	t.Run("reload does not disturb existing env", func(t *testing.T) {
+		sidecar := buildGitSyncSidecar(reloadMount, "git-context-0", 0, sysCfg, serverURL)
+		if !hasEnvVar(sidecar.Env, "GIT_SYNC_INTERVAL", "900") {
+			t.Error("expected the 15m interval to be passed through")
+		}
+		if !hasEnvVar(sidecar.Env, "GIT_REPO", reloadMount.repository) {
+			t.Error("expected GIT_REPO to be preserved")
+		}
+	})
 }
 
 func TestTruncateHash(t *testing.T) {

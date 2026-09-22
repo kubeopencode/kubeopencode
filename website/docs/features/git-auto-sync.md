@@ -53,6 +53,36 @@ When the controller detects a remote change with Rollout policy, it checks for a
 
 New Tasks are **not blocked** during `GitSyncPending` — only the Deployment rollout is delayed.
 
+## Reloading the Server (HotReload)
+
+HotReload updates files in place, which is enough for content the agent reads at
+use time (prompts, docs, context files). Content that OpenCode snapshots at
+instance start — most notably **skills** — needs more: the file on disk can be
+current while the running server still holds the old version.
+
+Set `sync.reload: true` to have the sidecar ask the server to re-scan after an
+update lands:
+
+```yaml
+contexts:
+- name: shared-config
+  type: Git
+  git:
+    repository: https://github.com/org/config.git
+    sync:
+      enabled: true
+      policy: HotReload
+      reload: true    # re-scan the server after an update
+  mountPath: config/
+```
+
+The reload is **deferred while any session is busy**, because re-scanning
+re-initializes the server instance and would abort a turn in progress. It is
+retried every cycle, and an owed reload survives a sidecar restart.
+
+Skill sources reload automatically when synced and do not need this flag — see
+[Skills](skills.md#keeping-skills-up-to-date).
+
 ## Sync Status
 
 Agent status tracks the sync state:

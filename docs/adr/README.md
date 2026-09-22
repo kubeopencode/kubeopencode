@@ -43,6 +43,8 @@ ADRs document significant architectural and design decisions along with their co
 | 0030 | [Graceful Task Termination on Deletion](0030-task-deletion-graceful-stop.md) | |
 | 0031 | [OpenTelemetry Observability for Tasks and Agents](0031-opentelemetry-observability.md) | |
 | 0036 | [Agent Registry — Enterprise Agent Asset Management and Visual Agent Assembly](0036-agent-registry.md) | |
+| 0042 | [GitHub App Authentication for Git Operations](0042-github-app-auth-for-git.md) | |
+| 0043 | [Hot-Reloading Skills in Long-Running Agents](0043-hot-reload-skills-in-agents.md) | |
 
 ## Archived ADRs
 

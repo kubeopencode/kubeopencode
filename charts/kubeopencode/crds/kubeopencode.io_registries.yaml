@@ -325,6 +325,9 @@ spec:
                             The Secret should contain one of:
                               - "username" + "password": For HTTPS token-based auth (password can be a PAT)
                               - "ssh-privatekey": For SSH key-based auth
+                              - "app-id" + "app-installation-id" + "app-private-key": For GitHub App
+                                authentication; an installation access token is minted at runtime.
+                            GitHub App credentials take precedence when present.
                             If not specified, anonymous clone is attempted.
                             Reuses the same Secret format as context Git.
                           properties:
@@ -334,9 +337,75 @@ spec:
                           required:
                           - name
                           type: object
+                        sync:
+                          description: |-
+                            Sync configures periodic synchronization of the skill repository for
+                            long-running Agents (ignored for ephemeral Task pods, which run once).
+
+                            When enabled, a git-sync sidecar polls the remote and updates the cloned
+                            content in place. Because OpenCode discovers skills only at instance
+                            start, updated files alone are not enough for a running server: after a
+                            change is detected the sidecar asks the server to re-scan, so changed
+                            skills become visible without a Pod restart.
+
+                            Only the HotReload policy is supported for skills. Rollout would require
+                            comparing remote refs in the controller and is rejected here.
+
+                            Note: skills selected via "names" are mounted from fixed subpaths, so
+                            edits to those skills are picked up but newly added skill directories are
+                            not mounted until the Pod restarts. Omit "names" to mount the whole
+                            directory and pick up additions without a restart.
+                          properties:
+                            enabled:
+                              description: |-
+                                Enabled enables periodic sync of the Git repository.
+                                When true, a sidecar container (HotReload) or controller polling (Rollout)
+                                is used to keep the Git content up-to-date.
+                              type: boolean
+                            interval:
+                              description: |-
+                                Interval is the polling interval for checking remote changes.
+                                Default: "5m".
+                              type: string
+                            policy:
+                              default: HotReload
+                              description: |-
+                                Policy determines how changes are applied.
+                                HotReload (default): sidecar pulls changes in-place, no Pod restart.
+                                Rollout: controller detects changes and triggers Deployment rolling update.
+                              enum:
+                              - HotReload
+                              - Rollout
+                              type: string
+                            reload:
+                              description: |-
+                                Reload asks the OpenCode server to re-scan its configuration after a
+                                HotReload update lands, so the change takes effect without a Pod restart.
+
+                                This matters for content the server snapshots at instance start — most
+                                notably skills, which are discovered once and cached in memory. Updating
+                                files on disk alone is invisible to a running server.
+
+                                The reload is performed by the git-sync sidecar calling the server's
+                                reload endpoint. To avoid interrupting work in progress, the reload is
+                                deferred while any session is busy and retried on the next sync cycle.
+
+                                Only effective with Policy: HotReload, and only for long-running Agents
+                                (ignored for ephemeral Task pods).
+
+                                This field is an opt-in for Git contexts. Skill sources always reload
+                                when sync is enabled, since re-scanning is the point of syncing skills;
+                                set sync on a skill only if you want that behavior.
+                              type: boolean
+                          type: object
                       required:
                       - repository
                       type: object
+                      x-kubernetes-validations:
+                      - message: sync.policy Rollout is not supported for skills;
+                          use HotReload
+                        rule: '!has(self.sync) || !has(self.sync.policy) || self.sync.policy
+                          != ''Rollout'''
                     metadata:
                       description: Metadata provides human-readable information for
                         the UI.

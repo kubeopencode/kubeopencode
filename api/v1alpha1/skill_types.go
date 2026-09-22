@@ -41,6 +41,8 @@ type SkillSource struct {
 // GitSkillSource defines a Git repository as a skill source.
 // The repository should contain SKILL.md files organized as one-folder-per-skill,
 // following the standard skill format (Markdown with YAML frontmatter).
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.sync) || !has(self.sync.policy) || self.sync.policy != 'Rollout'",message="sync.policy Rollout is not supported for skills; use HotReload"
 type GitSkillSource struct {
 	// Repository is the Git repository URL.
 	// Supported protocols: https://, http://, git@ (SSH).
@@ -90,8 +92,30 @@ type GitSkillSource struct {
 	// The Secret should contain one of:
 	//   - "username" + "password": For HTTPS token-based auth (password can be a PAT)
 	//   - "ssh-privatekey": For SSH key-based auth
+	//   - "app-id" + "app-installation-id" + "app-private-key": For GitHub App
+	//     authentication; an installation access token is minted at runtime.
+	// GitHub App credentials take precedence when present.
 	// If not specified, anonymous clone is attempted.
 	// Reuses the same Secret format as context Git.
 	// +optional
 	SecretRef *GitSecretReference `json:"secretRef,omitempty"`
+
+	// Sync configures periodic synchronization of the skill repository for
+	// long-running Agents (ignored for ephemeral Task pods, which run once).
+	//
+	// When enabled, a git-sync sidecar polls the remote and updates the cloned
+	// content in place. Because OpenCode discovers skills only at instance
+	// start, updated files alone are not enough for a running server: after a
+	// change is detected the sidecar asks the server to re-scan, so changed
+	// skills become visible without a Pod restart.
+	//
+	// Only the HotReload policy is supported for skills. Rollout would require
+	// comparing remote refs in the controller and is rejected here.
+	//
+	// Note: skills selected via "names" are mounted from fixed subpaths, so
+	// edits to those skills are picked up but newly added skill directories are
+	// not mounted until the Pod restarts. Omit "names" to mount the whole
+	// directory and pick up additions without a restart.
+	// +optional
+	Sync *GitSync `json:"sync,omitempty"`
 }

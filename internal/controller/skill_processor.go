@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -21,6 +22,12 @@ const (
 	// DefaultPluginsMountBase is the base directory where plugins are installed.
 	// The plugin-init container runs npm install here, creating /plugins/node_modules/.
 	DefaultPluginsMountBase = "/plugins"
+
+	// DefaultSkillSyncInterval is the default polling interval for skill sync.
+	// Longer than the Git context default (5m) on purpose: each detected change
+	// triggers a server instance reload, which re-initializes in-flight server
+	// resources. Skill catalogs change far less often than prompts or docs.
+	DefaultSkillSyncInterval = 15 * time.Minute
 )
 
 // processSkills converts SkillSource items into gitMounts and returns
@@ -65,6 +72,25 @@ func processSkills(skills []kubeopenv1alpha1.SkillSource) ([]gitMount, []string)
 			recurseSubmodules: git.RecurseSubmodules,
 			names:             git.Names,
 		}
+
+		// Populate sync fields if configured.
+		//
+		// Skills always request a server reload when syncing: OpenCode caches
+		// discovered skills at instance start, so updating the cloned files is
+		// not by itself visible to a long-running server.
+		if git.Sync != nil && git.Sync.Enabled {
+			gm.syncEnabled = true
+			gm.syncPolicy = git.Sync.Policy
+			if gm.syncPolicy == "" {
+				gm.syncPolicy = kubeopenv1alpha1.GitSyncPolicyHotReload
+			}
+			gm.syncInterval = git.Sync.Interval.Duration
+			if gm.syncInterval == 0 {
+				gm.syncInterval = DefaultSkillSyncInterval
+			}
+			gm.reloadOnSync = gm.syncPolicy == kubeopenv1alpha1.GitSyncPolicyHotReload
+		}
+
 		gitMounts = append(gitMounts, gm)
 
 		// Compute skill paths for OpenCode discovery.

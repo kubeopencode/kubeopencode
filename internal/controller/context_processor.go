@@ -177,6 +177,7 @@ func resolveContextContentFromReader(reader contextReader, ctx context.Context, 
 			if gm.syncInterval == 0 {
 				gm.syncInterval = 5 * time.Minute
 			}
+			gm.reloadOnSync = git.Sync.Reload
 		}
 
 		return "", nil, gm, nil

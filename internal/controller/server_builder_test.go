@@ -5,6 +5,7 @@
 package controller
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -2942,4 +2943,78 @@ func TestBuildServerDeployment_OTelEnableLLMTraces(t *testing.T) {
 	if !foundConfigContent {
 		t.Error("expected OPENCODE_CONFIG_CONTENT to be set when enableLLMTraces is true")
 	}
+}
+
+// TestBuildServerDeployment_GitSyncReload verifies that a git-sync sidecar for a
+// mount requesting reload is told how to reach the agent's own OpenCode server,
+// and that mounts which do not request reload are left untouched.
+func TestBuildServerDeployment_GitSyncReload(t *testing.T) {
+	newAgent := func(port int32) *kubeopenv1alpha1.Agent {
+		return &kubeopenv1alpha1.Agent{
+			ObjectMeta: metav1.ObjectMeta{Name: "reload-agent", Namespace: "default"},
+			Spec:       kubeopenv1alpha1.AgentSpec{Port: port},
+		}
+	}
+	cfg := agentConfig{
+		executorImage: "test-executor",
+		agentImage:    "test-agent",
+		workspaceDir:  "/workspace",
+	}
+	// Port is deliberately non-default to catch a hardcoded URL.
+	const port = int32(4123)
+
+	sidecarFor := func(t *testing.T, gm gitMount, agent *kubeopenv1alpha1.Agent) corev1.Container {
+		t.Helper()
+		deployment := BuildServerDeployment(agent, cfg, defaultSystemConfig(), nil, nil, nil, []gitMount{gm}, nil)
+		containers := deployment.Spec.Template.Spec.Containers
+		if len(containers) != 2 {
+			t.Fatalf("expected main + sidecar containers, got %d", len(containers))
+		}
+		return containers[1]
+	}
+	envValue := func(container corev1.Container, name string) (string, bool) {
+		for _, e := range container.Env {
+			if e.Name == name {
+				return e.Value, true
+			}
+		}
+		return "", false
+	}
+
+	t.Run("reload mount points at the agent server port", func(t *testing.T) {
+		sidecar := sidecarFor(t, gitMount{
+			contextName:  "skill-org-skills",
+			repository:   "https://github.com/org/skills.git",
+			mountPath:    "/skills/org-skills",
+			syncEnabled:  true,
+			syncPolicy:   kubeopenv1alpha1.GitSyncPolicyHotReload,
+			syncInterval: 15 * time.Minute,
+			reloadOnSync: true,
+		}, newAgent(port))
+
+		got, ok := envValue(sidecar, EnvOpenCodeReloadURL)
+		if !ok {
+			t.Fatalf("expected %s on the sidecar", EnvOpenCodeReloadURL)
+		}
+		want := fmt.Sprintf("http://127.0.0.1:%d", port)
+		if got != want {
+			t.Errorf("%s = %q, want %q", EnvOpenCodeReloadURL, got, want)
+		}
+	})
+
+	t.Run("non-reload mount gets no server URL", func(t *testing.T) {
+		sidecar := sidecarFor(t, gitMount{
+			contextName:  "team-prompts",
+			repository:   "https://github.com/org/prompts.git",
+			mountPath:    "/workspace/prompts",
+			syncEnabled:  true,
+			syncPolicy:   kubeopenv1alpha1.GitSyncPolicyHotReload,
+			syncInterval: 5 * time.Minute,
+			reloadOnSync: false,
+		}, newAgent(port))
+
+		if _, ok := envValue(sidecar, EnvOpenCodeReloadURL); ok {
+			t.Errorf("did not expect %s without reloadOnSync", EnvOpenCodeReloadURL)
+		}
+	})
 }

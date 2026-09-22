@@ -96,7 +96,9 @@ skills:
 
 ## Private Repositories
 
-Use `secretRef` for authentication (same Secret format as Git contexts):
+Use `secretRef` for authentication (same Secret format as Git contexts). The
+Secret may contain a GitHub App credential, an HTTPS username/password (a PAT),
+or an SSH private key — the method is selected by which keys exist:
 
 ```yaml
 skills:
@@ -108,12 +110,83 @@ skills:
       name: github-pat
 ```
 
+| Secret keys | Method |
+|---|---|
+| `app-id`, `app-installation-id`, `app-private-key` | GitHub App — an installation access token is minted at runtime. **Preferred**: short-lived, scoped to the App's permissions, and one App covers every repo in the org. |
+| `username`, `password` | HTTPS username/password (token-based auth; `password` may be a PAT). |
+| `ssh-privatekey`, optional `ssh-known-hosts` | SSH private key. |
+
+When GitHub App credentials are present they take precedence. App auth is
+HTTPS-only, so an SSH repository URL (`git@github.com:org/repo.git`) is rewritten
+to HTTPS automatically. This is the recommended way to clone skills from a
+private organization repo — see
+[Security - GitHub App Authentication](../security.md#github-app-authentication).
+
+```bash
+# GitHub App (recommended for organization-wide skill catalogs)
+kubectl create secret generic github-app-credentials \
+  --from-literal=app-id=123456 \
+  --from-literal=app-installation-id=7891011 \
+  --from-file=app-private-key=$HOME/.ssh/github-app.pem
+```
+
+```yaml
+skills:
+- name: internal-skills
+  git:
+    repository: https://github.com/my-org/private-skills.git
+    ref: master
+    secretRef:
+      name: github-app-credentials
+```
+
 ## How It Works
 
 1. The controller clones skill Git repositories via `git-init` init containers
 2. Skills are mounted at `/skills/{source-name}/` in the agent pod
 3. The controller auto-injects `skills.paths` into `opencode.json`
 4. OpenCode discovers SKILL.md files and makes them available as slash commands
+
+## Keeping Skills Up to Date
+
+OpenCode discovers skills **once, when its server instance starts**, and caches
+them. For a long-running Agent that means a change pushed to a skill repository
+is invisible until the Pod restarts — even though the cloned files on disk are
+updated.
+
+Enable `sync` to close that gap. A `git-sync` sidecar polls the repository and,
+when it detects a new commit, updates the files **and asks the server to
+re-scan**, so the change takes effect without a restart:
+
+```yaml
+skills:
+- name: org-skills
+  git:
+    repository: https://github.com/my-org/standards-skills.git
+    path: .claude/skills
+    sync:
+      enabled: true
+      interval: 15m   # default for skills
+```
+
+Notes:
+
+- **Only `HotReload` is supported.** `Rollout` is rejected for skills, since it
+  would compare remote refs in the controller rather than reloading in place.
+- **Reloads wait for an idle agent.** Re-scanning briefly re-initializes the
+  server instance, which would abort a turn that is mid-flight. If a session is
+  busy the reload is deferred to the next cycle, so a continuously busy agent
+  picks up the change at its next idle window. The file update itself still
+  happens immediately.
+- **`sync` applies to long-running Agents only.** Task pods are ephemeral and
+  always start fresh, so they ignore it.
+- **Skills selected with `names` are mounted from fixed subpaths.** Edits to
+  those skills are picked up, but a newly added skill directory is not mounted
+  until the Pod restarts. Omit `names` to mount the whole directory and pick up
+  additions without a restart.
+
+Git contexts can do the same with `sync.reload: true` — see
+[Git Auto-Sync](git-auto-sync.md).
 
 ## Skills in Templates
 
@@ -144,4 +217,7 @@ spec:
 | `git.names` | []string | (all) | Specific skill directories to include |
 | `git.depth` | int | 1 | Clone depth (1=shallow, 0=full) |
 | `git.recurseSubmodules` | bool | false | Clone submodules recursively |
-| `git.secretRef.name` | string | - | Secret for Git authentication |
+| `git.secretRef.name` | string | - | Secret for Git authentication. Keys: `app-id`/`app-installation-id`/`app-private-key` (GitHub App, preferred), `username`/`password` (HTTPS), or `ssh-privatekey` (SSH) |
+| `git.sync.enabled` | bool | false | Poll the repository and reload the server on change (Agent servers only) |
+| `git.sync.interval` | duration | 15m | Polling interval for skill sync |
+| `git.sync.policy` | string | HotReload | Only `HotReload` is valid for skills |

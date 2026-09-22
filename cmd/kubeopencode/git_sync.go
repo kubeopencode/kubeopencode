@@ -4,7 +4,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -19,11 +22,30 @@ import (
 // Environment variable names for git-sync (unique to git-sync)
 const (
 	envSyncInterval = "GIT_SYNC_INTERVAL"
+
+	// envReloadURL, when set, is the base URL of the OpenCode server that should
+	// be asked to re-scan its configuration after a content update lands.
+	// Only set on sidecars for mounts that request a reload (skills, or Git
+	// contexts with sync.reload enabled).
+	envReloadURL = "OPENCODE_RELOAD_URL"
 )
 
 // Default values for git-sync
 const (
 	defaultSyncInterval = 300 // 5 minutes in seconds
+
+	// sessionStatusPath reports per-session activity. A session that is
+	// currently generating has type "busy"; an idle server returns an empty map.
+	sessionStatusPath = "/session/status"
+
+	// instanceDisposePath releases the server's current instance, causing it to
+	// re-scan configuration and content on the next request. This is what makes
+	// updated skills visible without restarting the Pod.
+	instanceDisposePath = "/instance/dispose"
+
+	// reloadRequestTimeout bounds each reload-related HTTP call so a wedged
+	// server can never block the sync loop indefinitely.
+	reloadRequestTimeout = 10 * time.Second
 )
 
 func init() {
@@ -48,7 +70,23 @@ Environment variables:
   GIT_USERNAME        HTTPS username
   GIT_PASSWORD        HTTPS password/token
   GIT_SSH_KEY             SSH private key (content or file path)
-  GIT_SSH_KNOWN_HOSTS     Known hosts content for SSH verification`,
+  GIT_SSH_KNOWN_HOSTS     Known hosts content for SSH verification
+
+GitHub App authentication (takes precedence over the credentials above):
+  GH_APP_ID               GitHub App ID
+  GH_APP_INSTALLATION_ID  GitHub App installation ID
+  GH_APP_PRIVATE_KEY      App private key PEM content or path to a PEM file
+  GITHUB_API_URL          GitHub API base URL, default: https://api.github.com
+
+  Installation access tokens expire after one hour, so a fresh token is minted
+  before each sync cycle.
+
+Reload (optional):
+  OPENCODE_RELOAD_URL  Base URL of the OpenCode server to notify after a change
+                       (e.g. http://127.0.0.1:4096). When set, the sidecar asks
+                       the server to re-scan so the update takes effect without a
+                       Pod restart. The reload is deferred while any session is
+                       busy, and retried on the next cycle.`,
 	RunE: runGitSync,
 }
 
@@ -69,8 +107,15 @@ func runGitSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Setup authentication (persistent — no cleanup for sidecar)
-	if err := setupAuth(); err != nil {
+	appAuth, err := setupAuth()
+	if err != nil {
 		return fmt.Errorf("failed to setup authentication: %w", err)
+	}
+
+	// GitHub App installation tokens are HTTPS credentials, and the repository
+	// may have been written as an SSH URL.
+	if appAuth != nil {
+		repo = httpsRepoURL(repo)
 	}
 
 	// Get configuration
@@ -112,12 +157,85 @@ func runGitSync(cmd *cobra.Command, args []string) error {
 		fetchRef = ""
 	}
 
+	// refreshCredentials rewrites the credential file before each sync so that
+	// GitHub App installation tokens (which expire after one hour) stay valid
+	// for the lifetime of this long-running sidecar.
+	refreshCredentials := func() {
+		if appAuth == nil {
+			return
+		}
+		if err := writeGithubAppCredentials(appAuth); err != nil {
+			fmt.Printf("git-sync: Warning: could not refresh GitHub App credentials: %v\n", err)
+		}
+	}
+
+	// reloadURL is set only for mounts that need the server to re-scan after an
+	// update (skill sources, or Git contexts with sync.reload). Without it, this
+	// sidecar behaves exactly as before: files update, no server interaction.
+	reloadURL := strings.TrimRight(os.Getenv(envReloadURL), "/")
+	if reloadURL != "" {
+		fmt.Printf("  Reload: %s (deferred while sessions are busy)\n", reloadURL)
+	}
+
+	// The server remembers nothing about what it has scanned, and this sidecar
+	// can restart at any time, so the "server is behind the working tree"
+	// condition is persisted on the shared volume as the commit hash the server
+	// last re-scanned. Comparing it against the local HEAD each cycle means an
+	// owed reload survives a sidecar restart instead of waiting for the next
+	// commit to the repository.
+	stateFile := filepath.Join(root, "."+link+".reload-state")
+
+	// On a fresh Pod the server scanned the git-init clone at startup, so the
+	// current HEAD is already current. Seed the state to avoid a needless
+	// reload right after boot. Recorded before the first sync so a repository
+	// that is already ahead still registers as needing a reload.
+	if reloadURL != "" {
+		if _, ok := readReloadState(stateFile); !ok {
+			if h, err := gitRevParse(targetDir, "HEAD"); err == nil {
+				if err := writeReloadState(stateFile, h); err != nil {
+					fmt.Printf("git-sync: Warning: could not seed reload state: %v\n", err)
+				}
+			}
+		}
+	}
+
+	// runSync performs one sync cycle and reloads the server if it is behind.
+	runSync := func() {
+		syncOnce(targetDir, fetchRef)
+
+		if reloadURL == "" {
+			return
+		}
+
+		localHash, err := gitRevParse(targetDir, "HEAD")
+		if err != nil {
+			fmt.Printf("git-sync: Warning: could not read local HEAD for reload check: %v\n", err)
+			return
+		}
+		// Already current: either nothing changed, or the reload succeeded on a
+		// previous cycle. Checked outside the change detection so a reload
+		// deferred for a busy server is retried even without a new commit.
+		if scanned, _ := readReloadState(stateFile); scanned == localHash {
+			return
+		}
+
+		if err := reloadOpenCodeServer(reloadURL); err != nil {
+			fmt.Printf("git-sync: Reload deferred: %v\n", err)
+			return
+		}
+		fmt.Println("git-sync: Server re-scanned updated content")
+		if err := writeReloadState(stateFile, localHash); err != nil {
+			fmt.Printf("git-sync: Warning: could not persist reload state: %v\n", err)
+		}
+	}
+
 	// Main sync loop
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	defer ticker.Stop()
 
 	// Run first sync immediately
-	syncOnce(targetDir, fetchRef)
+	refreshCredentials()
+	runSync()
 
 	for {
 		select {
@@ -125,9 +243,84 @@ func runGitSync(cmd *cobra.Command, args []string) error {
 			fmt.Println("git-sync: Shutdown complete")
 			return nil
 		case <-ticker.C:
-			syncOnce(targetDir, fetchRef)
+			refreshCredentials()
+			runSync()
 		}
 	}
+}
+
+// reloadOpenCodeServer asks the OpenCode server to re-scan its configuration.
+//
+// The server caches some content at instance start (notably skills, which are
+// discovered once). Updating files on disk is therefore invisible to a running
+// server until its instance is disposed and rebuilt.
+//
+// Disposal releases the whole instance, so it must not run while a session is
+// generating — that would abort the in-flight turn. This function therefore
+// refuses to reload while any session is busy, returning an error that the
+// caller treats as "retry next cycle" rather than a failure.
+func reloadOpenCodeServer(baseURL string) error {
+	client := &http.Client{Timeout: reloadRequestTimeout}
+
+	busy, err := anySessionBusy(client, baseURL)
+	if err != nil {
+		return fmt.Errorf("could not determine session activity: %w", err)
+	}
+	if busy {
+		return fmt.Errorf("a session is active; will retry next cycle")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, baseURL+instanceDisposePath, nil)
+	if err != nil {
+		return fmt.Errorf("building reload request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("reload request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("reload returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// anySessionBusy reports whether any session on the server is currently
+// generating. The status endpoint returns a map of session ID to state, where a
+// busy session has type "busy". An idle server returns an empty map.
+func anySessionBusy(client *http.Client, baseURL string) (bool, error) {
+	resp, err := client.Get(baseURL + sessionStatusPath) //nolint:gosec // URL from controlled env var
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("session status returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return false, err
+	}
+
+	var statuses map[string]struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(body, &statuses); err != nil {
+		// An unrecognized payload is treated as "busy" (fail safe) so an API
+		// change cannot cause us to abort someone's work in progress.
+		return true, fmt.Errorf("unexpected session status payload: %w", err)
+	}
+
+	for _, s := range statuses {
+		if s.Type == "busy" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // syncOnce performs a single sync cycle: fetch, compare, and update if needed.
@@ -184,6 +377,35 @@ func syncOnce(targetDir, fetchRef string) {
 	}
 
 	fmt.Printf("git-sync: Successfully updated to %s\n", safeHash(remoteHash))
+}
+
+// readReloadState returns the commit hash the server last re-scanned. The second
+// return value is false when no state has been recorded yet.
+func readReloadState(path string) (string, bool) {
+	data, err := os.ReadFile(path) //nolint:gosec // controlled path on the shared volume
+	if err != nil {
+		return "", false
+	}
+	hash := strings.TrimSpace(string(data))
+	if hash == "" {
+		return "", false
+	}
+	return hash, true
+}
+
+// writeReloadState records the commit hash the server has most recently scanned.
+//
+// The file is made world-writable because containers may run as a random UID
+// (SCC environments) and a restarted sidecar can therefore inherit a different
+// UID than the one that created the file.
+func writeReloadState(path, hash string) error {
+	if err := os.WriteFile(path, []byte(hash+"\n"), 0o666); err != nil { //nolint:gosec // not sensitive
+		return err
+	}
+	if err := os.Chmod(path, 0o666); err != nil { //nolint:gosec // not sensitive
+		return err
+	}
+	return nil
 }
 
 // gitRevParse runs git rev-parse and returns the hash.
