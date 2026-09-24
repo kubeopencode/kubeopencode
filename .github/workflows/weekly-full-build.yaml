@@ -92,9 +92,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract OPENCODE_VERSION from agents/Makefile
+      - name: Get latest v1.x OpenCode version from github.com/anomalyco/opencode/releases
         id: opencode-version
-        run: echo "version=$(grep '^OPENCODE_VERSION' agents/Makefile | head -1 | sed 's/.*?= *//')" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(curl -s "https://api.github.com/repos/anomalyco/opencode/releases?per_page=100" \
+            | jq -r '[.[] | select(.prerelease == false) | .tag_name | select(startswith("v1."))][0]' \
+            | sed 's/^v//')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build and push opencode agent
         uses: docker/build-push-action@v7
