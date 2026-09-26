@@ -61,10 +61,10 @@ The universal devbox image (`kubeopencode-agent-devbox`) provides a comprehensiv
 ### Languages & Runtimes
 | Tool | Version | Description |
 |------|---------|-------------|
-| Go | 1.25.5 | Go programming language |
+| Go | 1.26.3 | Go programming language |
 | Node.js | 22.x LTS | JavaScript runtime |
 | Python | 3.x | Python interpreter + pip + venv |
-| golangci-lint | latest | Go linter |
+| golangci-lint | 2.14.0 | Go linter |
 
 ### Cloud & Kubernetes Tools
 | Tool | Description |
@@ -84,11 +84,13 @@ The universal devbox image (`kubeopencode-agent-devbox`) provides a comprehensiv
 | gcc, g++ | C/C++ compilers |
 | jq | JSON processor |
 | yq | YAML processor |
+| ripgrep (`rg`) | Debian package | Fast recursive code search |
 | vim, nano | Text editors |
 | tree, htop | Utilities |
 
 ### Shell & Compatibility
 - **zsh** as default shell
+- **Login-shell PATH**: Go and Go workspace binaries remain available after Debian resets PATH
 - **OpenShift compatible**: Works with arbitrary UIDs (uses /tmp as HOME)
 
 ## Building Images
