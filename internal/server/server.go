@@ -155,7 +155,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 	r.Use(chimiddleware.RealIP)
 	r.Use(structuredLogger)
 	r.Use(chimiddleware.Recoverer)
-	r.Use(chimiddleware.Timeout(60 * time.Second))
+	r.Use(timeoutUnlessStreaming(60 * time.Second))
 
 	// CORS middleware
 	if len(s.opts.CORSAllowedOrigins) > 0 {
@@ -428,6 +428,25 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func timeoutUnlessStreaming(timeout time.Duration) func(http.Handler) http.Handler {
+	withTimeout := chimiddleware.Timeout(timeout)
+	return func(next http.Handler) http.Handler {
+		timed := withTimeout(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isStreamingRequest(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			timed.ServeHTTP(w, r)
+		})
+	}
+}
+
+func isStreamingRequest(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "text/event-stream") ||
+		strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
 }
 
 // GetClientFromContext retrieves the Kubernetes client from the request context
