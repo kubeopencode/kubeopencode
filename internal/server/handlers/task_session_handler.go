@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -79,7 +80,7 @@ func (h *TaskSessionHandler) resolveTaskSessionURL(ctx context.Context, namespac
 	return agent.Status.URL, task.Status.Session.ID, nil
 }
 
-// GetSession proxies GET /session/:id to the Agent's OpenCode server.
+// GetSession proxies GET /api/session/:id (with fallback to /session/:id) to the Agent's OpenCode server.
 // Route: GET /api/v1/namespaces/{namespace}/tasks/{name}/session
 func (h *TaskSessionHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
@@ -93,10 +94,10 @@ func (h *TaskSessionHandler) GetSession(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.proxyToSession(w, r, serverURL, fmt.Sprintf("/session/%s", sessionID), "")
+	h.proxyToSession(w, r, serverURL, fmt.Sprintf("/api/session/%s", sessionID), "")
 }
 
-// GetSessionMessages proxies GET /session/:id/message to the Agent's OpenCode server.
+// GetSessionMessages proxies GET /api/session/:id/message (with fallback to /session/:id/message) to the Agent's OpenCode server.
 // Route: GET /api/v1/namespaces/{namespace}/tasks/{name}/session/messages
 func (h *TaskSessionHandler) GetSessionMessages(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
@@ -112,7 +113,7 @@ func (h *TaskSessionHandler) GetSessionMessages(w http.ResponseWriter, r *http.R
 
 	// Forward query parameters (e.g., before, limit for pagination) separately
 	// to avoid embedding them in the path string.
-	h.proxyToSession(w, r, serverURL, fmt.Sprintf("/session/%s/message", sessionID), r.URL.RawQuery)
+	h.proxyToSession(w, r, serverURL, fmt.Sprintf("/api/session/%s/message", sessionID), r.URL.RawQuery)
 }
 
 // proxyToSession creates a reverse proxy to the Agent's OpenCode server
@@ -137,6 +138,25 @@ func (h *TaskSessionHandler) proxyToSession(w http.ResponseWriter, r *http.Reque
 			req.Host = target.Host
 			// Remove Authorization header — internal traffic
 			req.Header.Del("Authorization")
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			// If 404 is returned on /api/session endpoint, fallback to legacy OpenCode 1.x /session endpoint
+			if resp.StatusCode == http.StatusNotFound && strings.HasPrefix(targetPath, "/api/session") {
+				legacyPath := strings.TrimPrefix(targetPath, "/api")
+				legacyURL := fmt.Sprintf("%s%s", serverURL, legacyPath)
+				if queryString != "" {
+					legacyURL += "?" + queryString
+				}
+				legacyReq, err := http.NewRequestWithContext(resp.Request.Context(), resp.Request.Method, legacyURL, nil) //nolint:gosec // Internal proxy to validated agent URL
+				if err == nil {
+					client := &http.Client{Timeout: sessionProxyTimeout}
+					legacyResp, err := client.Do(legacyReq) //nolint:gosec // Internal proxy to validated agent URL
+					if err == nil && legacyResp.StatusCode == http.StatusOK {
+						*resp = *legacyResp
+					}
+				}
+			}
+			return nil
 		},
 		FlushInterval: -1,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {

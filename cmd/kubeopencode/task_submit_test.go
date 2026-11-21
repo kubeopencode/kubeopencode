@@ -452,3 +452,124 @@ func writeSSE(w io.Writer, flusher http.Flusher, data string) {
 	_, _ = io.WriteString(w, data+"\n")
 	flusher.Flush()
 }
+
+func TestCreateSession_V2AndLegacy(t *testing.T) {
+	t.Run("OpenCode 2.x /api/session", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/session" || r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]string{
+					"id": "ses_v2_123",
+				},
+			})
+		}))
+		defer server.Close()
+
+		id, err := createSession(server.Client(), server.URL)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if id != "ses_v2_123" {
+			t.Errorf("expected ses_v2_123, got %s", id)
+		}
+	})
+
+	t.Run("OpenCode 1.x legacy /session", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/session" && r.Method == http.MethodPost {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"id": "ses_v1_456",
+				})
+				return
+			}
+			http.NotFound(w, r)
+		}))
+		defer server.Close()
+
+		id, err := createSession(server.Client(), server.URL)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if id != "ses_v1_456" {
+			t.Errorf("expected ses_v1_456, got %s", id)
+		}
+	})
+}
+
+func TestSubmitPrompt_V2AndLegacy(t *testing.T) {
+	t.Run("OpenCode 2.x /api/session/:id/prompt", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/session/ses_123/prompt" {
+				http.NotFound(w, r)
+				return
+			}
+			var body map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["text"] != "hello prompt" {
+				t.Errorf("expected 'hello prompt', got %v", body["text"])
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer server.Close()
+
+		err := submitPrompt(server.Client(), server.URL, "ses_123", "hello prompt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("OpenCode 1.x legacy /session/:id/prompt_async", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/session/ses_123/prompt_async" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			http.NotFound(w, r)
+		}))
+		defer server.Close()
+
+		err := submitPrompt(server.Client(), server.URL, "ses_123", "hello prompt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestWaitForIdle_V2(t *testing.T) {
+	polls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/session/active" {
+			http.NotFound(w, r)
+			return
+		}
+		polls++
+		w.Header().Set("Content-Type", "application/json")
+		if polls == 1 {
+			// First poll: still running
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"ses_123": map[string]string{"type": "running"},
+				},
+			})
+			return
+		}
+		// Second poll: no longer active (completed)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": map[string]interface{}{},
+		})
+	}))
+	defer server.Close()
+
+	err := waitForIdle(server.Client(), server.URL, "ses_123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if polls < 2 {
+		t.Errorf("expected at least 2 polls, got %d", polls)
+	}
+}

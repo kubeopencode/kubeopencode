@@ -51,11 +51,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Optional variant (e.g. "baseline" for non-AVX2 CPUs on x64)
+ARG OPENCODE_VARIANT=""
+
 # Detect architecture and download appropriate binary
 ARG TARGETARCH
 RUN set -ex; \
     case "${TARGETARCH}" in \
-        amd64) ARCH="x64" ;; \
+        amd64) \
+            if [ "${OPENCODE_VARIANT}" = "baseline" ]; then \
+                ARCH="x64-baseline"; \
+            else \
+                ARCH="x64"; \
+            fi ;; \
         arm64) ARCH="arm64" ;; \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac; \

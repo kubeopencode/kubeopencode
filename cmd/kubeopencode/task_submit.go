@@ -24,17 +24,35 @@ const (
 	httpTimeout = 30 * time.Second
 )
 
-// sessionCreateResponse is the response from POST /session.
+// sessionCreateResponse handles both OpenCode 2.x ({ "data": { "id": "..." } })
+// and OpenCode 1.x ({ "id": "..." }) responses.
 type sessionCreateResponse struct {
-	ID string `json:"id"`
+	ID   string `json:"id"`
+	Data struct {
+		ID string `json:"id"`
+	} `json:"data"`
 }
 
-// sessionStatusMap is the response from GET /session/status.
+func (r *sessionCreateResponse) SessionID() string {
+	if r.Data.ID != "" {
+		return r.Data.ID
+	}
+	return r.ID
+}
+
+// sessionStatusMap is the response from legacy GET /session/status.
 // Maps session ID to status info.
 type sessionStatusMap map[string]sessionStatusInfo
 
 type sessionStatusInfo struct {
 	Type string `json:"type"` // "idle", "busy", "retry"
+}
+
+// sessionActiveResponse is the response from OpenCode 2.x GET /api/session/active.
+type sessionActiveResponse struct {
+	Data map[string]struct {
+		Type string `json:"type"`
+	} `json:"data"`
 }
 
 var taskSubmitCmd = &cobra.Command{
@@ -139,14 +157,21 @@ func createSession(client *http.Client, serverURL string) (string, error) {
 	// Create session with all permissions allowed.
 	// Tasks are non-interactive — they run to completion.
 	// For interactive sessions, users use `opencode attach` directly.
-	payload := `{"permission":{"*":"allow"}}`
-	resp, err := client.Post(serverURL+"/session", "application/json", bytes.NewBufferString(payload))
+	payload := `{"permissions":{"*":"allow"},"permission":{"*":"allow"}}`
+
+	// Try OpenCode 2.x endpoint first
+	resp, err := client.Post(serverURL+"/api/session", "application/json", bytes.NewBufferString(payload))
+	if err == nil && resp.StatusCode == http.StatusNotFound {
+		_ = resp.Body.Close()
+		// Fallback to legacy OpenCode 1.x endpoint
+		resp, err = client.Post(serverURL+"/session", "application/json", bytes.NewBufferString(payload))
+	}
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
@@ -156,40 +181,54 @@ func createSession(client *http.Client, serverURL string) (string, error) {
 		return "", fmt.Errorf("failed to decode session response: %w", err)
 	}
 
-	if result.ID == "" {
+	sessionID := result.SessionID()
+	if sessionID == "" {
 		return "", fmt.Errorf("session ID is empty")
 	}
 
-	return result.ID, nil
+	return sessionID, nil
 }
 
 func submitPrompt(client *http.Client, serverURL, sessionID, prompt string) error {
-	// Build the prompt_async payload
-	payload := map[string]interface{}{
-		"parts": []map[string]interface{}{
-			{
-				"type": "text",
-				"text": prompt,
-			},
-		},
-	}
-
-	body, err := json.Marshal(payload)
+	// OpenCode 2.x uses POST /api/session/:id/prompt with {"text": prompt}
+	v2Payload, err := json.Marshal(map[string]interface{}{
+		"text": prompt,
+	})
 	if err != nil {
 		return err
 	}
 
 	resp, err := client.Post(
-		fmt.Sprintf("%s/session/%s/prompt_async", serverURL, sessionID),
+		fmt.Sprintf("%s/api/session/%s/prompt", serverURL, sessionID),
 		"application/json",
-		bytes.NewBuffer(body),
+		bytes.NewBuffer(v2Payload),
 	)
+	if err == nil && resp.StatusCode == http.StatusNotFound {
+		_ = resp.Body.Close()
+		// Fallback to OpenCode 1.x POST /session/:id/prompt_async with {"parts": [...]}
+		v1Payload, mErr := json.Marshal(map[string]interface{}{
+			"parts": []map[string]interface{}{
+				{
+					"type": "text",
+					"text": prompt,
+				},
+			},
+		})
+		if mErr != nil {
+			return mErr
+		}
+		resp, err = client.Post(
+			fmt.Sprintf("%s/session/%s/prompt_async", serverURL, sessionID),
+			"application/json",
+			bytes.NewBuffer(v1Payload),
+		)
+	}
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// prompt_async returns 204 No Content on success
+	// prompt returns 204 No Content or 200 OK on success
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
@@ -205,7 +244,27 @@ func waitForIdle(client *http.Client, serverURL, sessionID string) error {
 	for {
 		<-ticker.C
 
-		resp, err := client.Get(serverURL + "/session/status")
+		// Try OpenCode 2.x active sessions endpoint first
+		resp, err := client.Get(serverURL + "/api/session/active")
+		if err == nil && resp.StatusCode == http.StatusOK {
+			var active sessionActiveResponse
+			if err := json.NewDecoder(resp.Body).Decode(&active); err == nil {
+				_ = resp.Body.Close()
+				status, isRunning := active.Data[sessionID]
+				if !isRunning || status.Type != "running" {
+					fmt.Println("[task-submit] session completed (not in active sessions)")
+					return nil
+				}
+				// Still running, continue polling
+				continue
+			}
+			_ = resp.Body.Close()
+		} else if resp != nil {
+			_ = resp.Body.Close()
+		}
+
+		// Fallback to legacy OpenCode 1.x /session/status endpoint
+		resp, err = client.Get(serverURL + "/session/status")
 		if err != nil {
 			fmt.Printf("[task-submit] warning: failed to poll status: %v\n", err)
 			continue
@@ -246,7 +305,14 @@ func streamEvents(serverURL, sessionID string, done chan struct{}, sessionErrors
 	// Use a client with no timeout for SSE
 	client := &http.Client{Timeout: 0}
 
-	resp, err := client.Get(serverURL + "/event")
+	// Try OpenCode 2.x /api/event first, fallback to /event
+	resp, err := client.Get(serverURL + "/api/event")
+	if err != nil || (resp != nil && resp.StatusCode == http.StatusNotFound) {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		resp, err = client.Get(serverURL + "/event")
+	}
 	if err != nil {
 		fmt.Printf("[task-submit] warning: failed to connect to SSE: %v\n", err)
 		return

@@ -11,8 +11,8 @@ AGENT ?= devbox
 NO_CACHE ?=
 NO_CACHE_FLAG := $(if $(NO_CACHE),--no-cache,)
 
-# OpenCode version for opencode agent (usage: make AGENT=opencode OPENCODE_VERSION=1.15.0 build)
-OPENCODE_VERSION ?= 1.17.11
+# OpenCode version for opencode agent (usage: make AGENT=opencode OPENCODE_VERSION=2.3.2 build)
+OPENCODE_VERSION ?= 2.3.2
 
 # Image URL configuration
 IMG_REGISTRY ?= ghcr.io

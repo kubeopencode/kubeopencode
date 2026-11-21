@@ -29,7 +29,7 @@ func NewOpenCodeClient() *OpenCodeClient {
 }
 
 // OpenCodeSession represents a session returned by the OpenCode API.
-// Only the fields relevant to KubeOpenCode are included.
+// Supports both OpenCode 1.x and 2.x fields.
 type OpenCodeSession struct {
 	ID      string `json:"id"`
 	Title   string `json:"title"`
@@ -44,6 +44,13 @@ type OpenCodeSession struct {
 		Updated  int64  `json:"updated"`
 		Archived *int64 `json:"archived,omitempty"`
 	} `json:"time"`
+	Cost   *float64 `json:"cost,omitempty"`
+	Tokens *struct {
+		Input     int64              `json:"input"`
+		Output    int64              `json:"output"`
+		Reasoning int64              `json:"reasoning"`
+		Cache     OpenCodeCacheUsage `json:"cache"`
+	} `json:"tokens,omitempty"`
 }
 
 // OpenCodeMessage represents a message returned by the OpenCode API.
@@ -73,6 +80,13 @@ type OpenCodeCacheUsage struct {
 	Write int64 `json:"write"`
 }
 
+// OpenCodeFileDiff represents file changes in a session (OpenCode 2.x).
+type OpenCodeFileDiff struct {
+	Path      string `json:"path"`
+	Additions int32  `json:"additions"`
+	Deletions int32  `json:"deletions"`
+}
+
 // AssistantMessageData is the aggregated stats output used by resolveSessionInfo.
 type AssistantMessageData struct {
 	Cost   float64
@@ -84,33 +98,125 @@ type AssistantMessageData struct {
 	}
 }
 
-// Note: OpenCode API returns sessions as a plain array (not wrapped in {data: [...]}).
-// Messages are also returned as a plain array.
-
-// FindSessionByTitle searches for a session by title on the given OpenCode server.
-// Returns nil if no matching session is found (not an error).
-func (c *OpenCodeClient) FindSessionByTitle(ctx context.Context, serverURL, title string) (*OpenCodeSession, error) {
-	reqURL := fmt.Sprintf("%s/session?search=%s", serverURL, url.QueryEscape(title))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+// getWithFallback performs a GET request against apiURL, falling back to legacyURL if apiURL returns 404.
+func (c *OpenCodeClient) getWithFallback(ctx context.Context, apiURL, legacyURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("querying sessions: %w", err)
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode == http.StatusNotFound && legacyURL != "" && legacyURL != apiURL {
+		legacyReq, err := http.NewRequestWithContext(ctx, http.MethodGet, legacyURL, nil)
+		if err == nil {
+			legacyResp, err := c.httpClient.Do(legacyReq)
+			if err == nil {
+				defer func() { _ = legacyResp.Body.Close() }()
+				if legacyResp.StatusCode == http.StatusOK {
+					return io.ReadAll(legacyResp.Body)
+				}
+			}
+		}
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var sessions []OpenCodeSession
-	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
+	return body, nil
+}
+
+// decodeSessions decodes session list responses in either 2.x envelope ({ "data": [...] })
+// or 1.x plain array format ([...]).
+func decodeSessions(body []byte) ([]OpenCodeSession, error) {
+	var env struct {
+		Data []OpenCodeSession `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err == nil && env.Data != nil {
+		return env.Data, nil
+	}
+
+	var list []OpenCodeSession
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, fmt.Errorf("decoding sessions response: %w", err)
+	}
+	return list, nil
+}
+
+// decodeSession decodes a single session response in either 2.x envelope ({ "data": {...} })
+// or 1.x plain object format ({...}).
+func decodeSession(body []byte) (*OpenCodeSession, error) {
+	var env struct {
+		Data OpenCodeSession `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err == nil && env.Data.ID != "" {
+		return &env.Data, nil
+	}
+
+	var session OpenCodeSession
+	if err := json.Unmarshal(body, &session); err != nil {
+		return nil, fmt.Errorf("decoding session response: %w", err)
+	}
+	return &session, nil
+}
+
+// decodeMessages decodes message list responses in either 2.x envelope ({ "data": [...] })
+// or 1.x plain array format ([...]).
+func decodeMessages(body []byte) ([]OpenCodeMessage, error) {
+	var env struct {
+		Data []OpenCodeMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err == nil && env.Data != nil {
+		return env.Data, nil
+	}
+
+	var list []OpenCodeMessage
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, fmt.Errorf("decoding messages response: %w", err)
+	}
+	return list, nil
+}
+
+// decodeFileDiffs decodes file diffs in 2.x envelope or plain array format.
+func decodeFileDiffs(body []byte) ([]OpenCodeFileDiff, error) {
+	var env struct {
+		Data []OpenCodeFileDiff `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err == nil && env.Data != nil {
+		return env.Data, nil
+	}
+
+	var list []OpenCodeFileDiff
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, fmt.Errorf("decoding diff response: %w", err)
+	}
+	return list, nil
+}
+
+// FindSessionByTitle searches for a session by title on the given OpenCode server.
+// Returns nil if no matching session is found (not an error).
+func (c *OpenCodeClient) FindSessionByTitle(ctx context.Context, serverURL, title string) (*OpenCodeSession, error) {
+	apiURL := fmt.Sprintf("%s/api/session?search=%s", serverURL, url.QueryEscape(title))
+	legacyURL := fmt.Sprintf("%s/session?search=%s", serverURL, url.QueryEscape(title))
+
+	body, err := c.getWithFallback(ctx, apiURL, legacyURL)
+	if err != nil {
+		return nil, fmt.Errorf("querying sessions: %w", err)
+	}
+
+	sessions, err := decodeSessions(body)
+	if err != nil {
+		return nil, err
 	}
 
 	// Find exact title match. When multiple sessions share the same title
@@ -130,59 +236,42 @@ func (c *OpenCodeClient) FindSessionByTitle(ctx context.Context, serverURL, titl
 
 // GetSession retrieves a session by ID from the OpenCode server.
 func (c *OpenCodeClient) GetSession(ctx context.Context, serverURL, sessionID string) (*OpenCodeSession, error) {
-	reqURL := fmt.Sprintf("%s/session/%s", serverURL, url.PathEscape(sessionID))
+	apiURL := fmt.Sprintf("%s/api/session/%s", serverURL, url.PathEscape(sessionID))
+	legacyURL := fmt.Sprintf("%s/session/%s", serverURL, url.PathEscape(sessionID))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
+	body, err := c.getWithFallback(ctx, apiURL, legacyURL)
 	if err != nil {
 		return nil, fmt.Errorf("getting session: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var session OpenCodeSession
-	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
-	}
-
-	return &session, nil
+	return decodeSession(body)
 }
 
 // GetSessionMessages retrieves all messages for a session.
 // Used to aggregate token usage and cost information.
 func (c *OpenCodeClient) GetSessionMessages(ctx context.Context, serverURL, sessionID string) ([]OpenCodeMessage, error) {
-	reqURL := fmt.Sprintf("%s/session/%s/message", serverURL, url.PathEscape(sessionID))
+	apiURL := fmt.Sprintf("%s/api/session/%s/message", serverURL, url.PathEscape(sessionID))
+	legacyURL := fmt.Sprintf("%s/session/%s/message", serverURL, url.PathEscape(sessionID))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
+	body, err := c.getWithFallback(ctx, apiURL, legacyURL)
 	if err != nil {
 		return nil, fmt.Errorf("getting messages: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	return decodeMessages(body)
+}
+
+// GetSessionDiff retrieves file diffs for a session (OpenCode 2.x).
+func (c *OpenCodeClient) GetSessionDiff(ctx context.Context, serverURL, sessionID string) ([]OpenCodeFileDiff, error) {
+	apiURL := fmt.Sprintf("%s/api/session/%s/diff", serverURL, url.PathEscape(sessionID))
+	legacyURL := fmt.Sprintf("%s/session/%s/diff", serverURL, url.PathEscape(sessionID))
+
+	body, err := c.getWithFallback(ctx, apiURL, legacyURL)
+	if err != nil {
+		return nil, fmt.Errorf("getting diff: %w", err)
 	}
 
-	var messages []OpenCodeMessage
-	if err := json.NewDecoder(resp.Body).Decode(&messages); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
-	}
-
-	return messages, nil
+	return decodeFileDiffs(body)
 }
 
 // AggregateMessageStats fetches messages for a session and aggregates
