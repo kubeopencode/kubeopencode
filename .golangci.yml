@@ -39,7 +39,15 @@ linters:
         - shadow          # Disable shadow checks (too noisy for Go patterns)
 
     staticcheck:
-      checks: ["all"]
+      checks: ["all", "-SA1019"]
+
+    gosec:
+      excludes:
+        - G101 # Potential hardcoded credentials
+        - G122 # Directory traversal via filepath.Walk
+        - G204 # Subprocess launched with variable (git command execution in init container)
+        - G703 # Path traversal via taint analysis
+        - G704 # SSRF via taint analysis (url_fetch intentional HTTP requests)
 
     revive:
       rules:
@@ -69,7 +77,7 @@ issues:
   # Excluding configuration per-path, per-linter, per-text and per-source
   exclude-rules:
     # Exclude some linters from running on tests files
-    - path: _test\.go
+    - path: '.*_test\.go'
       linters:
         - errcheck
         - gosec

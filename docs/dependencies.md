@@ -29,7 +29,7 @@ When updating base images:
 
 | Component | Version | Location | Purpose |
 |-----------|---------|----------|---------|
-| OpenCode CLI | `1.14.41` | `agents/opencode/Dockerfile` (`OPENCODE_VERSION` ARG) & `agents/Makefile` | AI agent binary |
+| OpenCode CLI | `2.3.2` | `agents/opencode/Dockerfile` (`OPENCODE_VERSION` ARG) & `agents/Makefile` | AI agent binary |
 | OpenCode Web UI | `v1.3.2` | `Makefile` (`OPENCODE_APP_VERSION`) | Self-hosted Web UI (built from source) |
 
 ## Go Toolchain
@@ -39,8 +39,8 @@ When updating base images:
 | Go | `1.25.0` | `go.mod` | Project Go version |
 | Go (Dockerfile) | `1.26.2` | `Dockerfile` | Build image Go version |
 | Go (devbox) | `1.25.5` | `agents/devbox/Dockerfile` (`GO_VERSION` ARG) | Agent runtime Go version |
-| controller-gen | `v0.16.5` | `Makefile` | CRD and deepcopy code generation |
-| golangci-lint | `v2.6.2` | `Makefile` | Go linter |
+| controller-gen | `v0.18.0` | `go.mod` (`go tool`) | CRD and deepcopy code generation |
+| golangci-lint | `v2.15.0` | `go.mod` (`go tool`) | Go linter |
 | envtest (K8s) | `1.35.0` | `Makefile` (`ENVTEST_K8S_VERSION`) | Integration test K8s API server |
 
 ## Frontend (UI)

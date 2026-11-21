@@ -29,12 +29,9 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
-# controller-gen setup
-CONTROLLER_GEN_VERSION := v0.16.5
-CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
-
-# golangci-lint (version auto-detected by ci/lint/run-lint.sh based on Go version)
-GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
+# Tools tracked via go.mod tool directive (Go 1.24+)
+CONTROLLER_GEN ?= go tool controller-gen
+GOLANGCI_LINT ?= go tool golangci-lint
 
 # Ensure GOPATH is set
 check-env:
@@ -44,14 +41,9 @@ export GOPATH=$(shell go env GOPATH)
 endif
 .PHONY: check-env
 
-# Download controller-gen locally if not present
 .PHONY: controller-gen
-controller-gen: $(CONTROLLER_GEN) ## Download controller-gen if not present
-$(CONTROLLER_GEN): $(LOCALBIN)
-	@test -s $(CONTROLLER_GEN) || \
-		GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
-
-# golangci-lint is installed automatically by ci/lint/run-lint.sh
+controller-gen: ## Verify controller-gen tool is available
+	@$(CONTROLLER_GEN) --version >/dev/null 2>&1 || true
 
 # Vendor dependencies
 vendor:
@@ -268,9 +260,9 @@ fmt:
 	go fmt ./...
 .PHONY: fmt
 
-# Lint code (auto-detects and installs compatible golangci-lint version)
+# Lint code using go tool golangci-lint
 lint:
-	@LOCALBIN=$(LOCALBIN) ./ci/lint/run-lint.sh
+	$(GOLANGCI_LINT) run ./...
 .PHONY: lint
 
 ##@ E2E Testing

@@ -9,18 +9,8 @@ set -o pipefail
 SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")/..
 cd "${SCRIPT_ROOT}"
 
-# Use controller-gen for deepcopy generation (simpler and more compatible)
-LOCALBIN="$(cd "${SCRIPT_ROOT}" && pwd)/bin"
-CONTROLLER_GEN="${LOCALBIN}/controller-gen"
-
-# Ensure controller-gen is installed
-if [[ ! -x "${CONTROLLER_GEN}" ]]; then
-    echo "Installing controller-gen..."
-    mkdir -p "${LOCALBIN}"
-    GOBIN="${LOCALBIN}" go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.5
-fi
-
+# Use go tool controller-gen for deepcopy generation
 echo "Generating deepcopy functions..."
-"${CONTROLLER_GEN}" object:headerFile="${SCRIPT_ROOT}/hack/boilerplate.txt" paths="./api/..."
+go tool controller-gen object:headerFile="${SCRIPT_ROOT}/hack/boilerplate.txt" paths="./api/..."
 
 echo "Deepcopy generation complete"
