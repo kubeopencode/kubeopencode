@@ -11,6 +11,7 @@
 .worktree/
 
 # Go
+.go/
 bin/
 cover.out
 
@@ -19,7 +20,7 @@ cover.out
 /kubeoc
 
 # Helm
-dist/
+/dist/
 
 # Temporary output (release verification, etc.)
 .output/
@@ -28,7 +29,8 @@ dist/
 node_modules/
 
 # UI
-ui/dist/
+ui/dist/*
+!ui/dist/index.html
 ui/coverage/
 
 # Website

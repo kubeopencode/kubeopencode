@@ -121,6 +121,26 @@ This section describes how to set up a local development environment using Kind 
 
 ### Prerequisites
 
+You can obtain all required tools automatically using **Nix** or install them manually.
+
+#### Option A: Nix (Recommended)
+
+If you have [Nix](https://nixos.org/) installed:
+
+```bash
+nix develop
+```
+
+Or if you use [direnv](https://direnv.net/), run:
+
+```bash
+direnv allow
+```
+
+This single command sets up a shell with Go, kubectl, Helm, Kind, kustomize, Docker client, golangci-lint, and Node.js.
+
+#### Option B: Manual Installation
+
 - [Docker](https://docs.docker.com/get-docker/)
 - [Kind](https://kind.sigs.k8s.io/) (`brew install kind` on macOS)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
